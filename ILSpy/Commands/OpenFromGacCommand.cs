@@ -16,11 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 
 namespace ICSharpCode.ILSpy
 {
-	[ExportMainMenuCommand(Menu = "_File", Header = "Open from _GAC", MenuIcon = "Images/AssemblyListGAC.png", MenuCategory = "Open", MenuOrder = 1)]
+	[ExportMainMenuCommand(Menu = "_File", Header = "Open from _GAC...", MenuIcon = "Images/AssemblyListGAC.png", MenuCategory = "Open", MenuOrder = 1)]
 	sealed class OpenFromGacCommand : SimpleCommand
 	{
 		public override void Execute(object parameter)

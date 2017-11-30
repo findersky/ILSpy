@@ -28,14 +28,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	/// </summary>
 	public sealed class PropertyTreeNode : ILSpyTreeNode, IMemberTreeNode
 	{
-		readonly PropertyDefinition property;
 		readonly bool isIndexer;
 
 		public PropertyTreeNode(PropertyDefinition property)
 		{
 			if (property == null)
-				throw new ArgumentNullException("property");
-			this.property = property;
+				throw new ArgumentNullException(nameof(property));
+			this.PropertyDefinition = property;
 			using (LoadedAssembly.DisableAssemblyLoad()) {
 				this.isIndexer = property.IsIndexer();
 			}
@@ -48,27 +47,45 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				foreach (var m in property.OtherMethods)
 					this.Children.Add(new MethodTreeNode(m));
 			}
-			
 		}
 
-		public PropertyDefinition PropertyDefinition {
-			get { return property; }
-		}
+		public PropertyDefinition PropertyDefinition { get; }
 
-		public override object Text
-		{
-			get { return GetText(property, Language, isIndexer) + property.MetadataToken.ToSuffixString(); }
-		}
+		public override object Text => GetText(PropertyDefinition, Language, isIndexer) + PropertyDefinition.MetadataToken.ToSuffixString();
 
 		public static object GetText(PropertyDefinition property, Language language, bool? isIndexer = null)
 		{
-			return HighlightSearchMatch(language.FormatPropertyName(property, isIndexer), " : " + language.TypeToString(property.PropertyType, false, property));
+			string name = language.FormatPropertyName(property, isIndexer);
+
+			var b = new System.Text.StringBuilder();
+			if (property.HasParameters)
+			{
+				b.Append('(');
+				for (int i = 0; i < property.Parameters.Count; i++)
+				{
+					if (i > 0)
+						b.Append(", ");
+					b.Append(language.TypeToString(property.Parameters[i].ParameterType, false, property.Parameters[i]));
+				}
+				var method = property.GetMethod ?? property.SetMethod;
+				if (method.CallingConvention == MethodCallingConvention.VarArg)
+				{
+					if (property.HasParameters)
+						b.Append(", ");
+					b.Append("...");
+				}
+				b.Append(") : ");
+			}
+			else
+			{
+				b.Append(" : ");
+			}
+			b.Append(language.TypeToString(property.PropertyType, false, property));
+
+			return HighlightSearchMatch(name, b.ToString());
 		}
-		
-		public override object Icon
-		{
-			get { return GetIcon(property); }
-		}
+
+		public override object Icon => GetIcon(PropertyDefinition);
 
 		public static ImageSource GetIcon(PropertyDefinition property, bool isIndexer = false)
 		{
@@ -141,7 +158,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override FilterResult Filter(FilterSettings settings)
 		{
-			if (settings.SearchTermMatches(property.Name) && settings.Language.ShowMember(property))
+			if (settings.SearchTermMatches(PropertyDefinition.Name) && settings.Language.ShowMember(PropertyDefinition))
 				return FilterResult.Match;
 			else
 				return FilterResult.Hidden;
@@ -149,12 +166,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			language.DecompileProperty(property, output, options);
+			language.DecompileProperty(PropertyDefinition, output, options);
 		}
 		
 		public override bool IsPublicAPI {
 			get {
-				switch (GetAttributesOfMostAccessibleMethod(property) & MethodAttributes.MemberAccessMask) {
+				switch (GetAttributesOfMostAccessibleMethod(PropertyDefinition) & MethodAttributes.MemberAccessMask) {
 					case MethodAttributes.Public:
 					case MethodAttributes.Family:
 					case MethodAttributes.FamORAssem:
@@ -165,9 +182,6 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
-		MemberReference IMemberTreeNode.Member
-		{
-			get { return property; }
-		}
+		MemberReference IMemberTreeNode.Member => PropertyDefinition;
 	}
 }

@@ -16,7 +16,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using ICSharpCode.Decompiler;
@@ -101,9 +100,6 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			language.WriteCommentLine(output, language.TypeToString(type, true));
 		}
 
-		MemberReference IMemberTreeNode.Member
-		{
-			get { return type; }
-		}
+		MemberReference IMemberTreeNode.Member => type;
 	}
 }

@@ -87,43 +87,46 @@ namespace ICSharpCode.ILSpy.Options
 		
 		static FontFamily[] FontLoader()
 		{
-			return Fonts.SystemFontFamilies
-				.Where(ff => !IsSymbolFont(ff))
-				.OrderBy(ff => ff.Source)
-				.ToArray();
+			return (from ff in Fonts.SystemFontFamilies
+					where !IsSymbolFont(ff)
+					orderby ff.Source
+					select ff).ToArray();
 		}
 		
 		public static DisplaySettings LoadDisplaySettings(ILSpySettings settings)
 		{
 			XElement e = settings["DisplaySettings"];
-			DisplaySettings s = new DisplaySettings();
+			var s = new DisplaySettings();
 			s.SelectedFont = new FontFamily((string)e.Attribute("Font") ?? "Consolas");
 			s.SelectedFontSize = (double?)e.Attribute("FontSize") ?? 10.0 * 4 / 3;
 			s.ShowLineNumbers = (bool?)e.Attribute("ShowLineNumbers") ?? false;
 			s.ShowMetadataTokens = (bool?) e.Attribute("ShowMetadataTokens") ?? false;
 		    s.EnableWordWrap = (bool?)e.Attribute("EnableWordWrap") ?? false;
+			s.SortResults = (bool?)e.Attribute("SortResults") ?? false;
 			
 			return s;
 		}
 		
 		public void Save(XElement root)
 		{
-			DisplaySettings s = (DisplaySettings)this.DataContext;
+			var s = (DisplaySettings)this.DataContext;
 			
-			currentDisplaySettings.CopyValues(s);
-			
-			XElement section = new XElement("DisplaySettings");
+			var section = new XElement("DisplaySettings");
 			section.SetAttributeValue("Font", s.SelectedFont.Source);
 			section.SetAttributeValue("FontSize", s.SelectedFontSize);
 			section.SetAttributeValue("ShowLineNumbers", s.ShowLineNumbers);
 			section.SetAttributeValue("ShowMetadataTokens", s.ShowMetadataTokens);
 			section.SetAttributeValue("EnableWordWrap", s.EnableWordWrap);
+			section.SetAttributeValue("SortResults", s.SortResults);
 			
 			XElement existingElement = root.Element("DisplaySettings");
 			if (existingElement != null)
 				existingElement.ReplaceWith(section);
 			else
 				root.Add(section);
+
+			if (currentDisplaySettings != null)
+				currentDisplaySettings.CopyValues(s);
 		}
 	}
 	

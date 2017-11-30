@@ -17,7 +17,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Linq;
 using System.Text;
+using System.Windows.Controls;
 using System.Windows.Media;
 
 using ICSharpCode.Decompiler;
@@ -30,27 +32,16 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	/// </summary>
 	public sealed class MethodTreeNode : ILSpyTreeNode, IMemberTreeNode
 	{
-		readonly MethodDefinition method;
-
-		public MethodDefinition MethodDefinition
-		{
-			get { return method; }
-		}
+		public MethodDefinition MethodDefinition { get; }
 
 		public MethodTreeNode(MethodDefinition method)
 		{
 			if (method == null)
-				throw new ArgumentNullException("method");
-			this.method = method;
+				throw new ArgumentNullException(nameof(method));
+			this.MethodDefinition = method;
 		}
 
-		public override object Text
-		{
-			get
-			{
-				return GetText(method, Language);
-			}
-		}
+		public override object Text => GetText(MethodDefinition, Language) + MethodDefinition.MetadataToken.ToSuffixString();
 
 		public static object GetText(MethodDefinition method, Language language)
 		{
@@ -66,16 +57,16 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					b.Append(", ");
 				b.Append("...");
 			}
-			b.Append(") : ");
-			b.Append(language.TypeToString(method.ReturnType, false, method.MethodReturnType));
-			b.Append(method.MetadataToken.ToSuffixString());
-			return HighlightSearchMatch(method.Name, b.ToString());
+			if (method.IsConstructor) {
+				b.Append(')');
+			} else {
+				b.Append(") : ");
+				b.Append(language.TypeToString(method.ReturnType, false, method.MethodReturnType));
+			}
+			return HighlightSearchMatch(language.FormatMethodName(method), b.ToString());
 		}
 
-		public override object Icon
-		{
-			get { return GetIcon(method); }
-		}
+		public override object Icon => GetIcon(MethodDefinition);
 
 		public static ImageSource GetIcon(MethodDefinition method)
 		{
@@ -93,7 +84,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 			if (method.IsSpecialName &&
 				(method.Name == ".ctor" || method.Name == ".cctor")) {
-				return Images.GetIcon(MemberIcon.Constructor, GetOverlayIcon(method.Attributes), false);
+				return Images.GetIcon(MemberIcon.Constructor, GetOverlayIcon(method.Attributes), method.IsStatic);
 			}
 
 			if (method.HasPInvokeInfo)
@@ -130,12 +121,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			language.DecompileMethod(method, output, options);
+			language.DecompileMethod(MethodDefinition, output, options);
 		}
 
 		public override FilterResult Filter(FilterSettings settings)
 		{
-			if (settings.SearchTermMatches(method.Name) && settings.Language.ShowMember(method))
+			if (settings.SearchTermMatches(MethodDefinition.Name) && settings.Language.ShowMember(MethodDefinition))
 				return FilterResult.Match;
 			else
 				return FilterResult.Hidden;
@@ -143,13 +134,10 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool IsPublicAPI {
 			get {
-				return method.IsPublic || method.IsFamily || method.IsFamilyOrAssembly;
+				return MethodDefinition.IsPublic || MethodDefinition.IsFamily || MethodDefinition.IsFamilyOrAssembly;
 			}
 		}
-		
-		MemberReference IMemberTreeNode.Member
-		{
-			get { return method; }
-		}
+
+		MemberReference IMemberTreeNode.Member => MethodDefinition;
 	}
 }

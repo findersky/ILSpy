@@ -28,6 +28,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -42,11 +43,11 @@ using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.AvalonEdit.Search;
 using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.CSharp;
+using ICSharpCode.Decompiler.Documentation;
 using ICSharpCode.ILSpy.AvalonEdit;
 using ICSharpCode.ILSpy.Options;
 using ICSharpCode.ILSpy.TreeNodes;
-using ICSharpCode.ILSpy.XmlDoc;
-using ICSharpCode.NRefactory.Documentation;
 using Microsoft.Win32;
 using Mono.Cecil;
 
@@ -62,6 +63,7 @@ namespace ICSharpCode.ILSpy.TextView
 		readonly ReferenceElementGenerator referenceElementGenerator;
 		readonly UIElementGenerator uiElementGenerator;
 		List<VisualLineElementGenerator> activeCustomElementGenerators = new List<VisualLineElementGenerator>();
+		RichTextColorizer activeRichTextColorizer;
 		FoldingManager foldingManager;
 		ILSpyTreeNode[] decompiledNodes;
 		
@@ -84,7 +86,17 @@ namespace ICSharpCode.ILSpy.TextView
 						}
 					}
 				});
-			
+
+			HighlightingManager.Instance.RegisterHighlighting(
+				"C#", new string[] { ".cs" },
+				delegate {
+					using (Stream s = typeof(DecompilerTextView).Assembly.GetManifestResourceStream(typeof(DecompilerTextView), "CSharp-Mode.xshd")) {
+						using (XmlTextReader reader = new XmlTextReader(s)) {
+							return HighlightingLoader.Load(reader, HighlightingManager.Instance);
+						}
+					}
+				});
+
 			InitializeComponent();
 			
 			this.referenceElementGenerator = new ReferenceElementGenerator(this.JumpToReference, this.IsLink);
@@ -94,11 +106,16 @@ namespace ICSharpCode.ILSpy.TextView
 			textEditor.Options.RequireControlModifierForHyperlinkClick = false;
 			textEditor.TextArea.TextView.MouseHover += TextViewMouseHover;
 			textEditor.TextArea.TextView.MouseHoverStopped += TextViewMouseHoverStopped;
-			textEditor.TextArea.TextView.MouseDown += TextViewMouseDown;
+			textEditor.TextArea.PreviewMouseDown += TextAreaMouseDown;
+			textEditor.TextArea.PreviewMouseUp += TextAreaMouseUp;
 			textEditor.SetBinding(Control.FontFamilyProperty, new Binding { Source = DisplaySettingsPanel.CurrentDisplaySettings, Path = new PropertyPath("SelectedFont") });
 			textEditor.SetBinding(Control.FontSizeProperty, new Binding { Source = DisplaySettingsPanel.CurrentDisplaySettings, Path = new PropertyPath("SelectedFontSize") });
 			textEditor.SetBinding(TextEditor.WordWrapProperty, new Binding { Source = DisplaySettingsPanel.CurrentDisplaySettings, Path = new PropertyPath("EnableWordWrap") });
 
+			// disable Tab editing command (useless for read-only editor); allow using tab for focus navigation instead
+			RemoveEditCommand(EditingCommands.TabForward);
+			RemoveEditCommand(EditingCommands.TabBackward);
+			
 			textMarkerService = new TextMarkerService(textEditor.TextArea.TextView);
 			textEditor.TextArea.TextView.BackgroundRenderers.Add(textMarkerService);
 			textEditor.TextArea.TextView.LineTransformers.Add(textMarkerService);
@@ -109,14 +126,23 @@ namespace ICSharpCode.ILSpy.TextView
 			SearchPanel.Install(textEditor.TextArea)
 				.RegisterCommands(Application.Current.MainWindow.CommandBindings);
 			
-			// Bookmarks context menu
 			ShowLineMargin();
 			
 			// add marker service & margin
 			textEditor.TextArea.TextView.BackgroundRenderers.Add(textMarkerService);
 			textEditor.TextArea.TextView.LineTransformers.Add(textMarkerService);
 		}
-		
+
+		void RemoveEditCommand(RoutedUICommand command)
+		{
+			var handler = textEditor.TextArea.DefaultInputHandler.Editing;
+			var inputBinding = handler.InputBindings.FirstOrDefault(b => b.Command == command);
+			if (inputBinding != null)
+				handler.InputBindings.Remove(inputBinding);
+			var commandBinding = handler.CommandBindings.FirstOrDefault(b => b.Command == command);
+			if (commandBinding != null)
+				handler.CommandBindings.Remove(commandBinding);
+		}
 		#endregion
 		
 		#region Line margin
@@ -154,6 +180,8 @@ namespace ICSharpCode.ILSpy.TextView
 			if (position == null)
 				return;
 			int offset = textEditor.Document.GetOffset(position.Value.Location);
+			if (referenceElementGenerator.References == null)
+				return;
 			ReferenceSegment seg = referenceElementGenerator.References.FindSegmentsContaining(offset).FirstOrDefault();
 			if (seg == null)
 				return;
@@ -233,6 +261,9 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			if (waitAdorner.Visibility != Visibility.Visible) {
 				waitAdorner.Visibility = Visibility.Visible;
+				// Work around a WPF bug by setting IsIndeterminate only while the progress bar is visible.
+				// https://github.com/icsharpcode/ILSpy/issues/593
+				progressBar.IsIndeterminate = true;
 				waitAdorner.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, new Duration(TimeSpan.FromSeconds(0.5)), FillBehavior.Stop));
 				var taskBar = MainWindow.Instance.TaskbarItemInfo;
 				if (taskBar != null) {
@@ -260,6 +291,7 @@ namespace ICSharpCode.ILSpy.TextView
 					if (currentCancellationTokenSource == myCancellationTokenSource) {
 						currentCancellationTokenSource = null;
 						waitAdorner.Visibility = Visibility.Collapsed;
+						progressBar.IsIndeterminate = false;
 						var taskBar = MainWindow.Instance.TaskbarItemInfo;
 						if (taskBar != null) {
 							taskBar.ProgressState = System.Windows.Shell.TaskbarItemProgressState.None;
@@ -341,6 +373,12 @@ namespace ICSharpCode.ILSpy.TextView
 			references = textOutput.References;
 			definitionLookup = textOutput.DefinitionLookup;
 			textEditor.SyntaxHighlighting = highlighting;
+			if (activeRichTextColorizer != null)
+				textEditor.TextArea.TextView.LineTransformers.Remove(activeRichTextColorizer);
+			if (textOutput.HighlightingModel != null) {
+				activeRichTextColorizer = new RichTextColorizer(textOutput.HighlightingModel);
+				textEditor.TextArea.TextView.LineTransformers.Insert(highlighting == null ? 0 : 1, activeRichTextColorizer);
+			}
 			
 			// Change the set of active element generators:
 			foreach (var elementGenerator in activeCustomElementGenerators) {
@@ -469,35 +507,16 @@ namespace ICSharpCode.ILSpy.TextView
 			
 			Thread thread = new Thread(new ThreadStart(
 				delegate {
-					#if DEBUG
-					if (System.Diagnostics.Debugger.IsAttached) {
-						try {
-							AvalonEditTextOutput textOutput = new AvalonEditTextOutput();
-							textOutput.LengthLimit = outputLengthLimit;
-							DecompileNodes(context, textOutput);
-							textOutput.PrepareDocument();
-							tcs.SetResult(textOutput);
-						} catch (OutputLengthExceededException ex) {
-							tcs.SetException(ex);
-						} catch (AggregateException ex) {
-							tcs.SetException(ex.InnerExceptions);
-						} catch (OperationCanceledException) {
-							tcs.SetCanceled();
-						}
-					} else
-						#endif
-					{
-						try {
-							AvalonEditTextOutput textOutput = new AvalonEditTextOutput();
-							textOutput.LengthLimit = outputLengthLimit;
-							DecompileNodes(context, textOutput);
-							textOutput.PrepareDocument();
-							tcs.SetResult(textOutput);
-						} catch (OperationCanceledException) {
-							tcs.SetCanceled();
-						} catch (Exception ex) {
-							tcs.SetException(ex);
-						}
+					try {
+						AvalonEditTextOutput textOutput = new AvalonEditTextOutput();
+						textOutput.LengthLimit = outputLengthLimit;
+						DecompileNodes(context, textOutput);
+						textOutput.PrepareDocument();
+						tcs.SetResult(textOutput);
+					} catch (OperationCanceledException) {
+						tcs.SetCanceled();
+					} catch (Exception ex) {
+						tcs.SetException(ex);
 					}
 				}));
 			thread.Start();
@@ -584,12 +603,36 @@ namespace ICSharpCode.ILSpy.TextView
 			MainWindow.Instance.JumpToReference(reference);
 		}
 
-		void TextViewMouseDown(object sender, MouseButtonEventArgs e)
-		{
-			if (GetReferenceSegmentAtMousePosition() == null)
-				ClearLocalReferenceMarks();
-		}
+		Point? mouseDownPos;
 
+		void TextAreaMouseDown(object sender, MouseButtonEventArgs e)
+		{
+			mouseDownPos = e.GetPosition(this);
+		}
+		
+		void TextAreaMouseUp(object sender, MouseButtonEventArgs e)
+		{
+			if (mouseDownPos == null)
+				return;
+			Vector dragDistance = e.GetPosition(this) - mouseDownPos.Value;
+			if (Math.Abs(dragDistance.X) < SystemParameters.MinimumHorizontalDragDistance
+				&& Math.Abs(dragDistance.Y) < SystemParameters.MinimumVerticalDragDistance
+				&& e.ChangedButton == MouseButton.Left)
+			{
+				// click without moving mouse
+				var referenceSegment = GetReferenceSegmentAtMousePosition();
+				if (referenceSegment == null) {
+					ClearLocalReferenceMarks();
+				} else {
+					JumpToReference(referenceSegment);
+					textEditor.TextArea.ClearSelection();
+				}
+				// cancel mouse selection to avoid AvalonEdit selecting between the new
+				// cursor position and the mouse position.
+				textEditor.TextArea.MouseSelectionMode = MouseSelectionMode.None;
+			}
+		}
+		
 		void ClearLocalReferenceMarks()
 		{
 			foreach (var mark in localReferenceMarks) {
@@ -697,21 +740,14 @@ namespace ICSharpCode.ILSpy.TextView
 		/// </summary>
 		internal static string CleanUpName(string text)
 		{
-			int pos = text.IndexOf(':');
-			if (pos > 0)
-				text = text.Substring(0, pos);
-			pos = text.IndexOf('`');
-			if (pos > 0)
-				text = text.Substring(0, pos);
-			text = text.Trim();
-			foreach (char c in Path.GetInvalidFileNameChars())
-				text = text.Replace(c, '-');
-			return text;
+			return WholeProjectDecompiler.CleanUpFileName(text);
 		}
 		#endregion
 
 		internal ReferenceSegment GetReferenceSegmentAtMousePosition()
 		{
+			if (referenceElementGenerator.References == null)
+				return null;
 			TextViewPosition? position = GetPositionFromMousePosition();
 			if (position == null)
 				return null;

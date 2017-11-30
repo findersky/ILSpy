@@ -17,9 +17,13 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using ICSharpCode.Decompiler;
 using ICSharpCode.ILSpy.Options;
 using Mono.Cecil;
 
@@ -34,74 +38,71 @@ namespace ICSharpCode.ILSpy
 		readonly AssemblyList assemblyList;
 		readonly string fileName;
 		readonly string shortName;
-		
+		readonly Dictionary<string, UnresolvedAssemblyNameReference> loadedAssemblyReferences = new Dictionary<string, UnresolvedAssemblyNameReference>();
+
 		public LoadedAssembly(AssemblyList assemblyList, string fileName, Stream stream = null)
 		{
 			if (assemblyList == null)
-				throw new ArgumentNullException("assemblyList");
+				throw new ArgumentNullException(nameof(assemblyList));
 			if (fileName == null)
-				throw new ArgumentNullException("fileName");
+				throw new ArgumentNullException(nameof(fileName));
 			this.assemblyList = assemblyList;
 			this.fileName = fileName;
 			
 			this.assemblyTask = Task.Factory.StartNew<ModuleDefinition>(LoadAssembly, stream); // requires that this.fileName is set
 			this.shortName = Path.GetFileNameWithoutExtension(fileName);
 		}
-		
+
+		/// <summary>
+		/// Returns a target framework identifier in the form '&lt;framework&gt;Version=v&lt;version&gt;'.
+		/// Returns an empty string if no TargetFrameworkAttribute was found or the file doesn't contain an assembly header, i.e., is only a module.
+		/// </summary>
+		public async Task<string> GetTargetFrameworkIdAsync()
+		{
+			var assembly = await GetAssemblyDefinitionAsync();
+			return assembly?.DetectTargetFrameworkId() ?? string.Empty;
+		}
+
+		public Dictionary<string, UnresolvedAssemblyNameReference> LoadedAssemblyReferencesInfo => loadedAssemblyReferences;
+
 		/// <summary>
 		/// Gets the Cecil ModuleDefinition.
 		/// Can be null when there was a load error.
 		/// </summary>
-		public ModuleDefinition ModuleDefinition {
-			get {
-				try {
-					return assemblyTask.Result;
-				} catch (AggregateException) {
-					return null;
-				}
-			}
+		public Task<ModuleDefinition> GetModuleDefinitionAsync()
+		{
+			return assemblyTask;
 		}
 		
 		/// <summary>
 		/// Gets the Cecil AssemblyDefinition.
 		/// Is null when there was a load error; or when opening a netmodule.
 		/// </summary>
-		public AssemblyDefinition AssemblyDefinition {
-			get {
-				var module = this.ModuleDefinition;
-				return module != null ? module.Assembly : null;
-			}
+		public async Task<AssemblyDefinition> GetAssemblyDefinitionAsync()
+		{
+			var module = await assemblyTask;
+			return module != null ? module.Assembly : null;
 		}
-		
-		public AssemblyList AssemblyList {
-			get { return assemblyList; }
-		}
-		
-		public string FileName {
-			get { return fileName; }
-		}
-		
-		public string ShortName {
-			get { return shortName; }
-		}
+
+		public AssemblyList AssemblyList => assemblyList;
+
+		public string FileName => fileName;
+
+		public string ShortName => shortName;
 
 		public string Text {
 			get {
-				if (AssemblyDefinition != null) {
-					return String.Format("{0} ({1})", ShortName, AssemblyDefinition.Name.Version);
+				if (IsLoaded && !HasLoadError) {
+					return String.Format("{0} ({1})", ShortName, GetAssemblyDefinitionAsync().Result.Name.Version);
 				} else {
 					return ShortName;
 				}
 			}
 		}
-		
-		public bool IsLoaded {
-			get { return assemblyTask.IsCompleted; }
-		}
-		
-		public bool HasLoadError {
-			get { return assemblyTask.IsFaulted; }
-		}
+
+		public bool IsLoaded => assemblyTask.IsCompleted;
+
+		public bool HasLoadError => assemblyTask.IsFaulted;
 
 		public bool IsAutoLoaded { get; set; }
 
@@ -113,6 +114,7 @@ namespace ICSharpCode.ILSpy
 			// runs on background thread
 			ReaderParameters p = new ReaderParameters();
 			p.AssemblyResolver = new MyAssemblyResolver(this);
+			p.InMemory = true;
 
 			if (stream != null)
 			{
@@ -139,6 +141,10 @@ namespace ICSharpCode.ILSpy
 		
 		private void LoadSymbols(ModuleDefinition module)
 		{
+			if (!module.HasDebugHeader) {
+				return;
+			}
+
 			// search for pdb in same directory as dll
 			string pdbName = Path.Combine(Path.GetDirectoryName(fileName), Path.GetFileNameWithoutExtension(fileName) + ".pdb");
 			if (File.Exists(pdbName)) {
@@ -187,25 +193,29 @@ namespace ICSharpCode.ILSpy
 			public AssemblyDefinition Resolve(AssemblyNameReference name)
 			{
 				var node = parent.LookupReferencedAssembly(name);
-				return node != null ? node.AssemblyDefinition : null;
+				return node != null ? node.GetAssemblyDefinitionAsync().Result : null;
 			}
 			
 			public AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
 			{
 				var node = parent.LookupReferencedAssembly(name);
-				return node != null ? node.AssemblyDefinition : null;
+				return node != null ? node.GetAssemblyDefinitionAsync().Result : null;
 			}
 			
 			public AssemblyDefinition Resolve(string fullName)
 			{
 				var node = parent.LookupReferencedAssembly(fullName);
-				return node != null ? node.AssemblyDefinition : null;
+				return node != null ? node.GetAssemblyDefinitionAsync().Result : null;
 			}
 			
 			public AssemblyDefinition Resolve(string fullName, ReaderParameters parameters)
 			{
 				var node = parent.LookupReferencedAssembly(fullName);
-				return node != null ? node.AssemblyDefinition : null;
+				return node != null ? node.GetAssemblyDefinitionAsync().Result : null;
+			}
+
+			public void Dispose()
+			{
 			}
 		}
 		
@@ -217,7 +227,7 @@ namespace ICSharpCode.ILSpy
 		public LoadedAssembly LookupReferencedAssembly(AssemblyNameReference name)
 		{
 			if (name == null)
-				throw new ArgumentNullException("name");
+				throw new ArgumentNullException(nameof(name));
 			if (name.IsWindowsRuntime) {
 				return assemblyList.winRTMetadataLookupCache.GetOrAdd(name.Name, LookupWinRTMetadata);
 			} else {
@@ -229,12 +239,22 @@ namespace ICSharpCode.ILSpy
 		{
 			return assemblyList.assemblyLookupCache.GetOrAdd(fullName, LookupReferencedAssemblyInternal);
 		}
-		
+
+		class MyUniversalResolver : UniversalAssemblyResolver
+		{
+			public MyUniversalResolver(LoadedAssembly assembly)
+				: base(assembly.FileName, false)
+			{
+			}
+		}
+
 		LoadedAssembly LookupReferencedAssemblyInternal(string fullName)
 		{
 			foreach (LoadedAssembly asm in assemblyList.GetAssemblies()) {
-				if (asm.AssemblyDefinition != null && fullName.Equals(asm.AssemblyDefinition.FullName, StringComparison.OrdinalIgnoreCase))
+				var asmDef = asm.GetAssemblyDefinitionAsync().Result;
+				if (asmDef != null && fullName.Equals(asmDef.FullName, StringComparison.OrdinalIgnoreCase)) {
 					return asm;
+				}
 			}
 			if (assemblyLoadDisableCount > 0)
 				return null;
@@ -243,20 +263,16 @@ namespace ICSharpCode.ILSpy
 				// Call this method on the GUI thread.
 				return (LoadedAssembly)App.Current.Dispatcher.Invoke(DispatcherPriority.Normal, new Func<string, LoadedAssembly>(LookupReferencedAssembly), fullName);
 			}
-			
+
+			var resolver = new MyUniversalResolver(this) { TargetFramework = GetTargetFrameworkIdAsync().Result };
 			var name = AssemblyNameReference.Parse(fullName);
-			string file = GacInterop.FindAssemblyInNetGac(name);
-			if (file == null) {
-				string dir = Path.GetDirectoryName(this.fileName);
-				if (File.Exists(Path.Combine(dir, name.Name + ".dll")))
-					file = Path.Combine(dir, name.Name + ".dll");
-				else if (File.Exists(Path.Combine(dir, name.Name + ".exe")))
-					file = Path.Combine(dir, name.Name + ".exe");
-			}
+			var file = resolver.Resolve(name);
+
 			if (file != null) {
-				var loaded = assemblyList.OpenAssembly(file, true);
-				return loaded;
+				loadedAssemblyReferences.AddMessage(fullName, MessageKind.Info, "Success - Loading from: " + file.MainModule.FileName);
+				return assemblyList.OpenAssembly(file.MainModule.FileName, true);
 			} else {
+				loadedAssemblyReferences.AddMessage(fullName, MessageKind.Error, "Could not find reference: " + fullName);
 				return null;
 			}
 		}
@@ -264,7 +280,8 @@ namespace ICSharpCode.ILSpy
 		LoadedAssembly LookupWinRTMetadata(string name)
 		{
 			foreach (LoadedAssembly asm in assemblyList.GetAssemblies()) {
-				if (asm.AssemblyDefinition != null && name.Equals(asm.AssemblyDefinition.Name.Name, StringComparison.OrdinalIgnoreCase))
+				var asmDef = asm.GetAssemblyDefinitionAsync().Result;
+				if (asmDef!= null && name.Equals(asmDef.Name.Name, StringComparison.OrdinalIgnoreCase))
 					return asm;
 			}
 			if (assemblyLoadDisableCount > 0)
@@ -284,7 +301,7 @@ namespace ICSharpCode.ILSpy
 		
 		public Task ContinueWhenLoaded(Action<Task<ModuleDefinition>> onAssemblyLoaded, TaskScheduler taskScheduler)
 		{
-			return this.assemblyTask.ContinueWith(onAssemblyLoaded, taskScheduler);
+			return this.assemblyTask.ContinueWith(onAssemblyLoaded, default(CancellationToken), TaskContinuationOptions.RunContinuationsAsynchronously, taskScheduler);
 		}
 		
 		/// <summary>

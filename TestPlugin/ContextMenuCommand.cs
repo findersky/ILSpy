@@ -1,11 +1,9 @@
 ﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team (for details please see \doc\copyright.txt)
 // This code is distributed under MIT X11 license (for details please see \doc\license.txt)
 
-using System;
 using System.Linq;
 using ICSharpCode.ILSpy;
 using ICSharpCode.ILSpy.TreeNodes;
-using ICSharpCode.TreeView;
 using Microsoft.Win32;
 using Mono.Cecil;
 
@@ -29,7 +27,7 @@ namespace TestPlugin
 			if (context.SelectedTreeNodes == null)
 				return;
 			AssemblyTreeNode node = (AssemblyTreeNode)context.SelectedTreeNodes[0];
-			AssemblyDefinition asm = node.LoadedAssembly.AssemblyDefinition;
+			AssemblyDefinition asm = node.LoadedAssembly.GetAssemblyDefinitionAsync().Result;
 			if (asm != null) {
 				SaveFileDialog dlg = new SaveFileDialog();
 				dlg.FileName = node.LoadedAssembly.FileName;

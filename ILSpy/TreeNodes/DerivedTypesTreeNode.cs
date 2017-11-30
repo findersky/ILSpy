@@ -16,12 +16,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using ICSharpCode.Decompiler;
-using ICSharpCode.NRefactory.Utils;
+using ICSharpCode.Decompiler.Util;
 using Mono.Cecil;
 
 namespace ICSharpCode.ILSpy.TreeNodes
@@ -61,7 +60,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		IEnumerable<ILSpyTreeNode> FetchChildren(CancellationToken cancellationToken)
 		{
 			// FetchChildren() runs on the main thread; but the enumerator will be consumed on a background thread
-			var assemblies = list.GetAssemblies().Select(node => node.ModuleDefinition).Where(asm => asm != null).ToArray();
+			var assemblies = list.GetAssemblies().Select(node => node.GetModuleDefinitionAsync().Result).Where(asm => asm != null).ToArray();
 			return FindDerivedTypes(type, assemblies, cancellationToken);
 		}
 
@@ -71,8 +70,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				foreach (TypeDefinition td in TreeTraversal.PreOrder(module.Types, t => t.NestedTypes)) {
 					cancellationToken.ThrowIfCancellationRequested();
 					if (type.IsInterface && td.HasInterfaces) {
-						foreach (TypeReference typeRef in td.Interfaces) {
-							if (IsSameType(typeRef, type))
+						foreach (var iface in td.Interfaces) {
+							if (IsSameType(iface.InterfaceType, type))
 								yield return new DerivedTypesEntryNode(td, assemblies);
 						}
 					} else if (!type.IsInterface && td.BaseType != null && IsSameType(td.BaseType, type)) {

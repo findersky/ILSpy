@@ -17,23 +17,18 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+
 using ICSharpCode.ILSpy.TreeNodes;
-using ICSharpCode.NRefactory.CSharp;
-using ICSharpCode.NRefactory.Utils;
 using Mono.Cecil;
-using Mono.Cecil.Cil;
 
 namespace ICSharpCode.ILSpy
 {
@@ -58,10 +53,16 @@ namespace ICSharpCode.ILSpy
 		private SearchPane()
 		{
 			InitializeComponent();
+			searchModeComboBox.Items.Add(new { Image = Images.Library, Name = "Types and Members" });
 			searchModeComboBox.Items.Add(new { Image = Images.Class, Name = "Type" });
 			searchModeComboBox.Items.Add(new { Image = Images.Property, Name = "Member" });
+			searchModeComboBox.Items.Add(new { Image = Images.Method, Name = "Method" });
+			searchModeComboBox.Items.Add(new { Image = Images.Field, Name = "Field" });
+			searchModeComboBox.Items.Add(new { Image = Images.Property, Name = "Property" });
+			searchModeComboBox.Items.Add(new { Image = Images.Event, Name = "Event" });
 			searchModeComboBox.Items.Add(new { Image = Images.Literal, Name = "Constant" });
-			searchModeComboBox.SelectedIndex = (int)SearchMode.Type;
+			searchModeComboBox.SelectedIndex = (int)MainWindow.Instance.SessionSettings.SelectedSearchMode;
+			searchModeComboBox.SelectionChanged += (sender, e) => MainWindow.Instance.SessionSettings.SelectedSearchMode = (SearchMode)searchModeComboBox.SelectedIndex;
 			ContextMenuProvider.Add(listBox);
 			
 			MainWindow.Instance.CurrentAssemblyListChanged += MainWindow_Instance_CurrentAssemblyListChanged;
@@ -215,7 +216,7 @@ namespace ICSharpCode.ILSpy
 				try {
 					var searcher = GetSearchStrategy(searchMode, searchTerm);
 					foreach (var loadedAssembly in assemblies) {
-						ModuleDefinition module = loadedAssembly.ModuleDefinition;
+						ModuleDefinition module = loadedAssembly.GetModuleDefinitionAsync().Result;
 						if (module == null)
 							continue;
 						CancellationToken cancellationToken = cts.Token;
@@ -242,30 +243,80 @@ namespace ICSharpCode.ILSpy
 				}
 				dispatcher.BeginInvoke(
 					DispatcherPriority.Normal,
-					new Action(delegate { this.Results.Insert(this.Results.Count - 1, result); }));
+					new Action(delegate { InsertResult(this.Results, result); }));
 				cts.Token.ThrowIfCancellationRequested();
+			}
+
+			void InsertResult(ObservableCollection<SearchResult> results, SearchResult result)
+			{
+				if (Options.DisplaySettingsPanel.CurrentDisplaySettings.SortResults)
+				{
+					// Keep results collection sorted by "Fitness" by inserting result into correct place
+					// Inserts in the beginning shifts all elements, but there can be no more than 1000 items.
+					for (int i = 0; i < results.Count; i++)
+					{
+						if (results[i].Fitness < result.Fitness)
+						{
+							results.Insert(i, result);
+							return;
+						}
+					}
+					results.Insert(results.Count - 1, result);
+				}
+				else
+				{
+					// Original Code
+					int index = results.BinarySearch(result, 0, results.Count - 1, SearchResult.Comparer);
+					results.Insert(index < 0 ? ~index : index, result);
+				}
 			}
 
 			AbstractSearchStrategy GetSearchStrategy(SearchMode mode, string[] terms)
 			{
 				if (terms.Length == 1) {
-					if (terms[0].StartsWith("t:"))
+					if (terms[0].StartsWith("tm:", StringComparison.Ordinal))
+						return new TypeAndMemberSearchStrategy(terms[0].Substring(3));
+
+					if (terms[0].StartsWith("t:", StringComparison.Ordinal))
 						return new TypeSearchStrategy(terms[0].Substring(2));
 
-					if (terms[0].StartsWith("m:"))
+					if (terms[0].StartsWith("m:", StringComparison.Ordinal))
 						return new MemberSearchStrategy(terms[0].Substring(2));
 
-					if (terms[0].StartsWith("c:"))
+					if (terms[0].StartsWith("md:", StringComparison.Ordinal))
+						return new MemberSearchStrategy(terms[0].Substring(3), MemberSearchKind.Method);
+
+					if (terms[0].StartsWith("f:", StringComparison.Ordinal))
+						return new MemberSearchStrategy(terms[0].Substring(2), MemberSearchKind.Field);
+
+					if (terms[0].StartsWith("p:", StringComparison.Ordinal))
+						return new MemberSearchStrategy(terms[0].Substring(2), MemberSearchKind.Property);
+
+					if (terms[0].StartsWith("e:", StringComparison.Ordinal))
+						return new MemberSearchStrategy(terms[0].Substring(2), MemberSearchKind.Event);
+
+					if (terms[0].StartsWith("c:", StringComparison.Ordinal))
 						return new LiteralSearchStrategy(terms[0].Substring(2));
 				}
 
-				switch (mode) {
+				switch (mode)
+				{
+					case SearchMode.TypeAndMember:
+						return new TypeAndMemberSearchStrategy(terms);
 					case SearchMode.Type:
 						return new TypeSearchStrategy(terms);
 					case SearchMode.Member:
 						return new MemberSearchStrategy(terms);
 					case SearchMode.Literal:
 						return new LiteralSearchStrategy(terms);
+					case SearchMode.Method:
+						return new MemberSearchStrategy(terms, MemberSearchKind.Method);
+					case SearchMode.Field:
+						return new MemberSearchStrategy(terms, MemberSearchKind.Field);
+					case SearchMode.Property:
+						return new MemberSearchStrategy(terms, MemberSearchKind.Property);
+					case SearchMode.Event:
+						return new MemberSearchStrategy(terms, MemberSearchKind.Event);
 				}
 
 				return null;
@@ -279,21 +330,32 @@ namespace ICSharpCode.ILSpy
 			add { }
 			remove { }
 		}
-			
+		
+		public static readonly System.Collections.Generic.IComparer<SearchResult> Comparer = new SearchResultComparer();
+		
 		public MemberReference Member { get; set; }
-			
+		public float Fitness { get; set; }
+		
 		public string Location { get; set; }
 		public string Name { get; set; }
 		public ImageSource Image { get; set; }
 		public ImageSource LocationImage { get; set; }
-			
+		
 		public override string ToString()
 		{
 			return Name;
 		}
+		
+		class SearchResultComparer : System.Collections.Generic.IComparer<SearchResult>
+		{
+			public int Compare(SearchResult x, SearchResult y)
+			{
+				return StringComparer.Ordinal.Compare(x?.Name ?? "", y?.Name ?? "");
+			}
+		}
 	}
 
-	[ExportMainMenuCommand(Menu = "_View", Header = "_Search", MenuIcon = "Images/Find.png", MenuCategory = "ShowPane", MenuOrder = 100)]
+	[ExportMainMenuCommand(Menu = "_View", Header = "Search...", MenuIcon = "Images/Find.png", MenuCategory = "View", MenuOrder = 100)]
 	[ExportToolbarCommand(ToolTip = "Search (Ctrl+Shift+F or Ctrl+E)", ToolbarIcon = "Images/Find.png", ToolbarCategory = "View", ToolbarOrder = 100)]
 	sealed class ShowSearchCommand : CommandWrapper
 	{
@@ -308,8 +370,13 @@ namespace ICSharpCode.ILSpy
 
 	public enum SearchMode
 	{
+		TypeAndMember,
 		Type,
 		Member,
+		Method,
+		Field,
+		Property,
+		Event,
 		Literal
 	}
 }

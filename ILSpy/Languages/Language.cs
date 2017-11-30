@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-
 using ICSharpCode.Decompiler;
 using Mono.Cecil;
 
@@ -88,15 +87,15 @@ namespace ICSharpCode.ILSpy
 		public virtual void DecompileAssembly(LoadedAssembly assembly, ITextOutput output, DecompilationOptions options)
 		{
 			WriteCommentLine(output, assembly.FileName);
-			if (assembly.AssemblyDefinition != null) {
-				var name = assembly.AssemblyDefinition.Name;
+			if (assembly.GetAssemblyDefinitionAsync().Result != null) {
+				var name = assembly.GetAssemblyDefinitionAsync().Result.Name;
 				if (name.IsWindowsRuntime) {
 					WriteCommentLine(output, name.Name + " [WinRT]");
 				} else {
 					WriteCommentLine(output, name.FullName);
 				}
 			} else {
-				WriteCommentLine(output, assembly.ModuleDefinition.Name);
+				WriteCommentLine(output, assembly.GetModuleDefinitionAsync().Result.Name);
 			}
 		}
 
@@ -128,17 +127,38 @@ namespace ICSharpCode.ILSpy
 				return member.ToString();
 		}
 
+		public virtual string FormatFieldName(FieldDefinition field)
+		{
+			if (field == null)
+				throw new ArgumentNullException(nameof(field));
+			return field.Name;
+		}
+
 		public virtual string FormatPropertyName(PropertyDefinition property, bool? isIndexer = null)
 		{
 			if (property == null)
-				throw new ArgumentNullException("property");
+				throw new ArgumentNullException(nameof(property));
 			return property.Name;
 		}
-		
+
+		public virtual string FormatMethodName(MethodDefinition method)
+		{
+			if (method == null)
+				throw new ArgumentNullException(nameof(method));
+			return method.Name;
+		}
+
+		public virtual string FormatEventName(EventDefinition @event)
+		{
+			if (@event == null)
+				throw new ArgumentNullException(nameof(@event));
+			return @event.Name;
+		}
+
 		public virtual string FormatTypeName(TypeDefinition type)
 		{
 			if (type == null)
-				throw new ArgumentNullException("type");
+				throw new ArgumentNullException(nameof(type));
 			return type.Name;
 		}
 

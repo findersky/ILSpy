@@ -138,12 +138,33 @@ namespace ICSharpCode.ILSpy
 			assemblyLookupCache.Clear();
 			winRTMetadataLookupCache.Clear();
 		}
-		
+
+		public LoadedAssembly Open(string assemblyUri, bool isAutoLoaded = false)
+		{
+			if (assemblyUri.StartsWith("nupkg://", StringComparison.OrdinalIgnoreCase)) {
+				string fileName = assemblyUri.Substring("nupkg://".Length);
+				int separator = fileName.LastIndexOf(';');
+				string componentName = null;
+				if (separator > -1) {
+					componentName = fileName.Substring(separator + 1);
+					fileName = fileName.Substring(0, separator);
+					LoadedNugetPackage package = new LoadedNugetPackage(fileName);
+					var entry = package.Entries.FirstOrDefault(e => e.Name == componentName);
+					if (entry != null) {
+						return OpenAssembly(assemblyUri, entry.Stream, true);
+					}
+				}
+				return null;
+			} else {
+				return OpenAssembly(assemblyUri, isAutoLoaded);
+			}
+		}
+
 		/// <summary>
 		/// Opens an assembly from disk.
 		/// Returns the existing assembly node if it is already loaded.
 		/// </summary>
-		public LoadedAssembly OpenAssembly(string file, bool isAutoLoaded=false)
+		public LoadedAssembly OpenAssembly(string file, bool isAutoLoaded = false)
 		{
 			App.Current.Dispatcher.VerifyAccess();
 			
@@ -155,6 +176,26 @@ namespace ICSharpCode.ILSpy
 			}
 			
 			var newAsm = new LoadedAssembly(this, file);
+			newAsm.IsAutoLoaded = isAutoLoaded;
+			lock (assemblies) {
+				this.assemblies.Add(newAsm);
+			}
+			return newAsm;
+		}
+
+		/// <summary>
+		/// Opens an assembly from a stream.
+		/// </summary>
+		public LoadedAssembly OpenAssembly(string file, Stream stream, bool isAutoLoaded = false)
+		{
+			App.Current.Dispatcher.VerifyAccess();
+
+			foreach (LoadedAssembly asm in this.assemblies) {
+				if (file.Equals(asm.FileName, StringComparison.OrdinalIgnoreCase))
+					return asm;
+			}
+
+			var newAsm = new LoadedAssembly(this, file, stream);
 			newAsm.IsAutoLoaded = isAutoLoaded;
 			lock (assemblies) {
 				this.assemblies.Add(newAsm);
@@ -178,8 +219,26 @@ namespace ICSharpCode.ILSpy
 			var index = this.assemblies.IndexOf(target);
 			var newAsm = new LoadedAssembly(this, file, stream);
 			newAsm.IsAutoLoaded = target.IsAutoLoaded;
-			lock (assemblies)
-			{
+			lock (assemblies) {
+				this.assemblies.Remove(target);
+				this.assemblies.Insert(index, newAsm);
+			}
+			return newAsm;
+		}
+
+		public LoadedAssembly ReloadAssembly(string file)
+		{
+			App.Current.Dispatcher.VerifyAccess();
+			file = Path.GetFullPath(file);
+
+			var target = this.assemblies.FirstOrDefault(asm => file.Equals(asm.FileName, StringComparison.OrdinalIgnoreCase));
+			if (target == null)
+				return null;
+
+			var index = this.assemblies.IndexOf(target);
+			var newAsm = new LoadedAssembly(this, file);
+			newAsm.IsAutoLoaded = target.IsAutoLoaded;
+			lock (assemblies) {
 				this.assemblies.Remove(target);
 				this.assemblies.Insert(index, newAsm);
 			}

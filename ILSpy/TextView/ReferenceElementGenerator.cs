@@ -39,9 +39,9 @@ namespace ICSharpCode.ILSpy.TextView
 		public ReferenceElementGenerator(Action<ReferenceSegment> referenceClicked, Predicate<ReferenceSegment> isLink)
 		{
 			if (referenceClicked == null)
-				throw new ArgumentNullException("referenceClicked");
+				throw new ArgumentNullException(nameof(referenceClicked));
 			if (isLink == null)
-				throw new ArgumentNullException("isLink");
+				throw new ArgumentNullException(nameof(isLink));
 			this.referenceClicked = referenceClicked;
 			this.isLink = isLink;
 		}
@@ -103,16 +103,6 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			e.Handled = true;
 			e.Cursor = referenceSegment.IsLocal ? Cursors.Arrow : Cursors.Hand;
-		}
-		
-		/// <inheritdoc/>
-		protected override void OnMouseDown(MouseButtonEventArgs e)
-		{
-			if (e.ChangedButton == MouseButton.Left && !e.Handled) {
-				parent.JumpToReference(referenceSegment);
-				if(!referenceSegment.IsLocal)
-					e.Handled = true;
-			}
 		}
 		
 		/// <inheritdoc/>

@@ -20,11 +20,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using ICSharpCode.Decompiler.Ast;
 using Mono.Cecil;
-using Mono.Cecil.Cil;
-using ICSharpCode.NRefactory.Utils;
 using System.Collections.Concurrent;
+using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
@@ -46,7 +44,7 @@ namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 		public AnalyzedAttributeAppliedToTreeNode(TypeDefinition analyzedType)
 		{
 			if (analyzedType == null)
-				throw new ArgumentNullException("analyzedType");
+				throw new ArgumentNullException(nameof(analyzedType));
 
 			this.analyzedType = analyzedType;
 			attributeName = this.analyzedType.FullName;
@@ -297,21 +295,21 @@ namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 
 			string requiredAssemblyFullName = asm.FullName;
 
-			IEnumerable<LoadedAssembly> assemblies = MainWindow.Instance.CurrentAssemblyList.GetAssemblies().Where(assy => assy.AssemblyDefinition != null);
+			IEnumerable<LoadedAssembly> assemblies = MainWindow.Instance.CurrentAssemblyList.GetAssemblies().Where(assy => assy.GetAssemblyDefinitionAsync().Result != null);
 
 			foreach (var assembly in assemblies) {
 				ct.ThrowIfCancellationRequested();
 				bool found = false;
-				foreach (var reference in assembly.AssemblyDefinition.MainModule.AssemblyReferences) {
+				foreach (var reference in assembly.GetAssemblyDefinitionAsync().Result.MainModule.AssemblyReferences) {
 					if (requiredAssemblyFullName == reference.FullName) {
 						found = true;
 						break;
 					}
 				}
 				if (found) {
-					var typeref = GetScopeTypeReferenceInAssembly(assembly.AssemblyDefinition);
+					var typeref = GetScopeTypeReferenceInAssembly(assembly.GetAssemblyDefinitionAsync().Result);
 					if (typeref != null)
-						yield return new Tuple<AssemblyDefinition, TypeReference>(assembly.AssemblyDefinition, typeref);
+						yield return new Tuple<AssemblyDefinition, TypeReference>(assembly.GetAssemblyDefinitionAsync().Result, typeref);
 				}
 			}
 		}
@@ -336,9 +334,9 @@ namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 					foreach (var assembly in assemblies) {
 						ct.ThrowIfCancellationRequested();
 						if (friendAssemblies.Contains(assembly.ShortName)) {
-							var typeref = GetScopeTypeReferenceInAssembly(assembly.AssemblyDefinition);
+							var typeref = GetScopeTypeReferenceInAssembly(assembly.GetAssemblyDefinitionAsync().Result);
 							if (typeref != null) {
-								yield return new Tuple<AssemblyDefinition, TypeReference>(assembly.AssemblyDefinition, typeref);
+								yield return new Tuple<AssemblyDefinition, TypeReference>(assembly.GetAssemblyDefinitionAsync().Result, typeref);
 							}
 						}
 					}

@@ -25,8 +25,9 @@ using System.Windows;
 
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Folding;
+using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Rendering;
-using ICSharpCode.Decompiler;
+using TextLocation = ICSharpCode.Decompiler.CSharp.Syntax.TextLocation;
 
 namespace ICSharpCode.ILSpy.TextView
 {
@@ -91,8 +92,8 @@ namespace ICSharpCode.ILSpy.TextView
 		
 		/// <summary>Embedded UIElements, see <see cref="UIElementGenerator"/>.</summary>
 		internal readonly List<KeyValuePair<int, Lazy<UIElement>>> UIElements = new List<KeyValuePair<int, Lazy<UIElement>>>();
-		
-		internal readonly List<MethodDebugSymbols> DebuggerMemberMappings = new List<MethodDebugSymbols>();
+
+		public RichTextModel HighlightingModel { get; } = new RichTextModel();
 		
 		public AvalonEditTextOutput()
 		{
@@ -121,9 +122,9 @@ namespace ICSharpCode.ILSpy.TextView
 			get { return b.Length; }
 		}
 		
-		public ICSharpCode.NRefactory.TextLocation Location {
+		public TextLocation Location {
 			get {
-				return new ICSharpCode.NRefactory.TextLocation(lineNumber, b.Length - lastLineStart + 1 + (needsIndent ? indent : 0));
+				return new TextLocation(lineNumber, b.Length - lastLineStart + 1 + (needsIndent ? indent : 0));
 			}
 		}
 		
@@ -204,7 +205,7 @@ namespace ICSharpCode.ILSpy.TextView
 			}
 		}
 		
-		public void WriteDefinition(string text, object definition, bool isLocal)
+		public void WriteDefinition(string text, object definition, bool isLocal = true)
 		{
 			WriteIndent();
 			int start = this.TextLength;
@@ -214,7 +215,7 @@ namespace ICSharpCode.ILSpy.TextView
 			references.Add(new ReferenceSegment { StartOffset = start, EndOffset = end, Reference = definition, IsLocal = isLocal, IsLocalTarget = true });
 		}
 		
-		public void WriteReference(string text, object reference, bool isLocal)
+		public void WriteReference(string text, object reference, bool isLocal = false)
 		{
 			WriteIndent();
 			int start = this.TextLength;
@@ -223,7 +224,7 @@ namespace ICSharpCode.ILSpy.TextView
 			references.Add(new ReferenceSegment { StartOffset = start, EndOffset = end, Reference = reference, IsLocal = isLocal });
 		}
 		
-		public void MarkFoldStart(string collapsedText, bool defaultCollapsed)
+		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false)
 		{
 			WriteIndent();
 			openFoldings.Push(
@@ -249,10 +250,28 @@ namespace ICSharpCode.ILSpy.TextView
 				this.UIElements.Add(new KeyValuePair<int, Lazy<UIElement>>(this.TextLength, new Lazy<UIElement>(element)));
 			}
 		}
-		
-		public void AddDebugSymbols(MethodDebugSymbols methodDebugSymbols)
+
+		readonly Stack<HighlightingColor> colorStack = new Stack<HighlightingColor>();
+		HighlightingColor currentColor = new HighlightingColor();
+		int currentColorBegin = -1;
+
+		public void BeginSpan(HighlightingColor highlightingColor)
 		{
-			DebuggerMemberMappings.Add(methodDebugSymbols);
+			WriteIndent();
+			if (currentColorBegin > -1)
+				HighlightingModel.SetHighlighting(currentColorBegin, b.Length - currentColorBegin, currentColor);
+			colorStack.Push(currentColor);
+			currentColor = currentColor.Clone();
+			currentColorBegin = b.Length;
+			currentColor.MergeWith(highlightingColor);
+			currentColor.Freeze();
+		}
+
+		public void EndSpan()
+		{
+			HighlightingModel.SetHighlighting(currentColorBegin, b.Length - currentColorBegin, currentColor);
+			currentColor = colorStack.Pop();
+			currentColorBegin = b.Length;
 		}
 	}
 }

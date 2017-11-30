@@ -16,15 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Linq;
-using System.Windows;
-using ICSharpCode.TreeView;
 using Mono.Cecil;
 
 namespace ICSharpCode.ILSpy.TreeNodes.Analyzer
 {
-	[ExportContextMenuEntryAttribute(Header = "Analyze", Icon = "images/Search.png")]
+	[ExportContextMenuEntry(Header = "Analyze", Icon = "images/Search.png", Category = "Analyze", Order = 100)]
 	internal sealed class AnalyzeContextMenuEntry : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)

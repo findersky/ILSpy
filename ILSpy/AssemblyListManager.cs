@@ -124,5 +124,18 @@ namespace ICSharpCode.ILSpy
 			}
 			return false;
 		}
+
+		public void ClearAll()
+		{
+			AssemblyLists.Clear();
+			ILSpySettings.Update(
+				delegate (XElement root) {
+					XElement doc = root.Element("AssemblyLists");
+					if (doc == null) {
+						return;
+					}
+					doc.Remove();
+				});
+		}
 	}
 }

@@ -16,17 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Linq;
-using System.Windows;
 using System.Diagnostics;
-using Mono.Cecil;
-using ICSharpCode.TreeView;
-using ICSharpCode.ILSpy.TreeNodes.Analyzer;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
-	[ExportContextMenuEntryAttribute(Header = "Search MSDN...", Icon = "images/Search.png")]
+	[ExportContextMenuEntry(Header = "Search MSDN...", Icon = "images/SearchMsdn.png", Order = 9999)]
 	internal sealed class SearchMsdnContextMenuEntry : IContextMenuEntry
 	{
 		private static string msdnAddress = "http://msdn.microsoft.com/en-us/library/{0}";
@@ -97,9 +92,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			if (namespaceNode != null)
 				address = string.Format(msdnAddress, namespaceNode.Name);
 
-			var memberNode = node as IMemberTreeNode;
-			if (memberNode != null)
-			{
+			if (node is IMemberTreeNode memberNode) {
 				var member = memberNode.Member;
 				var memberName = string.Empty;
 
@@ -113,7 +106,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 			address = address.ToLower();
 			if (!string.IsNullOrEmpty(address))
-				Process.Start(address);
+				MainWindow.OpenLink(address);
 		}
 	}
 }

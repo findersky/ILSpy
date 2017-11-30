@@ -1,14 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ICSharpCode.ILSpy.AddIn
 {
-	class Utils
+	static class Utils
 	{
 		[System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1060:MovePInvokesToNativeMethodsClass")]
 		[DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -74,6 +71,10 @@ namespace ICSharpCode.ILSpy.AddIn
 
 		static void AppendArgument(StringBuilder b, string arg)
 		{
+			if (arg == null) {
+				return;
+			}
+
 			if (arg.Length > 0 && arg.IndexOfAny(charsNeedingQuoting) < 0) {
 				b.Append(arg);
 			} else {
@@ -102,6 +103,8 @@ namespace ICSharpCode.ILSpy.AddIn
 
 		public static byte[] HexStringToBytes(string hex)
 		{
+			if (hex == null)
+				throw new ArgumentNullException(nameof(hex));
 			var result = new byte[hex.Length / 2];
 			for (int i = 0; i < hex.Length / 2; i++) {
 				result[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);

@@ -16,8 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows.Media;
 
 namespace ICSharpCode.ILSpy.Options
@@ -36,12 +36,10 @@ namespace ICSharpCode.ILSpy.Options
 		
 		protected virtual void OnPropertyChanged(PropertyChangedEventArgs e)
 		{
-			if (PropertyChanged != null) {
-				PropertyChanged(this, e);
-			}
+			PropertyChanged?.Invoke(this, e);
 		}
 		
-		protected void OnPropertyChanged(string propertyName)
+		protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
 		{
 			OnPropertyChanged(new PropertyChangedEventArgs(propertyName));
 		}
@@ -54,7 +52,7 @@ namespace ICSharpCode.ILSpy.Options
 			set {
 				if (selectedFont != value) {
 					selectedFont = value;
-					OnPropertyChanged("SelectedFont");
+					OnPropertyChanged();
 				}
 			}
 		}
@@ -66,7 +64,7 @@ namespace ICSharpCode.ILSpy.Options
 			set {
 				if (selectedFontSize != value) {
 					selectedFontSize = value;
-					OnPropertyChanged("SelectedFontSize");
+					OnPropertyChanged();
 				}
 			}
 		}
@@ -78,7 +76,7 @@ namespace ICSharpCode.ILSpy.Options
 			set {
 				if (showLineNumbers != value) {
 					showLineNumbers = value;
-					OnPropertyChanged("ShowLineNumbers");
+					OnPropertyChanged();
 				}
 			}
 		}
@@ -91,7 +89,7 @@ namespace ICSharpCode.ILSpy.Options
 			set {
 				if (showMetadataTokens != value) {
 					showMetadataTokens = value;
-					OnPropertyChanged("ShowMetadataTokens");
+					OnPropertyChanged();
 				}
 			}
 		}
@@ -105,7 +103,22 @@ namespace ICSharpCode.ILSpy.Options
 			{
 				if (enableWordWrap != value) {
 					enableWordWrap = value;
-					OnPropertyChanged("EnableWordWrap");
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool sortResults = true;
+
+		public bool SortResults
+		{
+			get { return sortResults; }
+			set
+			{
+				if (sortResults != value)
+				{
+					sortResults = value;
+					OnPropertyChanged();
 				}
 			}
 		}
@@ -117,6 +130,7 @@ namespace ICSharpCode.ILSpy.Options
 			this.ShowLineNumbers = s.showLineNumbers;
 			this.ShowMetadataTokens = s.showMetadataTokens;
 			this.EnableWordWrap = s.enableWordWrap;
+			this.SortResults = s.sortResults;
 		}
 	}
 }

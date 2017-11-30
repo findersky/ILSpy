@@ -2,14 +2,10 @@
 // This code is distributed under the GNU LGPL (for details please see \doc\license.txt)
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Windows.Controls;
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Input;
-using System.Diagnostics;
 
 namespace ICSharpCode.TreeView
 {
@@ -42,6 +38,11 @@ namespace ICSharpCode.TreeView
 					Node.IsEditing = false;
 					break;
 			}
+		}
+
+		protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+		{
+			return new SharpTreeViewItemAutomationPeer(this);
 		}
 
 		#region Mouse

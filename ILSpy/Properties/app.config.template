@@ -4,6 +4,8 @@
 		<supportedRuntime version="v4.0" sku=".NETFramework,Version=v4.0,Profile=Client" />
 	</startup>
 	<runtime>
+		<AppContextSwitchOverrides value="Switch.System.Windows.DoNotScaleForDpiChanges=false" />
+		
 		<assemblyBinding xmlns="urn:schemas-microsoft-com:asm.v1">
 			<!-- The redirects allow using AddIns with a different ILSpy version than they were compiled against. -->
 			<!-- No guarantee they'll work correctly, though (there might be breaking API changes in ILSpy). -->
@@ -37,11 +39,11 @@
 			</dependentAssembly>
 			<dependentAssembly>
 				<assemblyIdentity name="Mono.Cecil" publicKeyToken="0738eb9f132ed756" culture="neutral"/>
-				<bindingRedirect oldVersion="0.0.0.0-99.9.9.9" newVersion="0.9.6.0"/>
+				<bindingRedirect oldVersion="0.0.0.0-99.9.9.9" newVersion="0.10.0.0"/>
 			</dependentAssembly>
 			<dependentAssembly>
 				<assemblyIdentity name="Mono.Cecil.Pdb" publicKeyToken="0738eb9f132ed756" culture="neutral"/>
-				<bindingRedirect oldVersion="0.0.0.0-99.9.9.9" newVersion="0.9.6.0"/>
+				<bindingRedirect oldVersion="0.0.0.0-99.9.9.9" newVersion="0.10.0.0"/>
 			</dependentAssembly>
 		</assemblyBinding>
 	</runtime>
