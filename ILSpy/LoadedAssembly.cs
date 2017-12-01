@@ -67,7 +67,7 @@ namespace ICSharpCode.ILSpy
 
 		/// <summary>
 		/// Gets the Cecil ModuleDefinition.
-		/// Can be null when there was a load error.
+		/// Can return null when there was a load error.
 		/// </summary>
 		public Task<ModuleDefinition> GetModuleDefinitionAsync()
 		{
@@ -76,12 +76,17 @@ namespace ICSharpCode.ILSpy
 		
 		/// <summary>
 		/// Gets the Cecil AssemblyDefinition.
-		/// Is null when there was a load error; or when opening a netmodule.
+		/// Returns null when there was a load error; or when opening a netmodule.
 		/// </summary>
 		public async Task<AssemblyDefinition> GetAssemblyDefinitionAsync()
 		{
-			var module = await assemblyTask;
-			return module != null ? module.Assembly : null;
+			try {
+				var module = await assemblyTask;
+				return module != null ? module.Assembly : null;
+			} catch (Exception ex) {
+				System.Diagnostics.Trace.TraceError(ex.ToString());
+				return null;
+			}
 		}
 
 		public AssemblyList AssemblyList => assemblyList;
