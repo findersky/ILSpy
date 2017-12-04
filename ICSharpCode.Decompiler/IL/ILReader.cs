@@ -262,6 +262,10 @@ namespace ICSharpCode.Decompiler.IL
 				return true;
 			if (stackType1 == StackType.I4 && stackType2 == StackType.I)
 				return true;
+			if (stackType1 == StackType.F4 && stackType2 == StackType.F8)
+				return true;
+			if (stackType1 == StackType.F8 && stackType2 == StackType.F4)
+				return true;
 			// allow merging unknown type with any other type
 			return stackType1 == StackType.Unknown || stackType2 == StackType.Unknown;
 		}
@@ -457,8 +461,10 @@ namespace ICSharpCode.Decompiler.IL
 					return Push(new BinaryNumericInstruction(BinaryNumericOperator.Sub, new Conv(new LdcI4(0), PrimitiveType.I, false, Sign.None), Pop(), checkForOverflow: false, sign: Sign.None));
 				case StackType.I8:
 					return Push(new BinaryNumericInstruction(BinaryNumericOperator.Sub, new LdcI8(0), Pop(), checkForOverflow: false, sign: Sign.None));
-				case StackType.F:
-					return Push(new BinaryNumericInstruction(BinaryNumericOperator.Sub, new LdcF(0), Pop(), checkForOverflow: false, sign: Sign.None));
+				case StackType.F4:
+					return Push(new BinaryNumericInstruction(BinaryNumericOperator.Sub, new LdcF4(0), Pop(), checkForOverflow: false, sign: Sign.None));
+				case StackType.F8:
+					return Push(new BinaryNumericInstruction(BinaryNumericOperator.Sub, new LdcF8(0), Pop(), checkForOverflow: false, sign: Sign.None));
 				default:
 					Warn("Unsupported input type for neg.");
 					goto case StackType.I4;
@@ -665,9 +671,9 @@ namespace ICSharpCode.Decompiler.IL
 				case Cil.Code.Ldc_I8:
 					return Push(new LdcI8((long)cecilInst.Operand));
 				case Cil.Code.Ldc_R4:
-					return Push(new LdcF((float)cecilInst.Operand));
+					return Push(new LdcF4((float)cecilInst.Operand));
 				case Cil.Code.Ldc_R8:
-					return Push(new LdcF((double)cecilInst.Operand));
+					return Push(new LdcF8((double)cecilInst.Operand));
 				case Cil.Code.Ldc_I4_M1:
 					return Push(new LdcI4(-1));
 				case Cil.Code.Ldc_I4_0:
@@ -781,9 +787,9 @@ namespace ICSharpCode.Decompiler.IL
 				case Cil.Code.Stind_I8:
 					return new StObj(value: Pop(StackType.I8), target: PopPointer(), type: compilation.FindType(KnownTypeCode.Int64));
 				case Cil.Code.Stind_R4:
-					return new StObj(value: Pop(StackType.F), target: PopPointer(), type: compilation.FindType(KnownTypeCode.Single));
+					return new StObj(value: Pop(StackType.F4), target: PopPointer(), type: compilation.FindType(KnownTypeCode.Single));
 				case Cil.Code.Stind_R8:
-					return new StObj(value: Pop(StackType.F), target: PopPointer(), type: compilation.FindType(KnownTypeCode.Double));
+					return new StObj(value: Pop(StackType.F8), target: PopPointer(), type: compilation.FindType(KnownTypeCode.Double));
 				case Cil.Code.Stind_I:
 					return new StObj(value: Pop(StackType.I), target: PopPointer(), type: compilation.FindType(KnownTypeCode.IntPtr));
 				case Cil.Code.Stind_Ref:
@@ -855,14 +861,17 @@ namespace ICSharpCode.Decompiler.IL
 				case Cil.Code.Ldfld:
 					{
 						var field = ReadAndDecodeFieldReference();
-						return Push(new LdObj(new LdFlda(Pop(), field) { DelayExceptions = true }, field.Type));
+						return Push(new LdObj(new LdFlda(PopLdFldTarget(field), field) { DelayExceptions = true }, field.Type));
 					}
 				case Cil.Code.Ldflda:
-					return Push(new LdFlda(Pop(), ReadAndDecodeFieldReference()));
+					{
+						var field = ReadAndDecodeFieldReference();
+						return Push(new LdFlda(PopFieldTarget(field), field));
+					}
 				case Cil.Code.Stfld:
 					{
 						var field = ReadAndDecodeFieldReference();
-						return new StObj(value: Pop(field.Type.GetStackType()), target: new LdFlda(Pop(), field) { DelayExceptions = true }, type: field.Type);
+						return new StObj(value: Pop(field.Type.GetStackType()), target: new LdFlda(PopFieldTarget(field), field) { DelayExceptions = true }, type: field.Type);
 					}
 				case Cil.Code.Ldlen:
 					return Push(new LdLen(StackType.I, Pop()));
@@ -929,7 +938,6 @@ namespace ICSharpCode.Decompiler.IL
 					return new InvalidBranch("Unknown opcode: " + cecilInst.OpCode.ToString());
 			}
 		}
-
 		
 		StackType PeekStackType()
 		{
@@ -1043,6 +1051,12 @@ namespace ICSharpCode.Decompiler.IL
 						Warn($"Expected {expectedType}, but got {inst.ResultType}");
 					}
 					inst = new Conv(inst, PrimitiveType.Ref, false, Sign.None);
+				} else if (expectedType == StackType.F8 && inst.ResultType == StackType.F4) {
+					// IL allows implicit F4->F8 conversions, because in IL F4 and F8 are the same.
+					inst = new Conv(inst, PrimitiveType.R8, false, Sign.Signed);
+				} else if (expectedType == StackType.F4 && inst.ResultType == StackType.F8) {
+					// IL allows implicit F8->F4 conversions, because in IL F4 and F8 are the same.
+					inst = new Conv(inst, PrimitiveType.R4, false, Sign.Signed);
 				} else {
 					Warn($"Expected {expectedType}, but got {inst.ResultType}");
 					inst = new Conv(inst, expectedType.ToKnownTypeCode().ToPrimitiveType(), false, Sign.None);
@@ -1066,7 +1080,20 @@ namespace ICSharpCode.Decompiler.IL
 					return inst;
 			}
 		}
-		
+
+		ILInstruction PopFieldTarget(IField field)
+		{
+			return field.DeclaringType.IsReferenceType == true ? Pop(StackType.O) : PopPointer();
+		}
+
+		ILInstruction PopLdFldTarget(IField field)
+		{
+			if (field.DeclaringType.IsReferenceType == true)
+				return Pop(StackType.O);
+
+			return PeekStackType() == StackType.O ? new AddressOf(Pop()) : PopPointer();
+		}
+
 		private ILInstruction Return()
 		{
 			if (methodReturnStackType == StackType.Void)
@@ -1287,7 +1314,15 @@ namespace ICSharpCode.Decompiler.IL
 			}
 			
 			// Based on Table 4: Binary Comparison or Branch Operation
-			if (left.ResultType == StackType.F && right.ResultType == StackType.F) {
+			if (left.ResultType.IsFloatType() && right.ResultType.IsFloatType()) {
+				if (left.ResultType != right.ResultType) {
+					// make the implicit F4->F8 conversion explicit:
+					if (left.ResultType == StackType.F4) {
+						left = new Conv(left, PrimitiveType.R8, false, Sign.Signed);
+					} else if (right.ResultType == StackType.F4) {
+						right = new Conv(right, PrimitiveType.R8, false, Sign.Signed);
+					}
+				}
 				if (un) {
 					// for floats, 'un' means 'unordered'
 					return Comp.LogicNot(new Comp(kind.Negate(), Sign.None, left, right));

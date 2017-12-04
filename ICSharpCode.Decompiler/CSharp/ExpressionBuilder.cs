@@ -307,13 +307,20 @@ namespace ICSharpCode.Decompiler.CSharp
 			return false;
 		}
 
-		protected internal override TranslatedExpression VisitLdcF(LdcF inst, TranslationContext context)
+		protected internal override TranslatedExpression VisitLdcF4(LdcF4 inst, TranslationContext context)
+		{
+			return new PrimitiveExpression(inst.Value)
+				.WithILInstruction(inst)
+				.WithRR(new ConstantResolveResult(compilation.FindType(KnownTypeCode.Single), inst.Value));
+		}
+
+		protected internal override TranslatedExpression VisitLdcF8(LdcF8 inst, TranslationContext context)
 		{
 			return new PrimitiveExpression(inst.Value)
 				.WithILInstruction(inst)
 				.WithRR(new ConstantResolveResult(compilation.FindType(KnownTypeCode.Double), inst.Value));
 		}
-		
+
 		protected internal override TranslatedExpression VisitLdcDecimal(LdcDecimal inst, TranslationContext context)
 		{
 			return new PrimitiveExpression(inst.Value)
@@ -1481,7 +1488,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 		
-		internal TranslatedExpression TranslateTarget(IMember member, ILInstruction target, bool nonVirtualInvocation)
+		internal TranslatedExpression TranslateTarget(IMember member, ILInstruction target, bool nonVirtualInvocation, IType constrainedTo = null)
 		{
 			// If references are missing member.IsStatic might not be set correctly.
 			// Additionally check target for null, in order to avoid a crash.
@@ -1492,9 +1499,9 @@ namespace ICSharpCode.Decompiler.CSharp
 						.WithRR(new ThisResolveResult(member.DeclaringType, nonVirtualInvocation));
 				} else {
 					var translatedTarget = Translate(target);
-					if (member.DeclaringType.IsReferenceType == false && translatedTarget.Type.GetStackType().IsIntegerType()) {
+					if (CallInstruction.ExpectedTypeForThisPointer(constrainedTo ?? member.DeclaringType) == StackType.Ref && translatedTarget.Type.GetStackType().IsIntegerType()) {
 						// when accessing members on value types, ensure we use a reference and not a pointer
-						translatedTarget = translatedTarget.ConvertTo(new ByReferenceType(member.DeclaringType), this);
+						translatedTarget = translatedTarget.ConvertTo(new ByReferenceType(constrainedTo ?? member.DeclaringType), this);
 					}
 					if (translatedTarget.Expression is DirectionExpression) {
 						translatedTarget = translatedTarget.UnwrapChild(((DirectionExpression)translatedTarget).Expression);
