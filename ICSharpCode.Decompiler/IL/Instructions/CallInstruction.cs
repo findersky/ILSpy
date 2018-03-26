@@ -64,6 +64,19 @@ namespace ICSharpCode.Decompiler.IL
 			this.Method = method;
 			this.Arguments = new InstructionCollection<ILInstruction>(this, 0);
 		}
+
+		/// <summary>
+		/// Gets the parameter for the argument with the specified index.
+		/// Returns null for the <c>this</c> parameter.
+		/// </summary>
+		public IParameter GetParameter(int argumentIndex)
+		{
+			int firstParamIndex = (Method.IsStatic || OpCode == OpCode.NewObj) ? 0 : 1;
+			if (argumentIndex < firstParamIndex) {
+				return null; // asking for 'this' parameter
+			}
+			return Method.Parameters[argumentIndex - firstParamIndex];
+		}
 		
 		public override StackType ResultType {
 			get {
@@ -78,12 +91,21 @@ namespace ICSharpCode.Decompiler.IL
 		/// Gets the expected stack type for passing the this pointer in a method call.
 		/// Returns StackType.O for reference types (this pointer passed as object reference),
 		/// and StackType.Ref for type parameters and value types (this pointer passed as managed reference).
+		/// 
+		/// Returns StackType.Unknown if the input type is unknown.
 		/// </summary>
 		internal static StackType ExpectedTypeForThisPointer(IType type)
 		{
 			if (type.Kind == TypeKind.TypeParameter)
 				return StackType.Ref;
-			return type.IsReferenceType == true ? StackType.O : StackType.Ref;
+			switch (type.IsReferenceType) {
+				case true:
+					return StackType.O;
+				case false:
+					return StackType.Ref;
+				default:
+					return StackType.Unknown;
+			}
 		}
 
 		internal override void CheckInvariant(ILPhase phase)

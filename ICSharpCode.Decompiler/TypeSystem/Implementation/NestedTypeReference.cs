@@ -24,12 +24,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 	/// Type reference used to reference nested types.
 	/// </summary>
 	[Serializable]
-	public sealed class NestedTypeReference : ITypeReference, ISymbolReference, ISupportsInterning
+	public sealed class NestedTypeReference : ITypeReference, ISupportsInterning
 	{
 		readonly ITypeReference declaringTypeRef;
 		readonly string name;
 		readonly int additionalTypeParameterCount;
-		
+		readonly bool? isReferenceType;
+
 		/// <summary>
 		/// Creates a new NestedTypeReference.
 		/// </summary>
@@ -40,7 +41,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		/// <paramref name="declaringTypeRef"/> must be exactly the (unbound) declaring type, not a derived type, not a parameterized type.
 		/// NestedTypeReference thus always resolves to a type definition, never to (partially) parameterized types.
 		/// </remarks>
-		public NestedTypeReference(ITypeReference declaringTypeRef, string name, int additionalTypeParameterCount)
+		public NestedTypeReference(ITypeReference declaringTypeRef, string name, int additionalTypeParameterCount, bool? isReferenceType = null)
 		{
 			if (declaringTypeRef == null)
 				throw new ArgumentNullException("declaringTypeRef");
@@ -49,6 +50,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.declaringTypeRef = declaringTypeRef;
 			this.name = name;
 			this.additionalTypeParameterCount = additionalTypeParameterCount;
+			this.isReferenceType = isReferenceType;
 		}
 		
 		public ITypeReference DeclaringTypeReference {
@@ -76,14 +78,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return new UnknownType(null, name, additionalTypeParameterCount);
 		}
 		
-		ISymbol ISymbolReference.Resolve(ITypeResolveContext context)
-		{
-			var type = Resolve(context);
-			if (type is ITypeDefinition)
-				return (ISymbol)type;
-			return null;
-		}
-		
 		public override string ToString()
 		{
 			if (additionalTypeParameterCount == 0)
@@ -100,7 +94,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		bool ISupportsInterning.EqualsForInterning(ISupportsInterning other)
 		{
 			NestedTypeReference o = other as NestedTypeReference;
-			return o != null && declaringTypeRef == o.declaringTypeRef && name == o.name && additionalTypeParameterCount == o.additionalTypeParameterCount;
+			return o != null && declaringTypeRef == o.declaringTypeRef && name == o.name 
+				&& additionalTypeParameterCount == o.additionalTypeParameterCount
+				&& isReferenceType == o.isReferenceType;
 		}
 	}
 }

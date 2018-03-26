@@ -17,6 +17,7 @@ namespace ICSharpCode.Decompiler.Console
 			// Older cmd line clients (for options reference): https://github.com/aerror2/ILSpy-For-MacOSX and https://github.com/andreif/ILSpyMono
 			var app = new CommandLineApplication();
 
+			app.LongVersionGetter = () => "ilspycmd " + typeof(FullTypeName).Assembly.GetName().Version.ToString();
 			app.HelpOption("-h|--help");
 			var inputAssemblyFileName = app.Argument("Assembly filename name", "The assembly that is being decompiled. This argument is mandatory.");
 			var projectOption = app.Option("-p|--project", "Decompile assembly as compilable project. This requires the output directory option.", CommandOptionType.NoValue);
@@ -31,6 +32,7 @@ namespace ICSharpCode.Decompiler.Console
 				// HACK : the CommandLineUtils package does not allow us to specify an argument as mandatory.
 				// Therefore we're implementing it as simple as possible.
 				if (inputAssemblyFileName.Value == null) {
+					app.ShowVersion();
 					app.ShowHint();
 					return -1;
 				}
@@ -73,9 +75,14 @@ namespace ICSharpCode.Decompiler.Console
 			return app.Execute(args);
 		}
 
+		static CSharpDecompiler GetDecompiler(string assemblyFileName)
+		{
+			return new CSharpDecompiler(assemblyFileName, new DecompilerSettings() {  ThrowOnAssemblyResolveErrors = false });
+		}
+
 		static void ListContent(string assemblyFileName, TextWriter output, ISet<TypeKind> kinds)
 		{
-			CSharpDecompiler decompiler = new CSharpDecompiler(assemblyFileName, new DecompilerSettings());
+			CSharpDecompiler decompiler = GetDecompiler(assemblyFileName);
 
 			foreach (var type in decompiler.TypeSystem.Compilation.MainAssembly.GetAllTypeDefinitions()) {
 				if (!kinds.Contains(type.Kind))
@@ -93,7 +100,7 @@ namespace ICSharpCode.Decompiler.Console
 
 		static void Decompile(string assemblyFileName, TextWriter output, string typeName = null)
 		{
-			CSharpDecompiler decompiler = new CSharpDecompiler(assemblyFileName, new DecompilerSettings());
+			CSharpDecompiler decompiler = GetDecompiler(assemblyFileName);
 
 			if (typeName == null) {
 				output.Write(decompiler.DecompileWholeModuleAsString());

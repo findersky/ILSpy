@@ -78,7 +78,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.currentStack = ImmutableStack<ILVariable>.Empty;
 			this.unionFind = new UnionFind<ILVariable>();
 			this.stackMismatchPairs = new List<(ILVariable, ILVariable)>();
-			this.methodReturnStackType = typeSystem.Resolve(body.Method.ReturnType).GetStackType();
+			this.methodReturnStackType = typeSystem.Resolve(body.Method.ReturnType, isFromSignature: true).GetStackType();
 			InitParameterVariables();
 			this.localVariables = body.Variables.SelectArray(CreateILVariable);
 			if (body.InitLocals) {
@@ -130,7 +130,7 @@ namespace ICSharpCode.Decompiler.IL
 		ILVariable CreateILVariable(Cil.VariableDefinition v)
 		{
 			VariableKind kind = IsPinned(v.VariableType) ? VariableKind.PinnedLocal : VariableKind.Local;
-			ILVariable ilVar = new ILVariable(kind, typeSystem.Resolve(v.VariableType), v.Index);
+			ILVariable ilVar = new ILVariable(kind, typeSystem.Resolve(v.VariableType, isFromSignature: true), v.Index);
 			if (!UseDebugSymbols || debugInfo == null || !debugInfo.TryGetName(v, out string name)) {
 				ilVar.Name = "V_" + v.Index;
 				ilVar.HasGeneratedName = true;
@@ -164,10 +164,10 @@ namespace ICSharpCode.Decompiler.IL
 						parameterType = new ByReferenceType(parameterType);
 					}
 				} else {
-					parameterType = typeSystem.Resolve(p.ParameterType);
+					parameterType = typeSystem.Resolve(p.ParameterType, isFromSignature: true);
 				}
 			} else {
-				parameterType = typeSystem.Resolve(p.ParameterType);
+				parameterType = typeSystem.Resolve(p.ParameterType, isFromSignature: true);
 			}
 			Debug.Assert(!parameterType.IsUnbound());
 			if (parameterType.IsUnbound()) {
@@ -270,12 +270,17 @@ namespace ICSharpCode.Decompiler.IL
 			return stackType1 == StackType.Unknown || stackType2 == StackType.Unknown;
 		}
 
-		void StoreStackForOffset(int offset, ImmutableStack<ILVariable> stack)
+		/// <summary>
+		/// Stores the given stack for a branch to `offset`.
+		/// 
+		/// The stack may be modified if stack adjustments are necessary. (e.g. implicit I4->I conversion)
+		/// </summary>
+		void StoreStackForOffset(int offset, ref ImmutableStack<ILVariable> stack)
 		{
 			if (stackByOffset.TryGetValue(offset, out var existing)) {
-				var newStack = MergeStacks(existing, stack);
-				if (newStack != existing)
-					stackByOffset[offset] = newStack;
+				stack = MergeStacks(existing, stack);
+				if (stack != existing)
+					stackByOffset[offset] = stack;
 			} else {
 				stackByOffset.Add(offset, stack);
 			}
@@ -305,21 +310,21 @@ namespace ICSharpCode.Decompiler.IL
 				}
 				if (eh.FilterStart != null) {
 					isBranchTarget[eh.FilterStart.Offset] = true;
-					StoreStackForOffset(eh.FilterStart.Offset, ehStack);
+					StoreStackForOffset(eh.FilterStart.Offset, ref ehStack);
 				}
 				if (eh.HandlerStart != null) {
 					isBranchTarget[eh.HandlerStart.Offset] = true;
-					StoreStackForOffset(eh.HandlerStart.Offset, ehStack);
+					StoreStackForOffset(eh.HandlerStart.Offset, ref ehStack);
 				}
 			}
 			
 			while (nextInstructionIndex < body.Instructions.Count) {
 				cancellationToken.ThrowIfCancellationRequested();
 				int start = body.Instructions[nextInstructionIndex].Offset;
-				StoreStackForOffset(start, currentStack);
+				StoreStackForOffset(start, ref currentStack);
 				ILInstruction decodedInstruction = DecodeInstruction();
 				if (decodedInstruction.ResultType == StackType.Unknown)
-					Warn("Unknown result type (might be due to invalid IL)");
+					Warn("Unknown result type (might be due to invalid IL or missing references)");
 				decodedInstruction.CheckInvariant(ILPhase.InILReader);
 				int end = currentInstruction.GetEndOffset();
 				decodedInstruction.ILRange = new Interval(start, end);
@@ -360,14 +365,7 @@ namespace ICSharpCode.Decompiler.IL
 				if (inst is StLoc store) {
 					foreach (var additionalVar in dict[store.Variable]) {
 						ILInstruction value = new LdLoc(store.Variable);
-						switch (additionalVar.StackType) {
-							case StackType.I:
-								value = new Conv(value, PrimitiveType.I, false, Sign.None);
-								break;
-							case StackType.I8:
-								value = new Conv(value, PrimitiveType.I8, false, Sign.None);
-								break;
-						}
+						value = new Conv(value, additionalVar.StackType.ToPrimitiveType(), false, Sign.Signed);
 						newInstructions.Add(new StLoc(additionalVar, value) {
 							IsStackAdjustment = true,
 							ILRange = inst.ILRange
@@ -998,7 +996,6 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(inst.ResultType != StackType.Void);
 			IType type = compilation.FindType(inst.ResultType.ToKnownTypeCode());
 			var v = new ILVariable(VariableKind.StackSlot, type, inst.ResultType, inst.ILRange.Start);
-			v.Name = "S_" + inst.ILRange.Start.ToString("x4");
 			v.HasGeneratedName = true;
 			currentStack = currentStack.Push(v);
 			return new StLoc(v, inst);
@@ -1039,10 +1036,26 @@ namespace ICSharpCode.Decompiler.IL
 				} else if (expectedType == StackType.I4 && inst.ResultType == StackType.I) {
 					// C++/CLI also sometimes implicitly converts in the other direction:
 					inst = new Conv(inst, PrimitiveType.I4, false, Sign.None);
-				} else if (expectedType == StackType.I && inst.ResultType == StackType.Ref) {
+				} else if (expectedType == StackType.Unknown) {
+					inst = new Conv(inst, PrimitiveType.Unknown, false, Sign.None);
+				} else if (inst.ResultType == StackType.Ref) {
 					// Implicitly stop GC tracking; this occurs when passing the result of 'ldloca' or 'ldsflda'
 					// to a method expecting a native pointer.
 					inst = new Conv(inst, PrimitiveType.I, false, Sign.None);
+					switch (expectedType) {
+						case StackType.I4:
+							inst = new Conv(inst, PrimitiveType.I4, false, Sign.None);
+							break;
+						case StackType.I:
+							break;
+						case StackType.I8:
+							inst = new Conv(inst, PrimitiveType.I8, false, Sign.None);
+							break;
+						default:
+							Warn($"Expected {expectedType}, but got {StackType.Ref}");
+							inst = new Conv(inst, expectedType.ToPrimitiveType(), false, Sign.None);
+							break;
+					}
 				} else if (expectedType == StackType.Ref) {
 					// implicitly start GC tracking / object to interior
 					if (!inst.ResultType.IsIntegerType() && inst.ResultType != StackType.O) {
@@ -1059,7 +1072,7 @@ namespace ICSharpCode.Decompiler.IL
 					inst = new Conv(inst, PrimitiveType.R4, false, Sign.Signed);
 				} else {
 					Warn($"Expected {expectedType}, but got {inst.ResultType}");
-					inst = new Conv(inst, expectedType.ToKnownTypeCode().ToPrimitiveType(), false, Sign.None);
+					inst = new Conv(inst, expectedType.ToPrimitiveType(), false, Sign.Signed);
 				}
 			}
 			return inst;
@@ -1270,12 +1283,12 @@ namespace ICSharpCode.Decompiler.IL
 			var parameterTypes = new IType[signature.Parameters.Count];
 			var arguments = new ILInstruction[parameterTypes.Length];
 			for (int i = signature.Parameters.Count - 1; i >= 0; i--) {
-				parameterTypes[i] = typeSystem.Resolve(signature.Parameters[i].ParameterType);
+				parameterTypes[i] = typeSystem.Resolve(signature.Parameters[i].ParameterType, isFromSignature: true);
 				arguments[i] = Pop(parameterTypes[i].GetStackType());
 			}
 			var call = new CallIndirect(
 				signature.CallingConvention,
-				typeSystem.Resolve(signature.ReturnType),
+				typeSystem.Resolve(signature.ReturnType, isFromSignature: true),
 				parameterTypes.ToImmutableArray(),
 				arguments,
 				functionPointer
@@ -1329,36 +1342,48 @@ namespace ICSharpCode.Decompiler.IL
 				} else {
 					return new Comp(kind, Sign.None, left, right);
 				}
-			} else if (left.ResultType.IsIntegerType() && !kind.IsEqualityOrInequality()) {
+			} else if (left.ResultType.IsIntegerType() && right.ResultType.IsIntegerType() && !kind.IsEqualityOrInequality()) {
 				// integer comparison where the sign matters
 				Debug.Assert(right.ResultType.IsIntegerType());
 				return new Comp(kind, un ? Sign.Unsigned : Sign.Signed, left, right);
-			} else {
+			} else if (left.ResultType == right.ResultType) {
 				// integer equality, object reference or managed reference comparison
+				return new Comp(kind, Sign.None, left, right);
+			} else {
+				Warn($"Invalid comparison between {left.ResultType} and {right.ResultType}");
+				if (left.ResultType < right.ResultType) {
+					left = new Conv(left, right.ResultType.ToPrimitiveType(), false, Sign.Signed);
+				} else {
+					right = new Conv(right, left.ResultType.ToPrimitiveType(), false, Sign.Signed);
+				}
 				return new Comp(kind, Sign.None, left, right);
 			}
 		}
 
-		int DecodeBranchTarget(bool shortForm)
+		int? DecodeBranchTarget(bool shortForm)
 		{
 //			int target = shortForm ? reader.ReadSByte() : reader.ReadInt32();
 //			target += reader.Position;
 //			return target;
-			return ((Cil.Instruction)currentInstruction.Operand).Offset;
+			return ((Cil.Instruction)currentInstruction.Operand)?.Offset;
 		}
 		
 		ILInstruction DecodeComparisonBranch(bool shortForm, ComparisonKind kind, bool un = false)
 		{
-			int target = DecodeBranchTarget(shortForm);
+			int? target = DecodeBranchTarget(shortForm);
 			var condition = Comparison(kind, un);
 			condition.ILRange = GetCurrentInstructionInterval();
-			MarkBranchTarget(target);
-			return new IfInstruction(condition, new Branch(target));
+			if (target != null) {
+				MarkBranchTarget(target.Value);
+				return new IfInstruction(condition, new Branch(target.Value));
+			} else {
+				return new IfInstruction(condition, new InvalidBranch("Invalid branch target"));
+			}
 		}
 
 		ILInstruction DecodeConditionalBranch(bool shortForm, bool negate)
 		{
-			int target = DecodeBranchTarget(shortForm);
+			int? target = DecodeBranchTarget(shortForm);
 			ILInstruction condition = Pop();
 			switch (condition.ResultType) {
 				case StackType.O:
@@ -1385,30 +1410,44 @@ namespace ICSharpCode.Decompiler.IL
 						negate ? ComparisonKind.Equality : ComparisonKind.Inequality,
 						Sign.None, new Conv(condition, PrimitiveType.I, false, Sign.None), new Conv(new LdcI4(0), PrimitiveType.I, false, Sign.None));
 					break;
+				case StackType.I4:
+					if (negate) {
+						condition = Comp.LogicNot(condition);
+					}
+					break;
 				default:
+					condition = new Conv(condition, PrimitiveType.I4, false, Sign.None);
 					if (negate) {
 						condition = Comp.LogicNot(condition);
 					}
 					break;
 			}
-			MarkBranchTarget(target);
-			return new IfInstruction(condition, new Branch(target));
+			if (target != null) {
+				MarkBranchTarget(target.Value);
+				return new IfInstruction(condition, new Branch(target.Value));
+			} else {
+				return new IfInstruction(condition, new InvalidBranch("Invalid branch target"));
+			}
 		}
 
 		ILInstruction DecodeUnconditionalBranch(bool shortForm, bool isLeave = false)
 		{
-			int target = DecodeBranchTarget(shortForm);
+			int? target = DecodeBranchTarget(shortForm);
 			if (isLeave) {
 				currentStack = currentStack.Clear();
 			}
-			MarkBranchTarget(target);
-			return new Branch(target);
+			if (target != null) {
+				MarkBranchTarget(target.Value);
+				return new Branch(target.Value);
+			} else {
+				return new InvalidBranch("Invalid branch target");
+			}
 		}
 
 		void MarkBranchTarget(int targetILOffset)
 		{
 			isBranchTarget[targetILOffset] = true;
-			StoreStackForOffset(targetILOffset, currentStack);
+			StoreStackForOffset(targetILOffset, ref currentStack);
 		}
 
 		ILInstruction DecodeSwitch()
@@ -1421,9 +1460,13 @@ namespace ICSharpCode.Decompiler.IL
 			for (int i = 0; i < labels.Length; i++) {
 				var section = new SwitchSection();
 				section.Labels = new LongSet(i);
-				int target = labels[i].Offset; // baseOffset + reader.ReadInt32();
-				MarkBranchTarget(target);
-				section.Body = new Branch(target);
+				int? target = labels[i]?.Offset; // baseOffset + reader.ReadInt32();
+				if (target != null) {
+					MarkBranchTarget(target.Value);
+					section.Body = new Branch(target.Value);
+				} else {
+					section.Body = new InvalidBranch("Invalid branch target");
+				}
 				instr.Sections.Add(section);
 			}
 			var defaultSection = new SwitchSection();

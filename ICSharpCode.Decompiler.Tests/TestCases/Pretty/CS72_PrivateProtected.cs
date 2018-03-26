@@ -16,13 +16,16 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-
-public class DoubleConstants
+namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
-	public const double Zero = 0.0;
-	public const double MinusZero = -0.0;
-	public const double NaN = double.NaN;
-	public const double PositiveInfinity = double.PositiveInfinity;
-	public const double NegativeInfinity = double.NegativeInfinity;
+	internal class CS72_PrivateProtected
+	{
+		private protected int Property {
+			get;
+		}
+
+		private protected void Method()
+		{
+		}
+	}
 }

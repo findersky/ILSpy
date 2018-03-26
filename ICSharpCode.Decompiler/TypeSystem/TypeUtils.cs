@@ -205,7 +205,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			// 2) Both types are integer types of equal size
 			StackType memoryStackType = memoryType.GetStackType();
 			StackType accessStackType = accessType.GetStackType();
-			return memoryStackType == accessStackType && memoryStackType.IsIntegerType() && GetSize(memoryType) == GetSize(accessType);
+			if (memoryStackType == accessStackType && memoryStackType.IsIntegerType() && GetSize(memoryType) == GetSize(accessType))
+				return true;
+			// 3) Any of the types is unknown: we assume they are compatible.
+			return memoryType.Kind == TypeKind.Unknown || accessType.Kind == TypeKind.Unknown;
 		}
 
 		/// <summary>
@@ -215,11 +218,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		{
 			switch (type.Kind) {
 				case TypeKind.Unknown:
+					if (type.IsReferenceType == true) {
+						return StackType.O;
+					}
 					return StackType.Unknown;
 				case TypeKind.ByReference:
 					return StackType.Ref;
 				case TypeKind.Pointer:
 					return StackType.I;
+				case TypeKind.TypeParameter:
+					// Type parameters are always considered StackType.O, even
+					// though they might be instantiated with primitive types.
+					return StackType.O;
 			}
 			ITypeDefinition typeDef = type.GetEnumUnderlyingType().GetDefinition();
 			if (typeDef == null)
@@ -341,6 +351,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static PrimitiveType ToPrimitiveType(this IType type)
 		{
+			if (type.Kind == TypeKind.Unknown) return PrimitiveType.Unknown;
 			var def = type.GetEnumUnderlyingType().GetDefinition();
 			return def != null ? def.KnownTypeCode.ToPrimitiveType() : PrimitiveType.None;
 		}
@@ -399,6 +410,28 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					return KnownTypeCode.Void;
 				default:
 					return KnownTypeCode.None;
+			}
+		}
+
+		public static PrimitiveType ToPrimitiveType(this StackType stackType, Sign sign = Sign.None)
+		{
+			switch (stackType) {
+				case StackType.I4:
+					return sign == Sign.Unsigned ? PrimitiveType.U4 : PrimitiveType.I4;
+				case StackType.I8:
+					return sign == Sign.Unsigned ? PrimitiveType.U8 : PrimitiveType.I8;
+				case StackType.I:
+					return sign == Sign.Unsigned ? PrimitiveType.U : PrimitiveType.I;
+				case StackType.F4:
+					return PrimitiveType.R4;
+				case StackType.F8:
+					return PrimitiveType.R8;
+				case StackType.Ref:
+					return PrimitiveType.Ref;
+				case StackType.Unknown:
+					return PrimitiveType.Unknown;
+				default:
+					return PrimitiveType.None;
 			}
 		}
 	}

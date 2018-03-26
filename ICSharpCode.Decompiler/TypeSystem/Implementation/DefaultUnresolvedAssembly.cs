@@ -39,7 +39,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		IList<IUnresolvedAttribute> moduleAttributes;
 		Dictionary<TopLevelTypeName, IUnresolvedTypeDefinition> typeDefinitions = new Dictionary<TopLevelTypeName, IUnresolvedTypeDefinition>(TopLevelTypeNameComparer.Ordinal);
 		Dictionary<TopLevelTypeName, ITypeReference> typeForwarders = new Dictionary<TopLevelTypeName, ITypeReference>(TopLevelTypeNameComparer.Ordinal);
-		
+
 		protected override void FreezeInternal()
 		{
 			base.FreezeInternal();
@@ -283,7 +283,43 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return ns;
 		}
 		#endregion
-		
+
+		IUnresolvedTypeDefinition[] allTypesByMetadata;
+
+		IUnresolvedTypeDefinition[] BuildMetadataLookup()
+		{
+			Debug.Assert(IsFrozen);
+			uint maxRowId = 0;
+			foreach (var td in this.GetAllTypeDefinitions()) {
+				var token = td.MetadataToken;
+				if (token.TokenType == Mono.Cecil.TokenType.TypeDef && token.RID > maxRowId) {
+					maxRowId = token.RID;
+				}
+			}
+			var lookup = new IUnresolvedTypeDefinition[maxRowId + 1];
+			foreach (var td in this.GetAllTypeDefinitions()) {
+				var token = td.MetadataToken;
+				if (token.TokenType == Mono.Cecil.TokenType.TypeDef) {
+					lookup[token.RID] = td;
+				}
+			}
+			return lookup;
+		}
+
+		internal IUnresolvedTypeDefinition GetTypeDefByToken(Mono.Cecil.MetadataToken token)
+		{
+			if (token.TokenType != Mono.Cecil.TokenType.TypeDef)
+				throw new ArgumentException("Token must be typedef-token.");
+			var lookup = LazyInit.VolatileRead(ref allTypesByMetadata);
+			if (lookup == null) {
+				lookup = LazyInit.GetOrSet(ref allTypesByMetadata, BuildMetadataLookup());
+			}
+			if (token.RID < lookup.Length)
+				return lookup[token.RID];
+			else
+				return null;
+		}
+
 		sealed class DefaultResolvedAssembly : IAssembly
 		{
 			readonly DefaultUnresolvedAssembly unresolvedAssembly;
@@ -320,8 +356,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				get { return unresolvedAssembly.FullAssemblyName; }
 			}
 			
-			public IList<IAttribute> AssemblyAttributes { get; private set; }
-			public IList<IAttribute> ModuleAttributes { get; private set; }
+			public IReadOnlyList<IAttribute> AssemblyAttributes { get; private set; }
+			public IReadOnlyList<IAttribute> ModuleAttributes { get; private set; }
 			
 			public INamespace RootNamespace {
 				get { return rootNamespace; }
@@ -398,7 +434,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			{
 				return typeDict.GetOrAdd(unresolved, t => CreateTypeDefinition(t));
 			}
-			
+
 			ITypeDefinition CreateTypeDefinition(IUnresolvedTypeDefinition unresolved)
 			{
 				if (unresolved.DeclaringTypeDefinition != null) {
@@ -416,7 +452,32 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					return unresolvedAssembly.TopLevelTypeDefinitions.Select(t => GetTypeDefinition(t));
 				}
 			}
-			
+
+			public ITypeDefinition ResolveTypeDefToken(Mono.Cecil.MetadataToken token)
+			{
+				var td = unresolvedAssembly.GetTypeDefByToken(token);
+				if (td != null)
+					return GetPotentiallyNestedTypeDefinition(td);
+				return null;
+			}
+
+			ITypeDefinition GetPotentiallyNestedTypeDefinition(IUnresolvedTypeDefinition unresolved)
+			{
+				var outerUnresolvedType = unresolved.DeclaringTypeDefinition;
+				if (outerUnresolvedType == null) {
+					// GetTypeDefinition() may only be called for top-level types
+					return GetTypeDefinition(unresolved);
+				}
+				var outerType = GetPotentiallyNestedTypeDefinition(outerUnresolvedType);
+				if (outerType == null)
+					return null;
+				foreach (var nestedType in outerType.NestedTypes) {
+					if (nestedType.MetadataToken == unresolved.MetadataToken)
+						return nestedType;
+				}
+				return null;
+			}
+
 			public override string ToString()
 			{
 				return "[DefaultResolvedAssembly " + AssemblyName + "]";
@@ -427,7 +488,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				readonly DefaultResolvedAssembly assembly;
 				readonly UnresolvedNamespace ns;
 				readonly INamespace parentNamespace;
-				readonly IList<NS> childNamespaces;
+				readonly IReadOnlyList<NS> childNamespaces;
 				IEnumerable<ITypeDefinition> types;
 				
 				public NS(DefaultResolvedAssembly assembly, UnresolvedNamespace ns, INamespace parentNamespace)
@@ -506,68 +567,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					else
 						return null;
 				}
-				
-				public ISymbolReference ToReference()
-				{
-					return new NamespaceReference(new DefaultAssemblyReference(assembly.AssemblyName), ns.FullName);
-				}
 			}
-		}
-	}
-	
-	public sealed class NamespaceReference : ISymbolReference
-	{
-		IAssemblyReference assemblyReference;
-		string fullName;
-		
-		public NamespaceReference(IAssemblyReference assemblyReference, string fullName)
-		{
-			if (assemblyReference == null)
-				throw new ArgumentNullException("assemblyReference");
-			this.assemblyReference = assemblyReference;
-			this.fullName = fullName;
-		}
-		
-		public ISymbol Resolve(ITypeResolveContext context)
-		{
-			IAssembly assembly = assemblyReference.Resolve(context);
-			INamespace parent = assembly.RootNamespace;
-			
-			string[] parts = fullName.Split('.');
-			
-			int i = 0;
-			while (i < parts.Length && parent != null) {
-				parent = parent.GetChildNamespace(parts[i]);
-				i++;
-			}
-			
-			return parent;
-		}
-	}
-	
-	public sealed class MergedNamespaceReference : ISymbolReference
-	{
-		string externAlias;
-		string fullName;
-		
-		public MergedNamespaceReference(string externAlias, string fullName)
-		{
-			this.externAlias = externAlias;
-			this.fullName = fullName;
-		}
-		
-		public ISymbol Resolve(ITypeResolveContext context)
-		{
-			string[] parts = fullName.Split('.');
-			INamespace parent = context.Compilation.GetNamespaceForExternAlias(externAlias);
-			
-			int i = 0;
-			while (i < parts.Length && parent != null) {
-				parent = parent.GetChildNamespace(parts[i]);
-				i++;
-			}
-			
-			return parent;
 		}
 	}
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
@@ -139,12 +140,17 @@ namespace ICSharpCode.ILSpy
 			}
 		}
 
-		void Add<T>(IEnumerable<T> items, TypeDefinition type, Language language, Action<SearchResult> addResult, Func<T, Language, bool> matcher, Func<T, ImageSource> image) where T : MemberReference
+		void Add<T>(Func<IEnumerable<T>> itemsGetter, TypeDefinition type, Language language, Action<SearchResult> addResult, Func<T, Language, bool> matcher, Func<T, ImageSource> image) where T : MemberReference
 		{
+			IEnumerable<T> items = Enumerable.Empty<T>();
+			try {
+				items = itemsGetter();
+			} catch (Exception ex) {
+				System.Diagnostics.Debug.Print(ex.ToString());
+			}
 			foreach (var item in items) {
 				if (matcher(item, language)) {
-					addResult(new SearchResult
-					{
+					addResult(new SearchResult {
 						Member = item,
 						Fitness = CalculateFitness(item),
 						Image = image(item),
@@ -158,10 +164,10 @@ namespace ICSharpCode.ILSpy
 
 		public virtual void Search(TypeDefinition type, Language language, Action<SearchResult> addResult)
 		{
-			Add(type.Fields, type, language, addResult, IsMatch, FieldTreeNode.GetIcon);
-			Add(type.Properties, type, language, addResult, IsMatch, p => PropertyTreeNode.GetIcon(p));
-			Add(type.Events, type, language, addResult, IsMatch, EventTreeNode.GetIcon);
-			Add(type.Methods.Where(NotSpecialMethod), type, language, addResult, IsMatch, MethodTreeNode.GetIcon);
+			Add(() => type.Fields, type, language, addResult, IsMatch, FieldTreeNode.GetIcon);
+			Add(() => type.Properties, type, language, addResult, IsMatch, p => PropertyTreeNode.GetIcon(p));
+			Add(() => type.Events, type, language, addResult, IsMatch, EventTreeNode.GetIcon);
+			Add(() => type.Methods.Where(NotSpecialMethod), type, language, addResult, IsMatch, MethodTreeNode.GetIcon);
 
 			foreach (TypeDefinition nestedType in type.NestedTypes) {
 				Search(nestedType, language, addResult);
@@ -185,6 +191,24 @@ namespace ICSharpCode.ILSpy
 			} catch (ArgumentException) {
 				return null;
 			}
+		}
+	}
+
+	class MetadataTokenSearchStrategy : TypeAndMemberSearchStrategy
+	{
+		readonly int searchTermToken;
+
+		public MetadataTokenSearchStrategy(params string[] terms)
+			: base(terms)
+		{
+			if (searchTerm.Length == 1) {
+				int.TryParse(searchTerm[0], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out searchTermToken);
+			}
+		}
+
+		protected override bool MatchName(IMemberDefinition m, Language language)
+		{
+			return m.MetadataToken.ToInt32() == searchTermToken;
 		}
 	}
 

@@ -4,12 +4,12 @@
 
   <PropertyGroup>
     <TargetFramework Condition=" '$(OS)' != 'Windows_NT' ">netstandard2.0</TargetFramework>
-    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">netstandard2.0;net46</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">netstandard2.0;net46;net45</TargetFrameworks>
 
     <Description>IL decompiler engine</Description>
     <Company>ic#code</Company>
     <Product>ILSpy</Product>
-    <Copyright>Copyright 2011-2017 AlphaSierraPapa for the SharpDevelop Team</Copyright>
+    <Copyright>Copyright 2011-2018 AlphaSierraPapa for the SharpDevelop Team</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
     <GenerateAssemblyVersionAttribute>False</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>False</GenerateAssemblyFileVersionAttribute>
@@ -58,6 +58,7 @@
   <ItemGroup>
     <Compile Include="CSharp\Annotations.cs" />
     <Compile Include="CSharp\CallBuilder.cs" />
+    <Compile Include="CSharp\CSharpLanguageVersion.cs" />
     <Compile Include="CSharp\SequencePointBuilder.cs" />
     <Compile Include="CSharp\Syntax\AstNode.cs" />
     <Compile Include="CSharp\Syntax\AstNodeCollection.cs" />
@@ -88,6 +89,7 @@
     <Compile Include="CSharp\Syntax\Expressions\Expression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\IdentifierExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\IndexerExpression.cs" />
+    <Compile Include="CSharp\Syntax\Expressions\InterpolatedStringExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\InvocationExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\IsExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\LambdaExpression.cs" />
@@ -233,7 +235,6 @@
     <Compile Include="CSharp\TypeSystem\AliasNamespaceReference.cs" />
     <Compile Include="CSharp\TypeSystem\AttributeTypeReference.cs" />
     <Compile Include="CSharp\TypeSystem\ConstantValues.cs" />
-    <Compile Include="CSharp\TypeSystem\CSharpAttribute.cs" />
     <Compile Include="CSharp\TypeSystem\CSharpTypeResolveContext.cs" />
     <Compile Include="CSharp\TypeSystem\MemberTypeOrNamespaceReference.cs" />
     <Compile Include="CSharp\TypeSystem\MethodTypeParameterWithInheritedConstraints.cs" />
@@ -264,6 +265,7 @@
     <Compile Include="CSharp\Transforms\ReplaceMethodCallsWithOperators.cs" />
     <Compile Include="CSharp\WholeProjectDecompiler.cs" />
     <Compile Include="CSharp\Transforms\AddXmlDocumentationTransform.cs" />
+    <Compile Include="DecompileRun.cs" />
     <Compile Include="Documentation\GetPotentiallyNestedClassTypeReference.cs" />
     <Compile Include="Documentation\IdStringMemberReference.cs" />
     <Compile Include="Documentation\IdStringProvider.cs" />
@@ -284,8 +286,11 @@
     <Compile Include="DotNetCore\LightJson\Serialization\TextScanner.cs" />
     <Compile Include="DotNetCore\UniversalAssemblyResolver.cs" />
     <Compile Include="DotNetCore\UnresolvedAssemblyNameReference.cs" />
+    <Compile Include="IL\PointerArithmeticOffset.cs" />
+    <Compile Include="IL\ControlFlow\AwaitInCatchTransform.cs" />
     <Compile Include="IL\ILAstWritingOptions.cs" />
     <Compile Include="IL\Instructions\LdFlda.cs" />
+    <Compile Include="IL\Instructions\NullableInstructions.cs" />
     <Compile Include="IL\Instructions\StLoc.cs" />
     <Compile Include="IL\SequencePoint.cs" />
     <Compile Include="IL\Instructions\CallIndirect.cs" />
@@ -293,6 +298,7 @@
     <Compile Include="IL\Transforms\EarlyExpressionTransforms.cs" />
     <Compile Include="IL\Transforms\ExpressionTreeCast.cs" />
     <Compile Include="IL\Transforms\HighLevelLoopTransform.cs" />
+    <Compile Include="IL\Transforms\NullPropagationTransform.cs" />
     <Compile Include="IL\Transforms\ProxyCallReplacer.cs" />
     <Compile Include="IL\Instructions\StringToInt.cs" />
     <Compile Include="IL\Instructions\UsingInstruction.cs" />
@@ -483,7 +489,6 @@
     <Compile Include="TypeSystem\Implementation\DefaultUnresolvedTypeParameter.cs" />
     <Compile Include="TypeSystem\Implementation\DefaultVariable.cs" />
     <Compile Include="TypeSystem\Implementation\DummyTypeParameter.cs" />
-    <Compile Include="TypeSystem\Implementation\ExplicitInterfaceImplementationMemberReference.cs" />
     <Compile Include="TypeSystem\Implementation\GetClassTypeReference.cs" />
     <Compile Include="TypeSystem\Implementation\GetMembersHelper.cs" />
     <Compile Include="TypeSystem\Implementation\KnownTypeCache.cs" />
@@ -499,7 +504,6 @@
     <Compile Include="TypeSystem\Implementation\SpecializedMember.cs" />
     <Compile Include="TypeSystem\Implementation\SpecializedMethod.cs" />
     <Compile Include="TypeSystem\Implementation\SpecializedProperty.cs" />
-    <Compile Include="TypeSystem\Implementation\SpecializingMemberReference.cs" />
     <Compile Include="TypeSystem\Implementation\TypeParameterReference.cs" />
     <Compile Include="TypeSystem\Implementation\TypeWithElementType.cs" />
     <Compile Include="TypeSystem\Implementation\UnknownType.cs" />
@@ -528,7 +532,6 @@
     <Compile Include="TypeSystem\ParameterizedType.cs" />
     <Compile Include="TypeSystem\ParameterListComparer.cs" />
     <Compile Include="TypeSystem\PointerType.cs" />
-    <Compile Include="TypeSystem\ProjectReference.cs" />
     <Compile Include="TypeSystem\ReflectionHelper.cs" />
     <Compile Include="TypeSystem\ReflectionNameParseException.cs" />
     <Compile Include="TypeSystem\SimpleTypeResolveContext.cs" />

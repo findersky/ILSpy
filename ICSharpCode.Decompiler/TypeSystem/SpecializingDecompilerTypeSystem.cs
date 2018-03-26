@@ -51,9 +51,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			get { return substitution; }
 		}
 
-		public IType Resolve(Mono.Cecil.TypeReference typeReference)
+		public IType Resolve(Mono.Cecil.TypeReference typeReference, bool isFromSignature)
 		{
-			return context.Resolve(typeReference).AcceptVisitor(substitution);
+			return context.Resolve(typeReference, isFromSignature).AcceptVisitor(substitution);
 		}
 
 		public IField Resolve(Mono.Cecil.FieldReference fieldReference)
@@ -70,6 +70,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			if (method != null)
 				method = (IMethod)method.Specialize(substitution);
 			return method;
+		}
+
+		public IDecompilerTypeSystem GetSpecializingTypeSystem(TypeParameterSubstitution newSubstitution)
+		{
+			//return context.GetSpecializingTypeSystem(TypeParameterSubstitution.Compose(newSubstitution, this.substitution));
+			// Because the input new substitution is taken from IMember.Substitution for some member that
+			// was resolved by this type system, it already contains 'this.substitution'.
+			return context.GetSpecializingTypeSystem(newSubstitution);
 		}
 
 		public Mono.Cecil.TypeDefinition GetCecil(ITypeDefinition typeDefinition)

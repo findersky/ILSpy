@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using ICSharpCode.Decompiler.TypeSystem;
 using Mono.Cecil;
@@ -15,14 +16,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			foreach (var inst in function.Descendants.OfType<CallInstruction>()) {
 				MethodDefinition methodDef = context.TypeSystem.GetCecil(inst.Method) as MethodDefinition;
 				if (methodDef != null && methodDef.Body != null) {
-					if (inst.Method.IsCompilerGeneratedOrIsInCompilerGeneratedClass()) {
+					if (IsDefinedInCurrentOrOuterClass(inst.Method, context.Function.Method.DeclaringTypeDefinition) && inst.Method.IsCompilerGeneratedOrIsInCompilerGeneratedClass()) {
 						// partially copied from CSharpDecompiler
-						var specializingTypeSystem = this.context.TypeSystem.GetSpecializingTypeSystem(this.context.TypeSystem.Compilation.TypeResolveContext);
+						var specializingTypeSystem = this.context.TypeSystem.GetSpecializingTypeSystem(inst.Method.Substitution);
 						var ilReader = new ILReader(specializingTypeSystem);
 						System.Threading.CancellationToken cancellationToken = new System.Threading.CancellationToken();
 						var proxyFunction = ilReader.ReadIL(methodDef.Body, cancellationToken);
 						var transformContext = new ILTransformContext(proxyFunction, specializingTypeSystem, this.context.Settings) {
-							CancellationToken = cancellationToken
+							CancellationToken = cancellationToken,
+							DecompileRun = context.DecompileRun
 						};
 						foreach (var transform in CSharp.CSharpDecompiler.GetILTransforms()) {
 							if (transform.GetType() != typeof(ProxyCallReplacer)) { // don't call itself on itself
@@ -74,6 +76,16 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					}
 				}
 			}
+		}
+
+		static bool IsDefinedInCurrentOrOuterClass(IMethod method, ITypeDefinition declaringTypeDefinition)
+		{
+			while (declaringTypeDefinition != null) {
+				if (method.DeclaringTypeDefinition == declaringTypeDefinition)
+					return true;
+				declaringTypeDefinition = declaringTypeDefinition.DeclaringTypeDefinition;
+			}
+			return false;
 		}
 	}
 }

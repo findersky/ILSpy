@@ -81,7 +81,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IMember CreateResolved(ITypeResolveContext context);
 	}
 	
-	public interface IMemberReference : ISymbolReference
+	public interface IMemberReference
 	{
 		/// <summary>
 		/// Gets the declaring type reference for the member.
@@ -100,7 +100,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <returns>
 		/// Returns the resolved member, or <c>null</c> if the member could not be found.
 		/// </returns>
-		new IMember Resolve(ITypeResolveContext context);
+		IMember Resolve(ITypeResolveContext context);
 	}
 	
 	/// <summary>
@@ -132,11 +132,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// This property never returns <c>null</c>.
 		/// </summary>
 		IType ReturnType { get; }
-		
+
 		/// <summary>
 		/// Gets the interface members implemented by this member (both implicitly and explicitly).
 		/// </summary>
-		IList<IMember> ImplementedInterfaceMembers { get; }
+		IReadOnlyList<IMember> ImplementedInterfaceMembers { get; }
 		
 		/// <summary>
 		/// Gets whether this member is explicitly implementing an interface.
@@ -159,15 +159,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		bool IsOverridable { get; }
 		
-		/// <summary>
-		/// Creates a member reference that can be used to rediscover this member in another compilation.
-		/// </summary>
-		/// <remarks>
-		/// If this member is specialized using open generic types, the resulting member reference will need to be looked up in an appropriate generic context.
-		/// Otherwise, the main resolve context of a compilation is sufficient.
-		/// </remarks>
-		new IMemberReference ToReference();
-
 		/// <summary>
 		/// Gets the substitution belonging to this specialized member.
 		/// Returns TypeParameterSubstitution.Identity for not specialized members.

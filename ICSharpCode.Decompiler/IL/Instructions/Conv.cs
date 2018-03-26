@@ -143,6 +143,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		/// <remarks>
 		/// For lifted conversions, corresponds to the underlying target type.
+		/// 
+		/// Target type == PrimitiveType.None can happen for implicit conversions to O in invalid IL.
 		/// </remarks>
 		public readonly PrimitiveType TargetType;
 		
@@ -161,14 +163,14 @@ namespace ICSharpCode.Decompiler.IL
 			this.TargetType = targetType;
 			this.CheckForOverflow = checkForOverflow;
 			this.Kind = GetConversionKind(targetType, this.InputType, this.InputSign);
-			Debug.Assert(Kind != ConversionKind.Invalid);
+			// Debug.Assert(Kind != ConversionKind.Invalid); // invalid conversion can happen with invalid IL/missing references
 			this.IsLifted = isLifted;
 		}
 
 		internal override void CheckInvariant(ILPhase phase)
 		{
 			base.CheckInvariant(phase);
-			Debug.Assert(Kind != ConversionKind.Invalid);
+			// Debug.Assert(Kind != ConversionKind.Invalid); // invalid conversion can happen with invalid IL/missing references
 			Debug.Assert(Argument.ResultType == (IsLifted ? StackType.O : InputType));
 			Debug.Assert(!(IsLifted && Kind == ConversionKind.StopGCTracking));
 		}

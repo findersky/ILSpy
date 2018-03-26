@@ -89,16 +89,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the full assembly name (including public key token etc.)
 		/// </summary>
 		string FullAssemblyName { get; }
-		
+
 		/// <summary>
 		/// Gets the list of all assembly attributes in the project.
 		/// </summary>
-		IList<IAttribute> AssemblyAttributes { get; }
-		
+		IReadOnlyList<IAttribute> AssemblyAttributes { get; }
+
 		/// <summary>
 		/// Gets the list of all module attributes in the project.
 		/// </summary>
-		IList<IAttribute> ModuleAttributes { get; }
+		IReadOnlyList<IAttribute> ModuleAttributes { get; }
 		
 		/// <summary>
 		/// Gets whether the internals of this assembly are visible in the specified assembly.
@@ -123,5 +123,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets all non-nested types in the assembly.
 		/// </summary>
 		IEnumerable<ITypeDefinition> TopLevelTypeDefinitions { get; }
+
+		/// <summary>
+		/// Gets the type definition from the metadata token, or null if not found.
+		/// </summary>
+		ITypeDefinition ResolveTypeDefToken(Mono.Cecil.MetadataToken token);
 	}
 }

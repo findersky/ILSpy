@@ -152,11 +152,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return Resolve(ExtendContextForType(context, this.DeclaringTypeDefinition), this.SymbolKind, this.Name, interfaceTypeReference);
 		}
 		
-		ISymbol ISymbolReference.Resolve(ITypeResolveContext context)
-		{
-			return ((IUnresolvedMember)this).Resolve(context);
-		}
-		
 		protected static ITypeResolveContext ExtendContextForType(ITypeResolveContext assemblyContext, IUnresolvedTypeDefinition typeDef)
 		{
 			if (typeDef == null)
@@ -237,7 +232,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return null;
 		}
 		
-		static bool IsNonGenericMatch(IMember member, SymbolKind symbolKind, string name, IList<IType> parameterTypes)
+		static bool IsNonGenericMatch(IMember member, SymbolKind symbolKind, string name, IReadOnlyList<IType> parameterTypes)
 		{
 			if (member.SymbolKind != symbolKind)
 				return false;
@@ -249,7 +244,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			return IsParameterTypeMatch(member, parameterTypes);
 		}
 		
-		static bool IsParameterTypeMatch(IMember member, IList<IType> parameterTypes)
+		static bool IsParameterTypeMatch(IMember member, IReadOnlyList<IType> parameterTypes)
 		{
 			IParameterizedMember parameterizedMember = member as IParameterizedMember;
 			if (parameterizedMember == null) {

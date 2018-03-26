@@ -25,7 +25,6 @@ using System.Linq;
 using System.Resources;
 
 using ICSharpCode.Decompiler;
-using ICSharpCode.ILSpy.Options;
 using Mono.Cecil;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
@@ -35,8 +34,6 @@ using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.ILSpy.TreeNodes;
 using ICSharpCode.Decompiler.CSharp.Transforms;
-using ICSharpCode.AvalonEdit.Highlighting;
-using System.Windows.Media;
 
 namespace ICSharpCode.ILSpy
 {
@@ -86,6 +83,27 @@ namespace ICSharpCode.ILSpy
 			get { return ".csproj"; }
 		}
 
+		IReadOnlyList<LanguageVersion> versions;
+
+		public override IReadOnlyList<LanguageVersion> LanguageVersions {
+			get {
+				if (versions == null) {
+					versions = new List<LanguageVersion>() {
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp1.ToString(), "C# 1.0 / VS .NET"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp2.ToString(), "C# 2.0 / VS 2005"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp3.ToString(), "C# 3.0 / VS 2008"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp4.ToString(), "C# 4.0 / VS 2010"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp5.ToString(), "C# 5.0 / VS 2012"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp6.ToString(), "C# 6.0 / VS 2015"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp7.ToString(), "C# 7.0 / VS 2017"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp7_1.ToString(), "C# 7.1 / VS 2017.3"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp7_2.ToString(), "C# 7.2 / VS 2017.4"),
+					};
+				}
+				return versions;
+			}
+		}
+
 		CSharpDecompiler CreateDecompiler(ModuleDefinition module, DecompilationOptions options)
 		{
 			CSharpDecompiler decompiler = new CSharpDecompiler(module, options.DecompilerSettings);
@@ -98,7 +116,7 @@ namespace ICSharpCode.ILSpy
 		void WriteCode(ITextOutput output, DecompilerSettings settings, SyntaxTree syntaxTree, IDecompilerTypeSystem typeSystem)
 		{
 			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
-			TokenWriter tokenWriter = new TextTokenWriter(output, settings, typeSystem) { FoldBraces = settings.FoldBraces };
+			TokenWriter tokenWriter = new TextTokenWriter(output, settings, typeSystem) { FoldBraces = settings.FoldBraces, ExpandMemberDefinitions = settings.ExpandMemberDefinitions };
 			if (output is ISmartTextOutput highlightingOutput) {
 				tokenWriter = new CSharpHighlightingTokenWriter(tokenWriter, highlightingOutput);
 			}
@@ -288,8 +306,8 @@ namespace ICSharpCode.ILSpy
 
 		void AddReferenceWarningMessage(AssemblyDefinition assembly, ITextOutput output)
 		{
-			var loadedAssembly = MainWindow.Instance.CurrentAssemblyList.GetAssemblies().FirstOrDefault(la => la.GetAssemblyDefinitionAsync().Result == assembly);
-			if (loadedAssembly == null || !loadedAssembly.LoadedAssemblyReferencesInfo.Any(i => i.Value.HasErrors))
+			var loadedAssembly = MainWindow.Instance.CurrentAssemblyList.GetAssemblies().FirstOrDefault(la => la.GetAssemblyDefinitionOrNull() == assembly);
+			if (loadedAssembly == null || !loadedAssembly.LoadedAssemblyReferencesInfo.HasErrors)
 				return;
 			const string line1 = "Warning: Some assembly references could not be loaded. This might lead to incorrect decompilation of some parts,";
 			const string line2 = "for ex. property getter/setter access. To get optimal decompilation results, please manually add the references to the list of loaded assemblies.";
@@ -325,7 +343,6 @@ namespace ICSharpCode.ILSpy
 			var module = assembly.GetModuleDefinitionAsync().Result;
 			if (options.FullDecompilation && options.SaveAsProjectDirectory != null) {
 				var decompiler = new ILSpyWholeProjectDecompiler(assembly, options);
-				decompiler.ProjectGuid = App.CommandLineArguments.FixedGuid;
 				decompiler.DecompileProject(module, options.SaveAsProjectDirectory, new TextOutputWriter(output), options.CancellationToken);
 			} else {
 				AddReferenceWarningMessage(module.Assembly, output);
@@ -391,7 +408,7 @@ namespace ICSharpCode.ILSpy
 					}
 					return new[] { Tuple.Create("EmbeddedResource", fileName) };
 				}
-				foreach (var handler in App.CompositionContainer.GetExportedValues<IResourceFileHandler>()) {
+				foreach (var handler in App.ExportProvider.GetExportedValues<IResourceFileHandler>()) {
 					if (handler.CanHandle(fileName, options)) {
 						entryStream.Position = 0;
 						return new[] { Tuple.Create(handler.EntryType, handler.WriteResourceToFile(assembly, fileName, entryStream, options)) };
@@ -486,7 +503,7 @@ namespace ICSharpCode.ILSpy
 
 		public override MemberReference GetOriginalCodeLocation(MemberReference member)
 		{
-			if (showAllMembers || !DecompilerSettingsPanel.CurrentDecompilerSettings.AnonymousMethods)
+			if (showAllMembers || !new DecompilationOptions().DecompilerSettings.AnonymousMethods)
 				return member;
 			else
 				return TreeNodes.Analyzer.Helpers.GetOriginalCodeLocation(member);

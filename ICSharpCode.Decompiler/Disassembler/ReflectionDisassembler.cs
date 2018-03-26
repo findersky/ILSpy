@@ -45,6 +45,8 @@ namespace ICSharpCode.Decompiler.Disassembler
 			set => methodBodyDisassembler.ShowSequencePoints = value;
 		}
 
+		public bool ExpandMemberDefinitions { get; set; } = false;
+
 		public ReflectionDisassembler(ITextOutput output, CancellationToken cancellationToken)
 			: this(output, new MethodBodyDisassembler(output, cancellationToken), cancellationToken)
 		{
@@ -846,7 +848,7 @@ namespace ICSharpCode.Decompiler.Disassembler
 
 			output.Write(DisassemblerHelpers.Escape(type.DeclaringType != null ? type.Name : type.FullName));
 			WriteTypeParameters(output, type);
-			output.MarkFoldStart(defaultCollapsed: isInType);
+			output.MarkFoldStart(defaultCollapsed: !ExpandMemberDefinitions && isInType);
 			output.WriteLine();
 
 			if (type.BaseType != null) {
@@ -1003,7 +1005,7 @@ namespace ICSharpCode.Decompiler.Disassembler
 
 		void OpenBlock(bool defaultCollapsed)
 		{
-			output.MarkFoldStart(defaultCollapsed: defaultCollapsed);
+			output.MarkFoldStart(defaultCollapsed: !ExpandMemberDefinitions && defaultCollapsed);
 			output.WriteLine();
 			output.WriteLine("{");
 			output.Indent();
@@ -1143,7 +1145,7 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 		}
 
-		public void WriteModuleHeader(ModuleDefinition module)
+		public void WriteModuleHeader(ModuleDefinition module, bool skipMVID = false)
 		{
 			if (module.HasExportedTypes) {
 				foreach (ExportedType exportedType in module.ExportedTypes) {
@@ -1161,7 +1163,9 @@ namespace ICSharpCode.Decompiler.Disassembler
 			}
 
 			output.WriteLine(".module {0}", module.Name);
-			output.WriteLine("// MVID: {0}", module.Mvid.ToString("B").ToUpperInvariant());
+			if (!skipMVID) {
+				output.WriteLine("// MVID: {0}", module.Mvid.ToString("B").ToUpperInvariant());
+			}
 			// TODO: imagebase, file alignment, stackreserve, subsystem
 			output.WriteLine(".corflags 0x{0:x} // {1}", module.Attributes, module.Attributes.ToString());
 

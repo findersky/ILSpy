@@ -66,44 +66,6 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		}
 
 		#region IMember implementation
-
-		[Serializable]
-		public sealed class ReducedExtensionMethodMemberReference : IMemberReference
-		{
-			readonly IMethod baseMethod;
-
-			public ReducedExtensionMethodMemberReference (IMethod baseMethod)
-			{
-				this.baseMethod = baseMethod;
-			}
-
-			public IMember Resolve(ITypeResolveContext context)
-			{
-				return new ReducedExtensionMethod ((IMethod)baseMethod.ToReference ().Resolve (context));
-			}
-			
-			ISymbol ISymbolReference.Resolve(ITypeResolveContext context)
-			{
-				return Resolve(context);
-			}
-
-			public ITypeReference DeclaringTypeReference {
-				get {
-					return baseMethod.ToReference ().DeclaringTypeReference;
-				}
-			}
-		}
-		
-		public IMemberReference ToReference()
-		{
-			return new ReducedExtensionMethodMemberReference (baseMethod);
-		}
-		
-		ISymbolReference ISymbol.ToReference()
-		{
-			return ToReference();
-		}
-
 		public IMember MemberDefinition {
 			get {
 				return baseMethod.MemberDefinition;
@@ -122,7 +84,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 		}
 
-		public System.Collections.Generic.IList<IMember> ImplementedInterfaceMembers {
+		public IReadOnlyList<IMember> ImplementedInterfaceMembers {
 			get {
 				return baseMethod.ImplementedInterfaceMembers;
 			}
@@ -167,28 +129,24 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 		{
 			return Specialize(substitution);
 		}
-		
-		public bool IsParameterized {
-			get  { return baseMethod.IsParameterized; }
-		}
 
 		#endregion
 
 		#region IMethod implementation
 
-		public System.Collections.Generic.IList<IUnresolvedMethod> Parts {
+		public IReadOnlyList<IUnresolvedMethod> Parts {
 			get {
 				return baseMethod.Parts;
 			}
 		}
 
-		public System.Collections.Generic.IList<IAttribute> ReturnTypeAttributes {
+		public IReadOnlyList<IAttribute> ReturnTypeAttributes {
 			get {
 				return baseMethod.ReturnTypeAttributes;
 			}
 		}
 
-		public System.Collections.Generic.IList<ITypeParameter> TypeParameters {
+		public IReadOnlyList<ITypeParameter> TypeParameters {
 			get {
 				return baseMethod.TypeParameters;
 			}
@@ -254,7 +212,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 		}
 
-		public IList<IType> TypeArguments {
+		public IReadOnlyList<IType> TypeArguments {
 			get {
 				return baseMethod.TypeArguments;
 			}
@@ -263,7 +221,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 
 		#region IParameterizedMember implementation
 		List<IParameter> parameters;
-		public System.Collections.Generic.IList<IParameter> Parameters {
+		public IReadOnlyList<IParameter> Parameters {
 			get {
 				if (parameters == null)
 					parameters = new List<IParameter> (baseMethod.Parameters.Skip (1));
@@ -275,24 +233,14 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 
 		#region IEntity implementation
 
+		public Mono.Cecil.MetadataToken MetadataToken => baseMethod.MetadataToken;
+
 		public SymbolKind SymbolKind {
 			get {
 				return baseMethod.SymbolKind;
 			}
 		}
-
-		public DomRegion Region {
-			get {
-				return baseMethod.Region;
-			}
-		}
-
-		public DomRegion BodyRegion {
-			get {
-				return baseMethod.BodyRegion;
-			}
-		}
-
+		
 		public ITypeDefinition DeclaringTypeDefinition {
 			get {
 				return baseMethod.DeclaringTypeDefinition;
@@ -311,7 +259,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 		}
 
-		public System.Collections.Generic.IList<IAttribute> Attributes {
+		public IReadOnlyList<IAttribute> Attributes {
 			get {
 				return baseMethod.Attributes;
 			}

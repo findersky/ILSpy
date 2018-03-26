@@ -26,7 +26,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 	public sealed class DefaultVariable : IVariable
 	{
 		readonly string name;
-		readonly DomRegion region;
 		readonly IType type;
 		readonly object constantValue;
 		readonly bool isConst;
@@ -41,21 +40,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			this.name = name;
 		}
 		
-		public DefaultVariable(IType type, string name, DomRegion region = default(DomRegion),
+		public DefaultVariable(IType type, string name,
 		                       bool isConst = false, object constantValue = null)
 			: this(type, name)
 		{
-			this.region = region;
 			this.isConst = isConst;
 			this.constantValue = constantValue;
 		}
 		
 		public string Name {
 			get { return name; }
-		}
-		
-		public DomRegion Region {
-			get { return region; }
 		}
 		
 		public IType Type {
@@ -72,38 +66,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		
 		public SymbolKind SymbolKind {
 			get { return SymbolKind.Variable; }
-		}
-
-		public ISymbolReference ToReference()
-		{
-			return new VariableReference(type.ToTypeReference(), name, region, isConst, constantValue);
-		}
-	}
-	
-	public sealed class VariableReference : ISymbolReference
-	{
-		ITypeReference variableTypeReference;
-		string name;
-		DomRegion region;
-		bool isConst;
-		object constantValue;
-		
-		public VariableReference(ITypeReference variableTypeReference, string name, DomRegion region, bool isConst, object constantValue)
-		{
-			if (variableTypeReference == null)
-				throw new ArgumentNullException("variableTypeReference");
-			if (name == null)
-				throw new ArgumentNullException("name");
-			this.variableTypeReference = variableTypeReference;
-			this.name = name;
-			this.region = region;
-			this.isConst = isConst;
-			this.constantValue = constantValue;
-		}
-		
-		public ISymbol Resolve(ITypeResolveContext context)
-		{
-			return new DefaultVariable(variableTypeReference.Resolve(context), name, region, isConst, constantValue);
 		}
 	}
 }

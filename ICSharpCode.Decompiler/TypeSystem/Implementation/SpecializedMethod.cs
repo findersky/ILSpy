@@ -74,23 +74,19 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 		
-		public IList<IType> TypeArguments {
+		public IReadOnlyList<IType> TypeArguments {
 			get { return this.Substitution.MethodTypeArguments ?? EmptyList<IType>.Instance; }
 		}
 		
-		public bool IsParameterized {
-			get { return isParameterized; }
-		}
-		
-		public IList<IUnresolvedMethod> Parts {
+		public IReadOnlyList<IUnresolvedMethod> Parts {
 			get { return methodDefinition.Parts; }
 		}
 		
-		public IList<IAttribute> ReturnTypeAttributes {
+		public IReadOnlyList<IAttribute> ReturnTypeAttributes {
 			get { return methodDefinition.ReturnTypeAttributes; }
 		}
 		
-		public IList<ITypeParameter> TypeParameters {
+		public IReadOnlyList<ITypeParameter> TypeParameters {
 			get {
 				return specializedTypeParameters ?? methodDefinition.TypeParameters;
 			}
@@ -149,29 +145,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 			internal set {
 				accessorOwner = value;
-			}
-		}
-
-		public override IMemberReference ToReference()
-		{
-			// Pass the MethodTypeArguments to the SpecializingMemberReference only if
-			// the generic method itself is parameterized, not if the generic method is only
-			// specialized with class type arguments.
-			
-			// This is necessary due to this part of the ToReference() contract:
-			//   If this member is specialized using open generic types, the resulting member reference will need to be looked up in an appropriate generic context.
-			//   Otherwise, the main resolve context of a compilation is sufficient.
-			// ->
-			// This means that if the method itself isn't specialized,
-			// we must not include TypeParameterReferences for the specialized type parameters
-			// in the resulting member reference.
-			if (isParameterized) {
-				return new SpecializingMemberReference(
-					baseMember.ToReference(),
-					ToTypeReference(base.Substitution.ClassTypeArguments),
-					ToTypeReference(base.Substitution.MethodTypeArguments));
-			} else {
-				return base.ToReference();
 			}
 		}
 		
@@ -238,7 +211,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			internal TypeVisitor substitution;
 			
 			public SpecializedTypeParameter(ITypeParameter baseTp, IMethod specializedOwner)
-				: base(specializedOwner, baseTp.Index, baseTp.Name, baseTp.Variance, baseTp.Attributes, baseTp.Region)
+				: base(specializedOwner, baseTp.Index, baseTp.Name, baseTp.Variance, baseTp.Attributes)
 			{
 				// We don't have to consider already-specialized baseTps because
 				// we read the baseTp directly from the unpacked memberDefinition.

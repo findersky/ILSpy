@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -42,7 +43,7 @@ namespace ICSharpCode.Decompiler
 		readonly string version;
 		readonly string dotnetBasePath = FindDotNetExeDirectory();
 
-		public DotNetCorePathFinder(string parentAssemblyFileName, string targetFrameworkId, string version, Dictionary<string, UnresolvedAssemblyNameReference> loadInfo = null)
+		public DotNetCorePathFinder(string parentAssemblyFileName, string targetFrameworkId, string version, ReferenceLoadInfo loadInfo = null)
 		{
 			this.assemblyName = Path.GetFileNameWithoutExtension(parentAssemblyFileName);
 			this.basePath = Path.GetDirectoryName(parentAssemblyFileName);
@@ -79,20 +80,20 @@ namespace ICSharpCode.Decompiler
 				}
 			}
 
-			return FallbackToDotNetSharedDirectory(name, version);
+			return FallbackToDotNetSharedDirectory(name, new Version(version));
 		}
 
 		static IEnumerable<DotNetCorePackageInfo> LoadPackageInfos(string depsJsonFileName, string targetFramework)
 		{
 			var dependencies = JsonReader.Parse(File.ReadAllText(depsJsonFileName));
-			var runtimeInfos = dependencies["targets"][targetFramework].AsJsonObject;
+			var runtimeInfos = dependencies["targets"][targetFramework + "/"].AsJsonObject;
 			var libraries = dependencies["libraries"].AsJsonObject;
 			if (runtimeInfos == null || libraries == null)
 				yield break;
 			foreach (var library in libraries) {
 				var type = library.Value["type"].AsString;
 				var path = library.Value["path"].AsString;
-				var runtimeInfo = runtimeInfos[library.Key]["runtime"].AsJsonObject;
+				var runtimeInfo = runtimeInfos[library.Key].AsJsonObject?["runtime"].AsJsonObject;
 				string[] components = new string[runtimeInfo?.Count ?? 0];
 				if (runtimeInfo != null) {
 					int i = 0;
@@ -105,16 +106,47 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
-		string FallbackToDotNetSharedDirectory(AssemblyNameReference name, string version)
+		string FallbackToDotNetSharedDirectory(AssemblyNameReference name, Version version)
 		{
 			if (dotnetBasePath == null) return null;
-			var basePath = Path.Combine(dotnetBasePath, "shared", "Microsoft.NETCore.App", version);
-			if (File.Exists(Path.Combine(basePath, name.Name + ".dll"))) {
-				return Path.Combine(basePath, name.Name + ".dll");
-			} else if (File.Exists(Path.Combine(basePath, name.Name + ".exe"))) {
-				return Path.Combine(basePath, name.Name + ".exe");
+			var basePath = Path.Combine(dotnetBasePath, "shared", "Microsoft.NETCore.App");
+			var closestVersion = GetClosestVersionFolder(basePath, version);
+			if (File.Exists(Path.Combine(basePath, closestVersion, name.Name + ".dll"))) {
+				return Path.Combine(basePath, closestVersion, name.Name + ".dll");
+			} else if (File.Exists(Path.Combine(basePath, closestVersion, name.Name + ".exe"))) {
+				return Path.Combine(basePath, closestVersion, name.Name + ".exe");
 			}
 			return null;
+		}
+
+		static string GetClosestVersionFolder(string basePath, Version version)
+		{
+			string result = null;
+			foreach (var folder in new DirectoryInfo(basePath).GetDirectories().Select(d => ConvertToVersion(d.Name)).Where(v => v.Item1 != null).OrderByDescending(v => v.Item1)) {
+				if (folder.Item1 >= version)
+					result = folder.Item2;
+			}
+			return result ?? version.ToString();
+		}
+
+		static (Version, string) ConvertToVersion(string name)
+		{
+			string RemoveTrailingVersionInfo()
+			{
+				string shortName = name;
+				int dashIndex = shortName.IndexOf('-');
+				if (dashIndex > 0) {
+					shortName = shortName.Remove(dashIndex);
+				}
+				return shortName;
+			}
+
+			try {
+				return (new Version(RemoveTrailingVersionInfo()), name);
+			} catch (Exception ex) {
+				Trace.TraceWarning(ex.ToString());
+				return (null, null);
+			}
 		}
 
 		static string FindDotNetExeDirectory()

@@ -71,7 +71,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public readonly IType ReturnType;
 
-		public readonly IList<IParameter> Parameters;
+		public readonly IReadOnlyList<IParameter> Parameters;
 
 		public ILFunction(IMethod method, MethodDefinition cecilMethod, ILInstruction body) : base(OpCode.ILFunction)
 		{
@@ -83,7 +83,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.Variables = new ILVariableCollection(this);
 		}
 
-		public ILFunction(IType returnType, IList<IParameter> parameters, ILInstruction body) : base(OpCode.ILFunction)
+		public ILFunction(IType returnType, IReadOnlyList<IParameter> parameters, ILInstruction body) : base(OpCode.ILFunction)
 		{
 			this.Body = body;
 			this.ReturnType = returnType;
@@ -242,6 +242,25 @@ namespace ICSharpCode.Decompiler.IL
 			variable.Name = name;
 			Variables.Add(variable);
 			return variable;
+		}
+
+		/// <summary>
+		/// Recombine split variables by replacing all occurrences of variable2 with variable1.
+		/// </summary>
+		internal void RecombineVariables(ILVariable variable1, ILVariable variable2)
+		{
+			Debug.Assert(ILVariableEqualityComparer.Instance.Equals(variable1, variable2));
+			foreach (var ldloc in variable2.LoadInstructions.ToArray()) {
+				ldloc.Variable = variable1;
+			}
+			foreach (var store in variable2.StoreInstructions.ToArray()) {
+				store.Variable = variable1;
+			}
+			foreach (var ldloca in variable2.AddressInstructions.ToArray()) {
+				ldloca.Variable = variable1;
+			}
+			bool ok = Variables.Remove(variable2);
+			Debug.Assert(ok);
 		}
 	}
 }

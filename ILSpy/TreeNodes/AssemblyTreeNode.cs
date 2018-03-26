@@ -97,8 +97,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 				if (tooltip == null && assembly.IsLoaded) {
 					tooltip = new TextBlock();
-					var module = assembly.GetModuleDefinitionAsync().Result;
-					if (assembly.GetAssemblyDefinitionAsync().Result != null) {
+					var module = assembly.GetModuleDefinitionOrNull();
+					if (module.Assembly != null) {
 						tooltip.Inlines.Add(new Bold(new Run("Name: ")));
 						tooltip.Inlines.Add(new Run(module.Assembly.FullName));
 						tooltip.Inlines.Add(new LineBreak());
@@ -145,7 +145,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		protected override void LoadChildren()
 		{
-			ModuleDefinition moduleDefinition = assembly.GetModuleDefinitionAsync().Result;
+			ModuleDefinition moduleDefinition = assembly.GetModuleDefinitionOrNull();
 			if (moduleDefinition == null) {
 				// if we crashed on loading, then we don't have any children
 				return;
@@ -251,15 +251,32 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
+			void HandleException(Exception ex, string message)
+			{
+				language.WriteCommentLine(output, message);
+
+				output.WriteLine();
+				output.MarkFoldStart("Exception details", true);
+				output.Write(ex.ToString());
+				output.MarkFoldEnd();
+			}
+
 			try {
 				assembly.WaitUntilLoaded(); // necessary so that load errors are passed on to the caller
 			} catch (AggregateException ex) {
 				language.WriteCommentLine(output, assembly.FileName);
-				if (ex.InnerException is BadImageFormatException) {
-					language.WriteCommentLine(output, "This file does not contain a managed assembly.");
-					return;
-				} else {
-					throw;
+				switch (ex.InnerException) {
+					case BadImageFormatException badImage:
+						HandleException(badImage, "This file does not contain a managed assembly.");
+						return;
+					case FileNotFoundException fileNotFound:
+						HandleException(fileNotFound, "The file was not found.");
+						return;
+					case DirectoryNotFoundException dirNotFound:
+						HandleException(dirNotFound, "The directory was not found.");
+						return;
+					default:
+						throw;
 				}
 			}
 			language.DecompileAssembly(assembly, output, options);
@@ -382,9 +399,10 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				return;
 			foreach (var node in context.SelectedTreeNodes) {
 				var la = ((AssemblyTreeNode)node).LoadedAssembly;
-				if (!la.HasLoadError) {
-					foreach (var assyRef in la.GetModuleDefinitionAsync().Result.AssemblyReferences) {
-						la.LookupReferencedAssembly(assyRef.FullName);
+				var module = la.GetModuleDefinitionOrNull();
+				if (module != null) {
+					foreach (var assyRef in module.AssemblyReferences) {
+						la.LookupReferencedAssembly(assyRef);
 					}
 				}
 			}
