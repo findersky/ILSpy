@@ -187,7 +187,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		}
 
 		public CSharpDecompiler(ModuleDefinition module, DecompilerSettings settings)
-			: this(new DecompilerTypeSystem(module), settings)
+			: this(new DecompilerTypeSystem(module, settings), settings)
 		{
 		}
 
@@ -229,6 +229,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (settings.AnonymousTypes && type.IsAnonymousType())
 						return true;
 				}
+				if (settings.ArrayInitializers && settings.SwitchStatementOnString && type.Name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
+					return true;
 			}
 
 			FieldDefinition field = member as FieldDefinition;
@@ -244,11 +246,14 @@ namespace ICSharpCode.Decompiler.CSharp
 				// event-fields are not [CompilerGenerated]
 				if (settings.AutomaticEvents && field.DeclaringType.Events.Any(ev => ev.Name == field.Name))
 					return true;
-				// HACK : only hide fields starting with '__StaticArrayInit'
 				if (settings.ArrayInitializers && field.DeclaringType.Name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal)) {
+					// hide fields starting with '__StaticArrayInit'
 					if (field.Name.StartsWith("__StaticArrayInit", StringComparison.Ordinal))
 						return true;
 					if (field.FieldType.Name.StartsWith("__StaticArrayInit", StringComparison.Ordinal))
+						return true;
+					// hide fields starting with '$$method'
+					if (field.Name.StartsWith("$$method", StringComparison.Ordinal))
 						return true;
 				}
 			}
@@ -525,9 +530,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				foreach (var ca in provider.CustomAttributes) {
 					CollectNamespacesForDecompilation(ca.AttributeType, namespaces, visited);
 					CollectNamespacesForDecompilation(ca.Constructor, namespaces, visited);
+					bool isAsyncStateMachine = ca.AttributeType.FullName == "System.Runtime.CompilerServices.AsyncStateMachineAttribute";
 					foreach (var val in ca.ConstructorArguments) {
-						if (val.Value is TypeReference tr)
+						if (val.Value is TypeReference tr) {
 							namespaces.Add(tr.Namespace);
+							if (isAsyncStateMachine)
+								CollectNamespacesForDecompilation(new[] { tr.ResolveWithinSameModule() }, namespaces, visited);
+						}
 					}
 				}
 			}
@@ -546,7 +555,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (def is ICustomAttributeProvider cap) {
 					CollectAttributes(cap);
 				}
-				if (def is ISecurityDeclarationProvider sdp) {
+				if (def is ISecurityDeclarationProvider sdp && sdp.HasSecurityDeclarations) {
 					namespaces.Add("System.Security.Permissions");
 					CollectSecurityDeclarations(sdp);
 				}
@@ -664,8 +673,23 @@ namespace ICSharpCode.Decompiler.CSharp
 								CollectNamespacesForDecompilation(p.ParameterType, namespaces, visited);
 							}
 						}
+						if (methodDef.HasGenericParameters) {
+							foreach (var gp in methodDef.GenericParameters) {
+								if (gp.HasConstraints) {
+									foreach (var constraint in gp.Constraints) {
+										// Avoid infinite recursion
+										if (!(constraint is GenericInstanceType git && git.ElementType == gp.Owner))
+											CollectNamespacesForDecompilation(constraint, namespaces, visited);
+									}
+								}
+							}
+						}
 						if (methodDef.HasBody) {
-							CollectNamespacesForDecompilation(methodDef.Body, namespaces, visited);
+							try {
+								CollectNamespacesForDecompilation(methodDef.Body, namespaces, visited);
+							} catch (Exception ex) {
+								Debug.WriteLine("Cecil failed to read method body: " + ex.ToString());
+							}
 						}
 						break;
 				}
@@ -1349,6 +1373,16 @@ namespace ICSharpCode.Decompiler.CSharp
 						BaseType = ConvertType(gType.GenericArguments[0], typeAttributes, ref typeIndex, options),
 						HasNullableSpecifier = true
 					};
+				}
+				if (CecilLoader.IsValueTuple(gType, out int tupleCardinality) && tupleCardinality > 1 && tupleCardinality < TupleType.RestPosition) {
+					var tupleType = new TupleAstType();
+					foreach (var typeArgument in gType.GenericArguments) {
+						typeIndex++;
+						tupleType.Elements.Add(new TupleTypeElement {
+							Type = ConvertType(typeArgument, typeAttributes, ref typeIndex, options)
+						});
+					}
+					return tupleType;
 				}
 				AstType baseType = ConvertType(gType.ElementType, typeAttributes, ref typeIndex, options & ~ConvertTypeOptions.IncludeTypeParameterDefinitions);
 				List<AstType> typeArguments = new List<AstType>();

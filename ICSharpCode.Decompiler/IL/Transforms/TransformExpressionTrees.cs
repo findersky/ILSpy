@@ -190,7 +190,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						var param = new ILVariable(VariableKind.Parameter, value.Item1, i) { Name = value.Item2 };
 						parameterMapping.Add(v, param);
 						parameterVariables.Add(param);
-						parameters.Add(new DefaultUnresolvedParameter(value.Item1.ToTypeReference(), value.Item2).CreateResolvedParameter(resolveContext));
+						parameters.Add(new DefaultParameter(value.Item1, value.Item2));
 						instructionsToRemove.Add((ILInstruction)v.StoreInstructions[0]);
 						i++;
 					}
@@ -809,11 +809,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return (null, SpecialType.UnknownType);
 			if (!MatchArgumentList(invocation.Arguments[1], out var arguments))
 				return (null, SpecialType.UnknownType);
+			ArrayType arrayType = new ArrayType(context.BlockContext.TypeSystem.Compilation, type);
 			if (arguments.Count == 0)
-				return (null, SpecialType.UnknownType);
+				return (new NewArr(type, new LdcI4(0)), arrayType);
 			var block = (Block)invocation.Arguments[1];
 			var function = lambdaStack.Peek();
-			var variable = function.RegisterVariable(VariableKind.InitializerTarget, new ArrayType(context.BlockContext.TypeSystem.Compilation, type));
+			var variable = function.RegisterVariable(VariableKind.InitializerTarget, arrayType);
 			Block initializer = new Block(BlockKind.ArrayInitializer);
 			int i = 0;
 			initializer.Instructions.Add(new StLoc(variable, new NewArr(type, new LdcI4(arguments.Count))));

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+﻿// Copyright (c) 2018 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,26 +16,28 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-namespace ICSharpCode.Decompiler.TypeSystem
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace ICSharpCode.ILSpy
 {
-	/// <summary>
-	/// Represents a snapshot of the whole solution (multiple compilations).
-	/// </summary>
-	public interface ISolutionSnapshot
+	[ExportMainMenuCommand(Menu = "_File", Header = "_Remove Assemblies with load errors", MenuCategory = "Remove", MenuOrder = 2.6)]
+	class RemoveAssembliesWithLoadErrors : SimpleCommand
 	{
-		/// <summary>
-		/// Gets the project content with the specified file name.
-		/// Returns null if no such project exists in the solution.
-		/// </summary>
-		/// <remarks>
-		/// This method is used by the <see cref="ProjectReference"/> class.
-		/// </remarks>
-		IProjectContent GetProjectContent(string projectFileName);
-		
-		/// <summary>
-		/// Gets the compilation for the specified project.
-		/// The project must be a part of the solution (passed to the solution snapshot's constructor).
-		/// </summary>
-		ICompilation GetCompilation(IProjectContent project);
+		public override bool CanExecute(object parameter)
+		{
+			return MainWindow.Instance.CurrentAssemblyList?.GetAssemblies().Any(l => l.HasLoadError) == true;
+		}
+
+		public override void Execute(object parameter)
+		{
+			foreach (var asm in MainWindow.Instance.CurrentAssemblyList.GetAssemblies()) {
+				if (!asm.HasLoadError) continue;
+				var node = MainWindow.Instance.AssemblyListTreeNode.FindAssemblyNode(asm);
+				if (node != null && node.CanDelete())
+					node.Delete();
+			}
+		}
 	}
 }
