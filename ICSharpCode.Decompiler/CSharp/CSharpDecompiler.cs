@@ -87,6 +87,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				// is already collapsed into stloc(V, ...).
 				new RemoveDeadVariableInit(),
 				new SplitVariables(), // split variables once again, because the stobj(ldloca V, ...) may open up new replacements
+				new ControlFlowSimplification(), //split variables may enable new branch to leave inlining
+				new DynamicCallSiteTransform(),
 				new SwitchDetection(),
 				new SwitchOnStringTransform(),
 				new SwitchOnNullableTransform(),
@@ -133,13 +135,15 @@ namespace ICSharpCode.Decompiler.CSharp
 							new NullPropagationStatementTransform(),
 							new TransformArrayInitializers(),
 							new TransformCollectionAndObjectInitializers(),
-							new TransformExpressionTrees()
+							new TransformExpressionTrees(),
+							new NamedArgumentTransform()
 						),
 					}
 				},
 				new ProxyCallReplacer(),
 				new DelegateConstruction(),
 				new HighLevelLoopTransform(),
+				new IntroduceDynamicTypeOnLocals(),
 				new AssignVariableNames(),
 			};
 		}
@@ -227,6 +231,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (settings.ArrayInitializers && type.Name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
 						return true;
 					if (settings.AnonymousTypes && type.IsAnonymousType())
+						return true;
+					if (settings.Dynamic && type.IsDelegate() && (type.Name.StartsWith("<>A", StringComparison.Ordinal) || type.Name.StartsWith("<>F", StringComparison.Ordinal)))
 						return true;
 				}
 				if (settings.ArrayInitializers && settings.SwitchStatementOnString && type.Name.StartsWith("<PrivateImplementationDetails>", StringComparison.Ordinal))
@@ -340,12 +346,9 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			foreach (var a in typeSystem.Compilation.MainAssembly.AssemblyAttributes) {
 				decompileRun.Namespaces.Add(a.AttributeType.Namespace);
-				if (a.AttributeType.FullName == typeof(System.Runtime.CompilerServices.TypeForwardedToAttribute).FullName) {
-					decompileRun.Namespaces.Add(((TypeOfResolveResult)a.PositionalArguments[0]).ReferencedType.Namespace);
-				} else {
-					decompileRun.Namespaces.AddRange(a.PositionalArguments.Select(pa => pa.Type.Namespace));
-					decompileRun.Namespaces.AddRange(a.NamedArguments.Select(na => na.Value.Type.Namespace));
-				}
+				decompileRun.Namespaces.AddRange(a.PositionalArguments.Select(pa => pa.Type.Namespace));
+				decompileRun.Namespaces.AddRange(a.PositionalArguments.OfType<TypeOfResolveResult>().Select(pa => pa.ReferencedType.Namespace));
+				decompileRun.Namespaces.AddRange(a.NamedArguments.Select(na => na.Value.Type.Namespace));
 				var astBuilder = CreateAstBuilder(decompilationContext);
 				var attrSection = new AttributeSection(astBuilder.ConvertAttribute(a));
 				attrSection.AttributeTarget = "assembly";
@@ -538,6 +541,7 @@ namespace ICSharpCode.Decompiler.CSharp
 								CollectNamespacesForDecompilation(new[] { tr.ResolveWithinSameModule() }, namespaces, visited);
 						}
 					}
+					namespaces.AddRange(ca.Properties.Select(pro => pro.Argument.Type.Namespace));
 				}
 			}
 
@@ -1027,7 +1031,54 @@ namespace ICSharpCode.Decompiler.CSharp
 					}
 				}
 			}
+			if (typeDecl.ClassType == ClassType.Enum) {
+				switch (DetectBestEnumValueDisplayMode(typeDef)) {
+					case EnumValueDisplayMode.FirstOnly:
+						foreach (var enumMember in typeDecl.Members.OfType<EnumMemberDeclaration>().Skip(1)) {
+							enumMember.Initializer = null;
+						}
+						break;
+					case EnumValueDisplayMode.None:
+						foreach (var enumMember in typeDecl.Members.OfType<EnumMemberDeclaration>()) {
+							enumMember.Initializer = null;
+						}
+						break;
+					case EnumValueDisplayMode.All:
+						// nothing needs to be changed.
+						break;
+					default:
+						throw new ArgumentOutOfRangeException();
+				}
+			}
 			return typeDecl;
+		}
+
+		enum EnumValueDisplayMode
+		{
+			None,
+			All,
+			FirstOnly
+		}
+
+		EnumValueDisplayMode DetectBestEnumValueDisplayMode(ITypeDefinition typeDef)
+		{
+			if (typeDef.GetAttribute(new TopLevelTypeName("System", "FlagsAttribute")) != null)
+				return EnumValueDisplayMode.All;
+			bool first = true;
+			long firstValue = 0, previousValue = 0;
+			foreach (var field in typeDef.Fields) {
+				var fieldDef = typeSystem.GetCecil(field) as FieldDefinition;
+				if (!(fieldDef != null && !MemberIsHidden(fieldDef, settings))) continue;
+				long currentValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, field.ConstantValue, false);
+				if (first) {
+					firstValue = currentValue;
+					first = false;
+				} else if (previousValue + 1 != currentValue) {
+					return EnumValueDisplayMode.All;
+				}
+				previousValue = currentValue;
+			}
+			return firstValue == 0 ? EnumValueDisplayMode.None : EnumValueDisplayMode.FirstOnly;
 		}
 
 		static readonly Syntax.Attribute obsoleteAttributePattern = new Syntax.Attribute() {
@@ -1095,6 +1146,11 @@ namespace ICSharpCode.Decompiler.CSharp
 			return methodDecl;
 		}
 
+		internal static bool IsWindowsFormsInitializeComponentMethod(IMethod method)
+		{
+			return method.ReturnType.Kind == TypeKind.Void && method.Name == "InitializeComponent" && method.DeclaringTypeDefinition.GetNonInterfaceBaseTypes().Any(t => t.FullName == "System.Windows.Forms.Control");
+		}
+
 		void DecompileBody(MethodDefinition methodDefinition, IMethod method, EntityDeclaration entityDecl, DecompileRun decompileRun, ITypeResolveContext decompilationContext)
 		{
 			try {
@@ -1114,7 +1170,15 @@ namespace ICSharpCode.Decompiler.CSharp
 					}
 				}
 
-				var context = new ILTransformContext(function, specializingTypeSystem, settings) {
+				var localSettings = settings.Clone();
+				if (IsWindowsFormsInitializeComponentMethod(method)) {
+					localSettings.UseImplicitMethodGroupConversion = false;
+					localSettings.UsingDeclarations = false;
+					localSettings.FullyQualifyAmbiguousTypeNames = true;
+					localSettings.AlwaysCastTargetsOfExplicitInterfaceImplementationCalls = true;
+				}
+
+				var context = new ILTransformContext(function, specializingTypeSystem, localSettings) {
 					CancellationToken = CancellationToken,
 					DecompileRun = decompileRun
 				};
@@ -1125,15 +1189,15 @@ namespace ICSharpCode.Decompiler.CSharp
 					// When decompiling definitions only, we can cancel decompilation of all steps
 					// after yield and async detection, because only those are needed to properly set
 					// IsAsync/IsIterator flags on ILFunction.
-					if (!settings.DecompileMemberBodies && transform is AsyncAwaitDecompiler)
+					if (!localSettings.DecompileMemberBodies && transform is AsyncAwaitDecompiler)
 						break;
 				}
 
 				var body = BlockStatement.Null;
 				// Generate C# AST only if bodies should be displayed.
-				if (settings.DecompileMemberBodies) {
+				if (localSettings.DecompileMemberBodies) {
 					AddDefinesForConditionalAttributes(function, decompileRun, decompilationContext);
-					var statementBuilder = new StatementBuilder(specializingTypeSystem, decompilationContext, function, settings, CancellationToken);
+					var statementBuilder = new StatementBuilder(specializingTypeSystem, decompilationContext, function, localSettings, CancellationToken);
 					body = statementBuilder.ConvertAsBlock(function.Body);
 
 					Comment prev = null;
@@ -1213,26 +1277,17 @@ namespace ICSharpCode.Decompiler.CSharp
 			Debug.Assert(decompilationContext.CurrentMember == field);
 			var typeSystemAstBuilder = CreateAstBuilder(decompilationContext);
 			if (decompilationContext.CurrentTypeDefinition.Kind == TypeKind.Enum && field.ConstantValue != null) {
-				var index = decompilationContext.CurrentTypeDefinition.Members.IndexOf(field);
-				long previousValue = -1;
-				if (index > 0) {
-					var previousMember = (IField)decompilationContext.CurrentTypeDefinition.Members[index - 1];
-					previousValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, previousMember.ConstantValue, false);
-				}
 				var enumDec = new EnumMemberDeclaration { Name = field.Name };
 				long initValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, field.ConstantValue, false);
-				if (decompilationContext.CurrentTypeDefinition.Attributes.Any(a => a.AttributeType.FullName == "System.FlagsAttribute")) {
-					enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType, field.ConstantValue);
-					if (enumDec.Initializer is PrimitiveExpression primitive)
-						primitive.SetValue(initValue, $"0x{initValue:X}");
-				} else if (previousValue + 1 != initValue) {
-					enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType, field.ConstantValue);
-					if (enumDec.Initializer is PrimitiveExpression primitive && initValue > 9 && ((initValue & (initValue - 1)) == 0 || (initValue & (initValue + 1)) == 0)) {
-						primitive.SetValue(initValue, $"0x{initValue:X}");
-					}
+				enumDec.Initializer = typeSystemAstBuilder.ConvertConstantValue(decompilationContext.CurrentTypeDefinition.EnumUnderlyingType, field.ConstantValue);
+				if (enumDec.Initializer is PrimitiveExpression primitive
+					&& (decompilationContext.CurrentTypeDefinition.Attributes.Any(a => a.AttributeType.FullName == "System.FlagsAttribute")
+						|| (initValue > 9 && ((initValue & (initValue - 1)) == 0 || (initValue & (initValue + 1)) == 0))))
+				{
+					primitive.SetValue(initValue, $"0x{initValue:X}");
 				}
 				enumDec.Attributes.AddRange(field.Attributes.Select(a => new AttributeSection(typeSystemAstBuilder.ConvertAttribute(a))));
-				enumDec.AddAnnotation(new Semantics.MemberResolveResult(null, field));
+				enumDec.AddAnnotation(new MemberResolveResult(null, field));
 				return enumDec;
 			}
 			typeSystemAstBuilder.UseSpecialConstants = !field.DeclaringType.Equals(field.ReturnType);

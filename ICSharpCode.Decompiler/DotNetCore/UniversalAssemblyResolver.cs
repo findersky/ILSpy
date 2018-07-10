@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using ICSharpCode.Decompiler.Util;
 using Mono.Cecil;
@@ -15,6 +16,7 @@ namespace ICSharpCode.Decompiler
 		readonly string baseDirectory;
 		readonly List<string> directories = new List<string>();
 		readonly List<string> gac_paths = GetGacPaths();
+		HashSet<string> targetFrameworkSearchPaths;
 
 		/// <summary>
 		/// Detect whether we're in a Mono environment.
@@ -46,7 +48,15 @@ namespace ICSharpCode.Decompiler
 			return directories.ToArray();
 		}
 
-		public string TargetFramework { get; set; }
+		public string TargetFramework {
+			get => targetFramework;
+			set {
+				if (targetFramework != value) {
+					targetFramework = value;
+					targetFrameworkSearchPaths = null;
+				}
+			}
+		}
 
 		protected UniversalAssemblyResolver(string mainAssemblyFileName, bool throwOnError)
 		{
@@ -96,7 +106,7 @@ namespace ICSharpCode.Decompiler
 				case ".NETCoreApp":
 				case ".NETStandard":
 					if (targetFramework.Length != 2)
-						return ResolveInternal(name);
+						goto default;
 					if (dotNetCorePathFinder == null) {
 						var version = targetFramework[1].Length == 3 ? targetFramework[1] + ".0" : targetFramework[1];
 						dotNetCorePathFinder = new DotNetCorePathFinder(mainAssemblyFileName, TargetFramework, version);
@@ -104,10 +114,54 @@ namespace ICSharpCode.Decompiler
 					file = dotNetCorePathFinder.TryResolveDotNetCore(name);
 					if (file != null)
 						return file;
-					return ResolveInternal(name);
+					goto default;
+				case "Silverlight":
+					if (targetFramework.Length != 2)
+						goto default;
+					file = ResolveSilverlight(name, new Version(targetFramework[1]));
+					if (file != null)
+						return file;
+					goto default;
 				default:
 					return ResolveInternal(name);
 			}
+		}
+
+		void AddTargetFrameworkSearchPathIfExists(string path)
+		{
+			if (targetFrameworkSearchPaths == null) {
+				targetFrameworkSearchPaths = new HashSet<string>();
+			}
+			if (Directory.Exists(path))
+				targetFrameworkSearchPaths.Add(path);
+		}
+
+		/// <summary>
+		/// This only works on Windows
+		/// </summary>
+		string ResolveSilverlight(AssemblyNameReference name, Version version)
+		{
+			AddTargetFrameworkSearchPathIfExists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft Silverlight"));
+			AddTargetFrameworkSearchPathIfExists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Silverlight"));
+
+			foreach (var baseDirectory in targetFrameworkSearchPaths) {
+				var versionDirectory = Path.Combine(baseDirectory, FindClosestVersionDirectory(baseDirectory, version));
+				var file = SearchDirectory(name, versionDirectory);
+				if (file != null)
+					return file;
+			}
+			return null;
+		}
+
+		string FindClosestVersionDirectory(string basePath, Version version)
+		{
+			string path = null;
+			foreach (var folder in new DirectoryInfo(basePath).GetDirectories().Select(d => DotNetCorePathFinder.ConvertToVersion(d.Name))
+				.Where(v => v.Item1 != null).OrderByDescending(v => v.Item1)) {
+				if (path == null || folder.Item1 >= version)
+					path = folder.Item2;
+			}
+			return path ?? version.ToString();
 		}
 
 		string ResolveInternal(AssemblyNameReference name)
@@ -159,20 +213,28 @@ namespace ICSharpCode.Decompiler
 		#region .NET / mono GAC handling
 		string SearchDirectory(AssemblyNameReference name, IEnumerable<string> directories)
 		{
-			var extensions = name.IsWindowsRuntime ? new[] { ".winmd", ".dll" } : new[] { ".exe", ".dll" };
 			foreach (var directory in directories) {
-				foreach (var extension in extensions) {
-					string file = Path.Combine(directory, name.Name + extension);
-					if (!File.Exists(file))
-						continue;
-					try {
-						return file;
-					} catch (System.BadImageFormatException) {
-						continue;
-					}
-				}
+				string file = SearchDirectory(name, directory);
+				if (file != null)
+					return file;
 			}
 
+			return null;
+		}
+
+		string SearchDirectory(AssemblyNameReference name, string directory)
+		{
+			var extensions = name.IsWindowsRuntime ? new[] { ".winmd", ".dll" } : new[] { ".exe", ".dll" };
+			foreach (var extension in extensions) {
+				string file = Path.Combine(directory, name.Name + extension);
+				if (!File.Exists(file))
+					continue;
+				try {
+					return file;
+				} catch (BadImageFormatException) {
+					continue;
+				}
+			}
 			return null;
 		}
 
@@ -182,6 +244,7 @@ namespace ICSharpCode.Decompiler
 		}
 
 		static Version ZeroVersion = new Version(0, 0, 0, 0);
+		private string targetFramework;
 
 		string GetCorlib(AssemblyNameReference reference)
 		{
@@ -191,46 +254,15 @@ namespace ICSharpCode.Decompiler
 			if (corlib.Version == version || IsZero(version))
 				return typeof(object).Module.FullyQualifiedName;
 
-			var path = Directory.GetParent(
-				Directory.GetParent(
-					typeof(object).Module.FullyQualifiedName).FullName
-				).FullName;
-
+			string path;
 			if (DetectMono()) {
-				if (version.Major == 1)
-					path = Path.Combine(path, "1.0");
-				else if (version.Major == 2) {
-					if (version.MajorRevision == 5)
-						path = Path.Combine(path, "2.1");
-					else
-						path = Path.Combine(path, "2.0");
-				} else if (version.Major == 4)
-					path = Path.Combine(path, "4.0");
-				else {
-					if (throwOnError)
-						throw new NotSupportedException("Version not supported: " + version);
-					return null;
-				}
+				path = GetMonoMscorlibBasePath(version);
 			} else {
-				switch (version.Major) {
-					case 1:
-						if (version.MajorRevision == 3300)
-							path = Path.Combine(path, "v1.0.3705");
-						else
-							path = Path.Combine(path, "v1.0.5000.0");
-						break;
-					case 2:
-						path = Path.Combine(path, "v2.0.50727");
-						break;
-					case 4:
-						path = Path.Combine(path, "v4.0.30319");
-						break;
-					default:
-						if (throwOnError)
-							throw new NotSupportedException("Version not supported: " + version);
-						return null;
-				}
+				path = GetMscorlibBasePath(version);
 			}
+
+			if (path == null)
+				return null;
 
 			var file = Path.Combine(path, "mscorlib.dll");
 			if (File.Exists(file))
@@ -239,18 +271,77 @@ namespace ICSharpCode.Decompiler
 			return null;
 		}
 
+		string GetMscorlibBasePath(Version version)
+		{
+			string rootPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Microsoft.NET");
+			string[] frameworkPaths = new[] {
+				Path.Combine(rootPath, "Framework"),
+				Path.Combine(rootPath, "Framework64")
+			};
+
+			string folder = GetSubFolderForVersion();
+
+			foreach (var path in frameworkPaths) {
+				var basePath = Path.Combine(path, folder);
+				if (Directory.Exists(basePath))
+					return basePath;
+			}
+
+			if (throwOnError)
+				throw new NotSupportedException("Version not supported: " + version);
+			return null;
+
+			string GetSubFolderForVersion()
+			{
+				switch (version.Major) {
+					case 1:
+						if (version.MajorRevision == 3300)
+							return "v1.0.3705";
+						return "v1.1.4322";
+					case 2:
+						return "v2.0.50727";
+					case 4:
+						return "v4.0.30319";
+					default:
+						if (throwOnError)
+							throw new NotSupportedException("Version not supported: " + version);
+						return null;
+				}
+			}
+		}
+
+		string GetMonoMscorlibBasePath(Version version)
+		{
+			var path = Directory.GetParent(typeof(object).Module.FullyQualifiedName).Parent.FullName;
+			if (version.Major == 1)
+				path = Path.Combine(path, "1.0");
+			else if (version.Major == 2) {
+				if (version.MajorRevision == 5)
+					path = Path.Combine(path, "2.1");
+				else
+					path = Path.Combine(path, "2.0");
+			} else if (version.Major == 4)
+				path = Path.Combine(path, "4.0");
+			else {
+				if (throwOnError)
+					throw new NotSupportedException("Version not supported: " + version);
+				return null;
+			}
+			return path;
+		}
+
 		static List<string> GetGacPaths()
 		{
 			if (DetectMono())
 				return GetDefaultMonoGacPaths();
 
 			var paths = new List<string>(2);
-			var windir = Environment.GetEnvironmentVariable("WINDIR");
+			var windir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
 			if (windir == null)
 				return paths;
 
 			paths.Add(Path.Combine(windir, "assembly"));
-			paths.Add(Path.Combine(windir, Path.Combine("Microsoft.NET", "assembly")));
+			paths.Add(Path.Combine(windir, "Microsoft.NET", "assembly"));
 			return paths;
 		}
 

@@ -13,6 +13,7 @@ using System.Linq;
 using ICSharpCode.ILSpy.AddIn.Commands;
 using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
+using EnvDTE;
 
 namespace ICSharpCode.ILSpy.AddIn
 {
@@ -84,11 +85,21 @@ namespace ICSharpCode.ILSpy.AddIn
 			OpenILSpyCommand.Register(this);
 			OpenProjectOutputCommand.Register(this);
 			OpenReferenceCommand.Register(this);
-			//OpenCodeItemCommand.Register(this);
+			OpenCodeItemCommand.Register(this);
 		}
 		#endregion
 
 		public void ShowMessage(string format, params object[] items)
+		{
+			ShowMessage(OLEMSGBUTTON.OLEMSGBUTTON_OK, OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST, OLEMSGICON.OLEMSGICON_INFO, format, items);
+		}
+
+		public void ShowMessage(OLEMSGICON icon, string format, params object[] items)
+		{
+			ShowMessage(OLEMSGBUTTON.OLEMSGBUTTON_OK, OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST, icon, format, items);
+		}
+
+		public int ShowMessage(OLEMSGBUTTON buttons, OLEMSGDEFBUTTON defaultButton, OLEMSGICON icon, string format, params object[] items)
 		{
 			IVsUIShell uiShell = (IVsUIShell)GetService(typeof(SVsUIShell));
 			Guid clsid = Guid.Empty;
@@ -97,17 +108,30 @@ namespace ICSharpCode.ILSpy.AddIn
 				uiShell.ShowMessageBox(
 					0,
 					ref clsid,
-					"ILSpy.AddIn",
+					"ILSpy AddIn",
 					string.Format(CultureInfo.CurrentCulture, format, items),
 					string.Empty,
 					0,
-					OLEMSGBUTTON.OLEMSGBUTTON_OK,
-					OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST,
-					OLEMSGICON.OLEMSGICON_INFO,
+					buttons,
+					defaultButton,
+					icon,
 					0,        // false
 					out result
 				)
 			);
+
+			return result;
+		}
+
+		public IEnumerable<T> GetSelectedItemsData<T>()
+		{
+			if (DTE.ToolWindows.SolutionExplorer.SelectedItems is IEnumerable<UIHierarchyItem> hierarchyItems) {
+				foreach (var item in hierarchyItems) {
+					if (item.Object is T typedItem) {
+						yield return typedItem;
+					}
+				}
+			}
 		}
 	}
 }

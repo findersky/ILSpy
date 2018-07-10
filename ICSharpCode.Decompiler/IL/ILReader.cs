@@ -48,6 +48,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.compilation = typeSystem.Compilation;
 		}
 
+		IMethod method;
 		Cil.MethodBody body;
 		Cil.MethodDebugInformation debugInfo;
 		StackType methodReturnStackType;
@@ -67,11 +68,12 @@ namespace ICSharpCode.Decompiler.IL
 		List<(ILVariable, ILVariable)> stackMismatchPairs;
 		IEnumerable<ILVariable> stackVariables;
 		
-		void Init(Cil.MethodBody body)
+		void Init(Cil.MethodBody body, IMethod method)
 		{
 			if (body == null)
 				throw new ArgumentNullException(nameof(body));
 			this.body = body;
+			this.method = method;
 			this.debugInfo = body.Method.DebugInformation;
 			this.currentInstruction = null;
 			this.nextInstructionIndex = 0;
@@ -167,7 +169,7 @@ namespace ICSharpCode.Decompiler.IL
 					parameterType = typeSystem.Resolve(p.ParameterType, isFromSignature: true);
 				}
 			} else {
-				parameterType = typeSystem.Resolve(p.ParameterType, isFromSignature: true);
+				parameterType = method.Parameters[p.Index].Type;
 			}
 			Debug.Assert(!parameterType.IsUnbound());
 			if (parameterType.IsUnbound()) {
@@ -379,9 +381,9 @@ namespace ICSharpCode.Decompiler.IL
 		/// <summary>
 		/// Debugging helper: writes the decoded instruction stream interleaved with the inferred evaluation stack layout.
 		/// </summary>
-		public void WriteTypedIL(Cil.MethodBody body, ITextOutput output, CancellationToken cancellationToken = default(CancellationToken))
+		public void WriteTypedIL(Cil.MethodBody body, IMethod method, ITextOutput output, CancellationToken cancellationToken = default(CancellationToken))
 		{
-			Init(body);
+			Init(body, method);
 			ReadInstructions(cancellationToken);
 			foreach (var inst in instructionBuilder) {
 				if (inst is StLoc stloc && stloc.IsStackAdjustment) {
@@ -422,11 +424,11 @@ namespace ICSharpCode.Decompiler.IL
 		public ILFunction ReadIL(Cil.MethodBody body, CancellationToken cancellationToken = default(CancellationToken))
 		{
 			cancellationToken.ThrowIfCancellationRequested();
-			Init(body);
+			var method = typeSystem.Resolve(body.Method);
+			Init(body, method);
 			ReadInstructions(cancellationToken);
 			var blockBuilder = new BlockBuilder(body, typeSystem, variableByExceptionHandler);
 			blockBuilder.CreateBlocks(mainContainer, instructionBuilder, isBranchTarget, cancellationToken);
-			var method = typeSystem.Resolve(body.Method);
 			var function = new ILFunction(method, body.Method, mainContainer);
 			CollectionExtensions.AddRange(function.Variables, parameterVariables);
 			CollectionExtensions.AddRange(function.Variables, localVariables);
@@ -1083,28 +1085,55 @@ namespace ICSharpCode.Decompiler.IL
 			ILInstruction inst = Pop();
 			switch (inst.ResultType) {
 				case StackType.I4:
+				case StackType.I8:
+				case StackType.Unknown:
 					return new Conv(inst, PrimitiveType.I, false, Sign.None);
 				case StackType.I:
 				case StackType.Ref:
-				case StackType.Unknown:
 					return inst;
 				default:
 					Warn("Expected native int or pointer, but got " + inst.ResultType);
-					return inst;
+					return new Conv(inst, PrimitiveType.I, false, Sign.None);
 			}
 		}
 
 		ILInstruction PopFieldTarget(IField field)
 		{
-			return field.DeclaringType.IsReferenceType == true ? Pop(StackType.O) : PopPointer();
+			switch (field.DeclaringType.IsReferenceType) {
+				case true:
+					return Pop(StackType.O);
+				case false:
+					return PopPointer();
+				default:
+					// field in unresolved type
+					if (PeekStackType() == StackType.O)
+						return Pop();
+					else
+						return PopPointer();
+			}
 		}
 
+		/// <summary>
+		/// Like PopFieldTarget, but supports ldfld's special behavior for fields of temporary value types.
+		/// </summary>
 		ILInstruction PopLdFldTarget(IField field)
 		{
-			if (field.DeclaringType.IsReferenceType == true)
-				return Pop(StackType.O);
-
-			return PeekStackType() == StackType.O ? new AddressOf(Pop()) : PopPointer();
+			switch (field.DeclaringType.IsReferenceType) {
+				case true:
+					return Pop(StackType.O);
+				case false:
+					// field of value type: ldfld can handle temporaries
+					if (PeekStackType() == StackType.O)
+						return new AddressOf(Pop());
+					else
+						return PopPointer();
+				default:
+					// field in unresolved type
+					if (PeekStackType() == StackType.O)
+						return Pop(StackType.O);
+					else
+						return PopPointer();
+			}
 		}
 
 		private ILInstruction Return()
@@ -1147,7 +1176,9 @@ namespace ICSharpCode.Decompiler.IL
 
 		private ILInstruction Stloc(int v)
 		{
-			return new StLoc(localVariables[v], Pop(localVariables[v].StackType));
+			return new StLoc(localVariables[v], Pop(localVariables[v].StackType)) {
+				ILStackWasEmpty = currentStack.IsEmpty
+			};
 		}
 		
 		private ILInstruction LdElem(IType type)
@@ -1480,15 +1511,35 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			var right = Pop();
 			var left = Pop();
-			if (@operator != BinaryNumericOperator.ShiftLeft && @operator != BinaryNumericOperator.ShiftRight) {
-				// make the implicit I4->I conversion explicit:
-				if (left.ResultType == StackType.I4 && right.ResultType == StackType.I) {
+			if (@operator != BinaryNumericOperator.Add && @operator != BinaryNumericOperator.Sub) {
+				// we are treating all Refs as I, make the conversion explicit
+				if (left.ResultType == StackType.Ref) {
 					left = new Conv(left, PrimitiveType.I, false, Sign.None);
-				} else if (left.ResultType == StackType.I && right.ResultType == StackType.I4) {
+				}
+				if (right.ResultType == StackType.Ref) {
 					right = new Conv(right, PrimitiveType.I, false, Sign.None);
 				}
 			}
+			if (@operator != BinaryNumericOperator.ShiftLeft && @operator != BinaryNumericOperator.ShiftRight) {
+				// make the implicit I4->I conversion explicit:
+				MakeExplicitConversion(sourceType: StackType.I4, targetType: StackType.I, conversionType: PrimitiveType.I);
+				// I4->I8 conversion:
+				MakeExplicitConversion(sourceType: StackType.I4, targetType: StackType.I8, conversionType: PrimitiveType.I8);
+				// I->I8 conversion:
+				MakeExplicitConversion(sourceType: StackType.I, targetType: StackType.I8, conversionType: PrimitiveType.I8);
+				// F4->F8 conversion:
+				MakeExplicitConversion(sourceType: StackType.F4, targetType: StackType.F8, conversionType: PrimitiveType.R8);
+			}
 			return Push(new BinaryNumericInstruction(@operator, left, right, checkForOverflow, sign));
+
+			void MakeExplicitConversion(StackType sourceType, StackType targetType, PrimitiveType conversionType)
+			{
+				if (left.ResultType == sourceType && right.ResultType == targetType) {
+					left = new Conv(left, conversionType, false, Sign.None);
+				} else if (left.ResultType == targetType && right.ResultType == sourceType) {
+					right = new Conv(right, conversionType, false, Sign.None);
+				}
+			}
 		}
 
 		ILInstruction DecodeJmp()

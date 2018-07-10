@@ -50,7 +50,7 @@
 
   <ItemGroup>
     <PackageReference Include="Humanizer.Core" Version="2.2.0" />
-    <PackageReference Include="Mono.Cecil" Version="0.10.0-beta7" />
+    <PackageReference Include="Mono.Cecil" Version="0.10.0" />
     <PackageReference Include="System.Collections.Immutable" Version="1.3.1" />
     <PackageReference Include="System.ValueTuple" Version="4.3.0" />
   </ItemGroup>
@@ -285,6 +285,7 @@
     <Compile Include="DotNetCore\LightJson\Serialization\TextScanner.cs" />
     <Compile Include="DotNetCore\UniversalAssemblyResolver.cs" />
     <Compile Include="DotNetCore\UnresolvedAssemblyNameReference.cs" />
+    <Compile Include="IL\Instructions\DynamicInstructions.cs" />
     <Compile Include="IL\PointerArithmeticOffset.cs" />
     <Compile Include="IL\ControlFlow\AwaitInCatchTransform.cs" />
     <Compile Include="IL\ILAstWritingOptions.cs" />
@@ -294,9 +295,12 @@
     <Compile Include="IL\SequencePoint.cs" />
     <Compile Include="IL\Instructions\CallIndirect.cs" />
     <Compile Include="IL\Instructions\DefaultValue.cs" />
+    <Compile Include="IL\Transforms\DynamicCallSiteTransform.cs" />
     <Compile Include="IL\Transforms\EarlyExpressionTransforms.cs" />
-    <Compile Include="IL\Transforms\ExpressionTreeCast.cs" />
+    <Compile Include="IL\Instructions\ExpressionTreeCast.cs" />
     <Compile Include="IL\Transforms\HighLevelLoopTransform.cs" />
+    <Compile Include="IL\Transforms\NamedArgumentTransform.cs" />
+    <Compile Include="IL\Transforms\IntroduceDynamicTypeOnLocals.cs" />
     <Compile Include="IL\Transforms\NullPropagationTransform.cs" />
     <Compile Include="IL\Transforms\ProxyCallReplacer.cs" />
     <Compile Include="IL\Instructions\StringToInt.cs" />
@@ -332,6 +336,8 @@
     <Compile Include="Util\GraphVizGraph.cs" />
     <Compile Include="Util\KeyComparer.cs" />
     <Compile Include="Util\LongDict.cs" />
+    <Compile Include="Util\ResourcesFile.cs" />
+    <Compile Include="Util\ResXResourceWriter.cs" />
     <Compile Include="Util\UnicodeNewline.cs" />
     <Compile Include="FlowAnalysis\ControlFlowNode.cs" />
     <Compile Include="FlowAnalysis\DataFlowVisitor.cs" />
