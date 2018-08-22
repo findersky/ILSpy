@@ -40,6 +40,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				case TypeKind.Enum:
 					type = type.GetEnumUnderlyingType();
 					break;
+				case TypeKind.ModOpt:
+				case TypeKind.ModReq:
+					return type.SkipModifiers().GetSize();
 			}
 
 			var typeDef = type.GetDefinition();
@@ -189,13 +192,26 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// The access semantics may sligthly differ on read accesses of small integer types,
 		/// due to zero extension vs. sign extension when the signs differ.
 		/// </remarks>
-		public static bool IsCompatibleTypeForMemoryAccess(IType pointerType, IType accessType)
+		public static bool IsCompatiblePointerTypeForMemoryAccess(IType pointerType, IType accessType)
 		{
 			IType memoryType;
 			if (pointerType is PointerType || pointerType is ByReferenceType)
 				memoryType = ((TypeWithElementType)pointerType).ElementType;
 			else
 				return false;
+			return IsCompatibleTypeForMemoryAccess(memoryType, accessType);
+		}
+
+		/// <summary>
+		/// Gets whether reading/writing an element of accessType from the pointer
+		/// is equivalent to reading/writing an element of the memoryType.
+		/// </summary>
+		/// <remarks>
+		/// The access semantics may sligthly differ on read accesses of small integer types,
+		/// due to zero extension vs. sign extension when the signs differ.
+		/// </remarks>
+		public static bool IsCompatibleTypeForMemoryAccess(IType memoryType, IType accessType)
+		{
 			memoryType = memoryType.AcceptVisitor(NormalizeTypeVisitor.TypeErasure);
 			accessType = accessType.AcceptVisitor(NormalizeTypeVisitor.TypeErasure);
 			if (memoryType.Equals(accessType))
@@ -232,6 +248,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					// Type parameters are always considered StackType.O, even
 					// though they might be instantiated with primitive types.
 					return StackType.O;
+				case TypeKind.ModOpt:
+				case TypeKind.ModReq:
+					return type.SkipModifiers().GetStackType();
 			}
 			ITypeDefinition typeDef = type.GetEnumUnderlyingType().GetDefinition();
 			if (typeDef == null)
@@ -269,6 +288,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static IType GetEnumUnderlyingType(this IType type)
 		{
+			type = type.SkipModifiers();
 			return (type.Kind == TypeKind.Enum) ? type.GetDefinition().EnumUnderlyingType : type;
 		}
 
@@ -284,6 +304,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </remarks>
 		public static Sign GetSign(this IType type)
 		{
+			type = type.SkipModifiers();
 			if (type.Kind == TypeKind.Pointer)
 				return Sign.Unsigned;
 			var typeDef = type.GetEnumUnderlyingType().GetDefinition();
@@ -353,7 +374,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static PrimitiveType ToPrimitiveType(this IType type)
 		{
+			type = type.SkipModifiers();
 			if (type.Kind == TypeKind.Unknown) return PrimitiveType.Unknown;
+			if (type.Kind == TypeKind.ByReference) return PrimitiveType.Ref;
 			var def = type.GetEnumUnderlyingType().GetDefinition();
 			return def != null ? def.KnownTypeCode.ToPrimitiveType() : PrimitiveType.None;
 		}

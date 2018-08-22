@@ -225,19 +225,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				{
 					// condition ? v : (bool?)false
 					// => condition & v
-					context.Step("NullableLiftingTransform: 3vl.logic.and(bool, bool?)", ifInst);
-					return new ThreeValuedLogicAnd(condition, trueInst) { ILRange = ifInst.ILRange };
+					context.Step("NullableLiftingTransform: 3vl.bool.and(bool, bool?)", ifInst);
+					return new ThreeValuedBoolAnd(condition, trueInst) { ILRange = ifInst.ILRange };
 				}
 				if (falseInst.MatchLdLoc(out var v2)) {
 					// condition ? v : v2
 					if (MatchThreeValuedLogicConditionPattern(condition, out var nullable1, out var nullable2)) {
 						// (nullable1.GetValueOrDefault() || (!nullable2.GetValueOrDefault() && !nullable1.HasValue)) ? v : v2
 						if (v == nullable1 && v2 == nullable2) {
-							context.Step("NullableLiftingTransform: 3vl.logic.or(bool?, bool?)", ifInst);
-							return new ThreeValuedLogicOr(trueInst, falseInst) { ILRange = ifInst.ILRange };
+							context.Step("NullableLiftingTransform: 3vl.bool.or(bool?, bool?)", ifInst);
+							return new ThreeValuedBoolOr(trueInst, falseInst) { ILRange = ifInst.ILRange };
 						} else if (v == nullable2 && v2 == nullable1) {
-							context.Step("NullableLiftingTransform: 3vl.logic.and(bool?, bool?)", ifInst);
-							return new ThreeValuedLogicAnd(falseInst, trueInst) { ILRange = ifInst.ILRange };
+							context.Step("NullableLiftingTransform: 3vl.bool.and(bool?, bool?)", ifInst);
+							return new ThreeValuedBoolAnd(falseInst, trueInst) { ILRange = ifInst.ILRange };
 						}
 					}
 				}
@@ -247,7 +247,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					// condition ? (bool?)true : v
 					// => condition | v
 					context.Step("NullableLiftingTransform: 3vl.logic.or(bool, bool?)", ifInst);
-					return new ThreeValuedLogicOr(condition, falseInst) { ILRange = ifInst.ILRange };
+					return new ThreeValuedBoolOr(condition, falseInst) { ILRange = ifInst.ILRange };
 				}
 			}
 			return null;
@@ -542,7 +542,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			bool isNullCoalescingWithNonNullableFallback = false;
 			if (!MatchNullableCtor(trueInst, out var utype, out var exprToLift)) {
 				isNullCoalescingWithNonNullableFallback = true;
-				utype = context.TypeSystem.Compilation.FindType(trueInst.ResultType.ToKnownTypeCode());
+				utype = context.TypeSystem.FindType(trueInst.ResultType.ToKnownTypeCode());
 				exprToLift = trueInst;
 				if (nullableVars.Count == 1 && exprToLift.MatchLdLoc(nullableVars[0])) {
 					// v.HasValue ? ldloc v : fallback
@@ -779,7 +779,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			if (underlyingType == SpecialType.UnknownType)
 				return inst;
-			var nullable = context.TypeSystem.Compilation.FindType(KnownTypeCode.NullableOfT).GetDefinition();
+			var nullable = context.TypeSystem.FindType(KnownTypeCode.NullableOfT).GetDefinition();
 			var ctor = nullable?.Methods.FirstOrDefault(m => m.IsConstructor && m.Parameters.Count == 1);
 			if (ctor != null) {
 				ctor = ctor.Specialize(new TypeParameterSubstitution(new[] { underlyingType }, null));

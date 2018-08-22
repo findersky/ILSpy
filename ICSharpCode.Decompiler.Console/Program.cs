@@ -5,7 +5,7 @@ using System.Linq;
 using McMaster.Extensions.CommandLineUtils;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.TypeSystem;
-using Mono.Cecil;
+using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.Console
 {
@@ -77,14 +77,14 @@ namespace ICSharpCode.Decompiler.Console
 
 		static CSharpDecompiler GetDecompiler(string assemblyFileName)
 		{
-			return new CSharpDecompiler(assemblyFileName, new DecompilerSettings() {  ThrowOnAssemblyResolveErrors = false });
+			return new CSharpDecompiler(assemblyFileName, new DecompilerSettings() { ThrowOnAssemblyResolveErrors = false });
 		}
 
 		static void ListContent(string assemblyFileName, TextWriter output, ISet<TypeKind> kinds)
 		{
 			CSharpDecompiler decompiler = GetDecompiler(assemblyFileName);
 
-			foreach (var type in decompiler.TypeSystem.Compilation.MainAssembly.GetAllTypeDefinitions()) {
+			foreach (var type in decompiler.TypeSystem.MainModule.TypeDefinitions) {
 				if (!kinds.Contains(type.Kind))
 					continue;
 				output.WriteLine($"{type.Kind} {type.FullName}");
@@ -93,8 +93,9 @@ namespace ICSharpCode.Decompiler.Console
 
 		static void DecompileAsProject(string assemblyFileName, string outputDirectory)
 		{
-			ModuleDefinition module = UniversalAssemblyResolver.LoadMainModule(assemblyFileName);
 			WholeProjectDecompiler decompiler = new WholeProjectDecompiler();
+			var module = new PEFile(assemblyFileName);
+			decompiler.AssemblyResolver = new UniversalAssemblyResolver(assemblyFileName, false, module.Reader.DetectTargetFrameworkId());
 			decompiler.DecompileProject(module, outputDirectory);
 		}
 

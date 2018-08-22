@@ -64,6 +64,7 @@ namespace ICSharpCode.Decompiler.IL
 		NamedArgument,
 	}
 
+	[DebuggerDisplay("{Name} : {Type}")]
 	public class ILVariable
 	{
 		VariableKind kind;
@@ -244,7 +245,17 @@ namespace ICSharpCode.Decompiler.IL
 				hasInitialValue = value;
 			}
 		}
-		
+
+		/// <summary>
+		/// Gets whether the variable is in SSA form:
+		/// There is exactly 1 store, and every load sees the value from that store.
+		/// </summary>
+		/// <remarks>
+		/// Note: the single store is not necessary a store instruction, it might also
+		/// be the use of the implicit initial value.
+		/// For example: for parameters, IsSingleDefinition will only return true if
+		/// the parameter is never assigned to within the function.
+		/// </remarks>
 		public bool IsSingleDefinition {
 			get {
 				return StoreCount == 1 && AddressCount == 0;
@@ -319,7 +330,7 @@ namespace ICSharpCode.Decompiler.IL
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
-			output.WriteDefinition(this.Name, this, isLocal: true);
+			output.WriteLocalReference(this.Name, this, isDefinition: true);
 			output.Write(" : ");
 			Type.WriteTo(output);
 			output.Write('(');
@@ -340,7 +351,7 @@ namespace ICSharpCode.Decompiler.IL
 		
 		internal void WriteTo(ITextOutput output)
 		{
-			output.WriteReference(this.Name, this, isLocal: true);
+			output.WriteLocalReference(this.Name, this);
 		}
 		
 		/// <summary>

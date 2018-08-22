@@ -65,7 +65,17 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			return new ExpressionStatement(exprBuilder.Translate(inst));
 		}
-		
+
+		protected internal override Statement VisitStLoc(StLoc inst)
+		{
+			var expr = exprBuilder.Translate(inst);
+			// strip top-level ref on ref re-assignment
+			if (expr.Expression is DirectionExpression dirExpr) {
+				expr = expr.UnwrapChild(dirExpr.Expression);
+			}
+			return new ExpressionStatement(expr);
+		}
+
 		protected internal override Statement VisitNop(Nop inst)
 		{
 			var stmt = new EmptyStatement();
@@ -98,9 +108,19 @@ namespace ICSharpCode.Decompiler.CSharp
 				yield break;
 			} else if (type.Kind == TypeKind.Enum) {
 				var enumType = type.GetDefinition().EnumUnderlyingType;
-				value = CSharpPrimitiveCast.Cast(ReflectionHelper.GetTypeCode(enumType), i, false);
+				TypeCode typeCode = ReflectionHelper.GetTypeCode(enumType);
+				if (typeCode != TypeCode.Empty) {
+					value = CSharpPrimitiveCast.Cast(typeCode, i, false);
+				} else {
+					value = i;
+				}
 			} else {
-				value = CSharpPrimitiveCast.Cast(ReflectionHelper.GetTypeCode(type), i, false);
+				TypeCode typeCode = ReflectionHelper.GetTypeCode(type);
+				if (typeCode != TypeCode.Empty) {
+					value = CSharpPrimitiveCast.Cast(typeCode, i, false);
+				} else {
+					value = i;
+				}
 			}
 			yield return new ConstantResolveResult(type, value);
 		}
@@ -290,7 +310,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override Statement VisitYieldReturn(YieldReturn inst)
 		{
-			var elementType = currentFunction.ReturnType.GetElementTypeFromIEnumerable(typeSystem.Compilation, true, out var isGeneric);
+			var elementType = currentFunction.ReturnType.GetElementTypeFromIEnumerable(typeSystem, true, out var isGeneric);
 			return new YieldReturnStatement {
 				Expression = exprBuilder.Translate(inst.Value, typeHint: elementType).ConvertTo(elementType, exprBuilder)
 			};
@@ -454,6 +474,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			// For example: foreach (ClassA item in nonGenericEnumerable)
 			var type = singleGetter.Method.ReturnType;
 			ILInstruction instToReplace = singleGetter;
+			bool useVar = false;
 			switch (instToReplace.Parent) {
 				case CastClass cc:
 					type = cc.Type;
@@ -463,7 +484,18 @@ namespace ICSharpCode.Decompiler.CSharp
 					type = ua.Type;
 					instToReplace = ua;
 					break;
+				default:
+					if (TupleType.IsTupleCompatible(type, out _)) {
+						// foreach with get_Current returning a tuple type, let's check which type "var" would infer:
+						var foreachRR = exprBuilder.resolver.ResolveForeach(collectionExpr.GetResolveResult());
+						if (EqualErasedType(type, foreachRR.ElementType)) {
+							type = foreachRR.ElementType;
+							useVar = true;
+						}
+					}
+					break;
 			}
+
 			// Handle the required foreach-variable transformation:
 			switch (transformation) {
 				case RequiredGetCurrentTransformation.UseExistingVariable:
@@ -507,9 +539,12 @@ namespace ICSharpCode.Decompiler.CSharp
 			Debug.Assert(firstStatement is ExpressionStatement);
 			firstStatement.Remove();
 
+			if (settings.AnonymousTypes && type.ContainsAnonymousType())
+				useVar = true;
+
 			// Construct the foreach loop.
 			var foreachStmt = new ForeachStatement {
-				VariableType = settings.AnonymousTypes && foreachVariable.Type.ContainsAnonymousType() ? new SimpleType("var") : exprBuilder.ConvertType(foreachVariable.Type),
+				VariableType = useVar ? new SimpleType("var") : exprBuilder.ConvertType(foreachVariable.Type),
 				VariableName = foreachVariable.Name,
 				InExpression = collectionExpr.Detach(),
 				EmbeddedStatement = foreachBody
@@ -527,6 +562,11 @@ namespace ICSharpCode.Decompiler.CSharp
 				};
 			}
 			return foreachStmt;
+		}
+
+		static bool EqualErasedType(IType a, IType b)
+		{
+			return NormalizeTypeVisitor.TypeErasure.EquivalentTypes(a, b);
 		}
 
 		private bool IsDynamicCastToIEnumerable(Expression expr, out Expression dynamicExpr)
@@ -852,8 +892,9 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (continueTarget.IncomingEdgeCount > continueCount)
 						blockStatement.Add(new LabelStatement { Label = continueTarget.Label });
 					return forStmt;
+				default:
+					throw new ArgumentOutOfRangeException();
 			}
-			throw new NotSupportedException();
 		}
 
 		BlockStatement ConvertBlockContainer(BlockContainer container, bool isLoop)

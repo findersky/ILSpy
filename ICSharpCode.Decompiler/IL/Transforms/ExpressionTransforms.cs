@@ -131,6 +131,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					inst.InputType = StackType.I4;
 					inst.Left.ReplaceWith(new LdLen(StackType.I4, array) { ILRange = inst.Left.ILRange });
 					inst.Right = rightWithoutConv;
+				} else if (inst.Left is Conv conv && conv.TargetType == PrimitiveType.I && conv.Argument.ResultType == StackType.O) {
+					// C++/CLI sometimes uses this weird comparison with null:
+					context.Step("comp(conv o->i (ldloc obj) == conv i4->i <sign extend>(ldc.i4 0))", inst);
+					// -> comp(ldloc obj == ldnull)
+					inst.InputType = StackType.O;
+					inst.Left = conv.Argument;
+					inst.Right = new LdNull { ILRange = inst.Right.ILRange };
+					inst.Right.AddILRange(rightWithoutConv.ILRange);
 				}
 			}
 
@@ -333,6 +341,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			if (TransformDynamicAddAssignOrRemoveAssign(inst))
 				return;
+			if (inst.MatchIfInstructionPositiveCondition(out var condition, out var trueInst, out var falseInst)) {
+				ILInstruction transformed = UserDefinedLogicTransform.Transform(condition, trueInst, falseInst);
+				if (transformed == null) {
+					transformed = UserDefinedLogicTransform.TransformDynamic(condition, trueInst, falseInst);
+				}
+				if (transformed != null) {
+					context.Step("User-defined short-circuiting logic operator (roslyn pattern)", condition);
+					transformed.AddILRange(inst.ILRange);
+					inst.ReplaceWith(transformed);
+					return;
+				}
+			}
 		}
 
 		/// <summary>
@@ -477,8 +497,21 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						inst.Right = lhs;
 					}
 					break;
+				case BinaryNumericOperator.BitAnd:
+					if (IsBoolean(inst.Left) && IsBoolean(inst.Right) && SemanticHelper.IsPure(inst.Right.Flags))
+					{
+						context.Step("Replace bit.and with logic.and", inst);
+						var expr = IfInstruction.LogicAnd(inst.Left, inst.Right);
+						inst.ReplaceWith(expr);
+						expr.AcceptVisitor(this);
+					}
+					break;
 			}
 		}
+
+		private static bool IsBoolean(ILInstruction inst) => 
+			inst is Comp c && c.ResultType == StackType.I4 || 
+			inst.InferType().IsKnownType(KnownTypeCode.Boolean);
 
 		protected internal override void VisitTryCatchHandler(TryCatchHandler inst)
 		{

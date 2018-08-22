@@ -152,7 +152,7 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			ILRange.WriteTo(output, options);
 			output.Write("Block ");
-			output.WriteDefinition(Label, this);
+			output.WriteLocalReference(Label, this, isDefinition: true);
 			if (Kind != BlockKind.ControlFlow)
 				output.Write($" ({Kind})");
 			if (Parent is BlockContainer)
@@ -161,7 +161,12 @@ namespace ICSharpCode.Decompiler.IL
 			output.MarkFoldStart("{...}");
 			output.WriteLine("{");
 			output.Indent();
+			int index = 0;
 			foreach (var inst in Instructions) {
+				if (options.ShowChildIndexInBlock) {
+					output.Write("[" + index + "] ");
+					index++;
+				}
 				inst.WriteTo(output, options);
 				output.WriteLine();
 			}

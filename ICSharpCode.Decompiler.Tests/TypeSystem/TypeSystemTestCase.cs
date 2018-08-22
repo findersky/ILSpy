@@ -33,11 +33,21 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 	public class SimplePublicClass
 	{
 		public void Method() { }
+
+		public SimplePublicClass() { }
+		~SimplePublicClass() { }
 	}
 
 	public class TypeTestAttribute : Attribute
 	{
 		public TypeTestAttribute(int a1, Type a2, Type a3) { }
+
+#pragma warning disable CS0465
+		private void Finalize()
+		{
+
+		}
+#pragma warning restore CS0465
 	}
 
 	[Params(1, StringComparison.CurrentCulture, null, 4.0, "Test")]
@@ -61,6 +71,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 
 	public unsafe class DynamicTest
 	{
+		public dynamic DynamicField;
 		public dynamic SimpleProperty { get; set; }
 
 		public List<dynamic> DynamicGenerics1(Action<object, dynamic[], object> param) { return null; }
@@ -113,10 +124,13 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 	{
 		public class Nested<X> { }
 
+		~Base() { }
+
 		public virtual void GenericMethodWithConstraints<X>(T a) where X : IComparer<T>, new() { }
 	}
 	public class Derived<A, B> : Base<B>
 	{
+		~Derived() { }
 		public override void GenericMethodWithConstraints<Y>(B a) { }
 	}
 
@@ -157,10 +171,13 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		public void MethodWithParamsArray(params object[] x) { }
 		public void MethodWithOptionalParameter(int x = 4) { }
 		public void MethodWithExplicitOptionalParameter([Optional] int x) { }
+		public void MethodWithRefParameter(ref int x) { }
+		public void MethodWithInParameter(in int x) { }
 		public void MethodWithEnumOptionalParameter(StringComparison x = StringComparison.OrdinalIgnoreCase) { }
 		public void MethodWithOptionalNullableParameter(int? x = null) { }
 		public void MethodWithOptionalLongParameter(long x = 1) { }
 		public void MethodWithOptionalNullableLongParameter(long? x = 1) { }
+		public void MethodWithOptionalDecimalParameter(decimal x = 1) { }
 		public void VarArgsMethod(__arglist) { }
 	}
 
@@ -259,6 +276,21 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		int Prop { get; set; }
 	}
 
+	public interface IBase1
+	{
+		int Prop { get; set; }
+	}
+
+	public interface IBase2
+	{
+		int Prop { get; set; }
+	}
+
+	public interface IDerived : IBase1, IBase2
+	{
+		new int Prop { get; set; }
+	}
+
 	public class ClassWithVirtualProperty
 	{
 		public virtual int Prop { get; protected set; }
@@ -301,6 +333,12 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		int this[T x] { get; set; }
 	}
 
+	public interface IInterfaceWithRenamedIndexer
+	{
+		[IndexerName("NewName")]
+		int this[int x] { get; set; }
+	}
+
 	public class ClassThatImplementsIndexers : IInterfaceWithIndexers, IGenericInterfaceWithIndexer<int>
 	{
 		public int this[int x] { get { return 0; } set { } }
@@ -308,12 +346,13 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		public int this[int x, int y] { get { return 0; } set { } }
 	}
 
-	public class ClassThatImplementsIndexersExplicitly : IInterfaceWithIndexers, IGenericInterfaceWithIndexer<int>
+	public class ClassThatImplementsIndexersExplicitly : IInterfaceWithIndexers, IGenericInterfaceWithIndexer<int>, IInterfaceWithRenamedIndexer
 	{
 		int IInterfaceWithIndexers.this[int x] { get { return 0; } set { } }
 		int IGenericInterfaceWithIndexer<int>.this[int x] { get { return 0; } set { } }
 		int IInterfaceWithIndexers.this[string x] { get { return 0; } set { } }
 		int IInterfaceWithIndexers.this[int x, int y] { get { return 0; } set { } }
+		int IInterfaceWithRenamedIndexer.this[int x] { get { return 0; } set { } }
 	}
 
 	public interface IHasEvent
@@ -352,7 +391,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		new event EventHandler Evt;
 	}
 
-	public static class StaticClass { }
+	public static class StaticClass
+	{
+		public static void Extension(this object inst) { }
+	}
+
 	public abstract class AbstractClass { }
 
 	public class IndexerNonDefaultName

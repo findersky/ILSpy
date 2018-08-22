@@ -103,6 +103,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public void CustomShortCircuitOperators([ValueSource("defaultOptions")] CSharpCompilerOptions cscOptions)
+		{
+			RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public void ExceptionHandling([ValueSource("defaultOptions")] CSharpCompilerOptions cscOptions)
 		{
 			RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings {
@@ -303,6 +309,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public void OptionalArguments([ValueSource("defaultOptions")] CSharpCompilerOptions cscOptions)
+		{
+			RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public void Issue1080([ValueSource(nameof(roslynOnlyOptions))] CSharpCompilerOptions cscOptions)
 		{
 			RunForLibrary(cscOptions: cscOptions);
@@ -328,6 +340,18 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public void CustomAttributeSamples([ValueSource(nameof(defaultOptions))] CSharpCompilerOptions cscOptions)
+		{
+			RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public void MemberTests([ValueSource("defaultOptions")] CSharpCompilerOptions cscOptions)
+		{
+			RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public void TypeTests([ValueSource("defaultOptions")] CSharpCompilerOptions cscOptions)
 		{
 			RunForLibrary(cscOptions: cscOptions);
 		}
