@@ -16,14 +16,27 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Principal;
+using System.Windows;
+using System.Windows.Input;
+using ICSharpCode.ILSpy.Commands;
+using Microsoft.Win32;
 
 namespace ICSharpCode.ILSpy.Options
 {
 	public class MiscSettings : INotifyPropertyChanged
 	{
 		bool allowMultipleInstances;
+		bool loadPreviousAssemblies = true;
+
+		public MiscSettings()
+		{
+			AddRemoveShellIntegrationCommand = new DelegateCommand<object>(AddRemoveShellIntegration);
+		}
 
 		/// <summary>
 		/// Allow multiple instances.
@@ -36,6 +49,55 @@ namespace ICSharpCode.ILSpy.Options
 					allowMultipleInstances = value;
 					OnPropertyChanged();
 				}
+			}
+		}
+
+		/// <summary>
+		/// Load assemblies that were loaded in the previous instance
+		/// </summary>
+		public bool LoadPreviousAssemblies {
+			get { return loadPreviousAssemblies; }
+			set {
+				if (loadPreviousAssemblies != value) {
+					loadPreviousAssemblies = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		public ICommand AddRemoveShellIntegrationCommand { get; }
+
+		const string rootPath = @"Software\Classes\{0}\shell";
+		const string fullPath = @"Software\Classes\{0}\shell\Open with ILSpy\command";
+
+		private void AddRemoveShellIntegration(object obj)
+		{
+			string commandLine = NativeMethods.ArgumentArrayToCommandLine(Assembly.GetEntryAssembly().Location) + " \"%L\"";
+			if (RegistryEntriesExist()) {
+				if (MessageBox.Show(string.Format(Properties.Resources.RemoveShellIntegrationMessage, commandLine), "ILSpy", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) {
+					Registry.CurrentUser.CreateSubKey(string.Format(rootPath, "dllfile")).DeleteSubKeyTree("Open with ILSpy");
+					Registry.CurrentUser.CreateSubKey(string.Format(rootPath, "exefile")).DeleteSubKeyTree("Open with ILSpy");
+				}
+			} else {
+				if (MessageBox.Show(string.Format(Properties.Resources.AddShellIntegrationMessage, commandLine), "ILSpy", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes) {
+					Registry.CurrentUser.CreateSubKey(string.Format(fullPath, "dllfile"))?
+						.SetValue("", commandLine);
+					Registry.CurrentUser.CreateSubKey(string.Format(fullPath, "exefile"))?
+						.SetValue("", commandLine);
+				}
+			}
+			OnPropertyChanged(nameof(AddRemoveShellIntegrationText));
+		}
+
+		private static bool RegistryEntriesExist()
+		{
+			return Registry.CurrentUser.OpenSubKey(string.Format(fullPath, "dllfile")) != null
+				&& Registry.CurrentUser.OpenSubKey(string.Format(fullPath, "exefile")) != null;
+		}
+
+		public string AddRemoveShellIntegrationText {
+			get {
+				return RegistryEntriesExist() ? Properties.Resources.RemoveShellIntegration : Properties.Resources.AddShellIntegration;
 			}
 		}
 

@@ -17,6 +17,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -25,17 +27,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private class MyClass
 		{
 			public int IntVal;
+			public readonly int ReadonlyIntVal;
+			public MyStruct StructField;
+			public readonly MyStruct ReadonlyStructField;
 			public string Text;
 			public MyClass Field;
 			public MyClass Property {
 				get;
 				set;
 			}
-			public MyClass this[int index] {
-				get {
-					return null;
-				}
-			}
+			public MyClass this[int index] => null;
 			public MyClass Method(int arg)
 			{
 				return null;
@@ -49,14 +50,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private struct MyStruct
 		{
 			public int IntVal;
+			public readonly int ReadonlyIntVal;
 			public MyClass Field;
 			public MyStruct? Property1 => null;
 			public MyStruct Property2 => default(MyStruct);
-			public MyStruct? this[int index] {
-				get {
-					return null;
-				}
-			}
+			public MyStruct? this[int index] => null;
 			public MyStruct? Method1(int arg)
 			{
 				return null;
@@ -68,6 +66,48 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 			public void Done()
 			{
+			}
+		}
+		
+		private class Container<T1, T2>
+		{
+			public GenericStruct<T1, T2> Other;
+		}
+
+		private struct GenericStruct<T1, T2>
+		{
+			public T1 Field1;
+			public T2 Field2;
+			public Container<T1, T2> Other;
+
+			public override string ToString()
+			{
+				return "(" + Field1?.ToString() + ", " + Field2?.ToString() + ")";
+			}
+			
+			public int? GetTextLength()
+			{
+				return Field1?.ToString().Length + Field2?.ToString().Length + 4;
+			}
+
+			public string Chain1()
+			{
+				return Other?.Other.Other?.Other.Field1?.ToString();
+			}
+
+			public string Chain2()
+			{
+				return Other?.Other.Other?.Other.Field1?.ToString()?.GetType().Name;
+			}
+
+			public int? Test2()
+			{
+				return Field1?.ToString().Length ?? 42;
+			}
+
+			public int? GetTextLengthNRE()
+			{
+				return (Field1?.ToString()).Length;
 			}
 		}
 
@@ -187,6 +227,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Use(GetMyClass()?.Text ?? "Hello");
 		}
 
+		public void CallOnValueTypeField()
+		{
+			Use(GetMyClass()?.IntVal.ToString());
+			Use(GetMyStruct()?.IntVal.ToString());
+			Use(GetMyClass()?.ReadonlyIntVal.ToString());
+			Use(GetMyStruct()?.ReadonlyIntVal.ToString());
+			GetMyClass()?.StructField.Done();
+			GetMyClass()?.ReadonlyStructField.Done();
+		}
+
 		public void InvokeDelegate(EventHandler eh)
 		{
 			eh?.Invoke(null, EventArgs.Empty);
@@ -235,12 +285,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return t?.Int();
 		}
 
-		// See also: https://github.com/icsharpcode/ILSpy/issues/1050
-		// The C# compiler generates pretty weird code in this case.
-		//private static int? GenericRefUnconstrainedInt<T>(ref T t) where T : ITest
-		//{
-		//	return t?.Int();
-		//}
+		private static int? GenericRefUnconstrainedInt<T>(ref T t) where T : ITest
+		{
+			return t?.Int();
+		}
 
 		private static int? GenericRefClassConstraintInt<T>(ref T t) where T : class, ITest
 		{
@@ -252,6 +300,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return t?.Int();
 		}
 
+		public int? Issue1709(object obj)
+		{
+			return (obj as ICollection)?.Count + (obj as ICollection<int>)?.Count;
+		}
+
+		private static void Issue1689(List<byte[]> setsOfNumbers)
+		{
+			Console.WriteLine(setsOfNumbers?[0]?[1].ToString() == "2");
+			Console.WriteLine(setsOfNumbers?[1]?[1].ToString() == null);
+		}
+	
 		private static dynamic DynamicNullProp(dynamic a)
 		{
 			return a?.b.c(1)?.d[10];

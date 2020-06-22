@@ -94,7 +94,7 @@ namespace ICSharpCode.Decompiler.Documentation
 		public static string GetTypeName(IType type)
 		{
 			if (type == null)
-				throw new ArgumentNullException("type");
+				throw new ArgumentNullException(nameof(type));
 			StringBuilder b = new StringBuilder();
 			AppendTypeName(b, type, false);
 			return b.ToString();
@@ -194,7 +194,7 @@ namespace ICSharpCode.Decompiler.Documentation
 		public static IMemberReference ParseMemberIdString(string memberIdString)
 		{
 			if (memberIdString == null)
-				throw new ArgumentNullException("memberIdString");
+				throw new ArgumentNullException(nameof(memberIdString));
 			if (memberIdString.Length < 2 || memberIdString[1] != ':')
 				throw new ReflectionNameParseException(0, "Missing type tag");
 			char typeChar = memberIdString[0];
@@ -242,7 +242,7 @@ namespace ICSharpCode.Decompiler.Documentation
 		public static ITypeReference ParseTypeName(string typeName)
 		{
 			if (typeName == null)
-				throw new ArgumentNullException("typeName");
+				throw new ArgumentNullException(nameof(typeName));
 			int pos = 0;
 			if (typeName.StartsWith("T:", StringComparison.Ordinal))
 				pos = 2;
@@ -296,8 +296,7 @@ namespace ICSharpCode.Decompiler.Documentation
 			} else {
 				// not a type parameter reference: read the actual type name
 				List<ITypeReference> typeArguments = new List<ITypeReference>();
-				int typeParameterCount;
-				string typeNameWithoutSuffix = ReadTypeName(typeName, ref pos, true, out typeParameterCount, typeArguments);
+				string typeNameWithoutSuffix = ReadTypeName(typeName, ref pos, true, out int typeParameterCount, typeArguments);
 				result = new GetPotentiallyNestedClassTypeReference(typeNameWithoutSuffix, typeParameterCount);
 				while (pos < typeName.Length && typeName[pos] == '.') {
 					pos++;
@@ -352,7 +351,6 @@ namespace ICSharpCode.Decompiler.Documentation
 				typeParameterCount = ReflectionHelper.ReadTypeParameterCount(typeName, ref pos);
 			} else if (pos < typeName.Length && typeName[pos] == '{') {
 				// bound generic type
-				typeArguments = new List<ITypeReference>();
 				do {
 					pos++;
 					typeArguments.Add(ParseTypeName(typeName, ref pos));
@@ -379,9 +377,9 @@ namespace ICSharpCode.Decompiler.Documentation
 		public static IEntity FindEntity(string idString, ITypeResolveContext context)
 		{
 			if (idString == null)
-				throw new ArgumentNullException("idString");
+				throw new ArgumentNullException(nameof(idString));
 			if (context == null)
-				throw new ArgumentNullException("context");
+				throw new ArgumentNullException(nameof(context));
 			if (idString.StartsWith("T:", StringComparison.Ordinal)) {
 				return ParseTypeName(idString.Substring(2)).Resolve(context).GetDefinition();
 			} else {

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Reflection.Metadata;
 using ICSharpCode.Decompiler.Util;
 
@@ -108,7 +109,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		bool IField.IsVolatile => false;
 
 		bool IVariable.IsConst => false;
-		object IVariable.ConstantValue => null;
+		object IVariable.GetConstantValue(bool throwOnInvalidMetadata) => null;
 		IType IVariable.Type => ReturnType;
 
 		public override SymbolKind SymbolKind => SymbolKind.Field;
@@ -131,12 +132,15 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public override SymbolKind SymbolKind => symbolKind;
 		
 		IEnumerable<IAttribute> IMethod.GetReturnTypeAttributes() => EmptyList<IAttribute>.Instance;
+		bool IMethod.ReturnTypeIsRefReadOnly => false;
+		bool IMethod.ThisIsRefReadOnly => false;
 
 		public IReadOnlyList<ITypeParameter> TypeParameters { get; set; } = EmptyList<ITypeParameter>.Instance;
 
 		IReadOnlyList<IType> IMethod.TypeArguments => TypeParameters;
 
 		bool IMethod.IsExtensionMethod => false;
+		bool IMethod.IsLocalFunction => false;
 		bool IMethod.IsConstructor => symbolKind == SymbolKind.Constructor;
 		bool IMethod.IsDestructor => symbolKind == SymbolKind.Destructor;
 		bool IMethod.IsOperator => symbolKind == SymbolKind.Operator;
@@ -144,6 +148,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		bool IMethod.HasBody => false;
 		bool IMethod.IsAccessor => false;
 		IMember IMethod.AccessorOwner => null;
+		MethodSemanticsAttributes IMethod.AccessorKind => 0;
 
 		IMethod IMethod.ReducedFrom => null;
 

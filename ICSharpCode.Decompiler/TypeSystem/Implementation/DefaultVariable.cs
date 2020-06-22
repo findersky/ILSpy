@@ -33,9 +33,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public DefaultVariable(IType type, string name)
 		{
 			if (type == null)
-				throw new ArgumentNullException("type");
+				throw new ArgumentNullException(nameof(type));
 			if (name == null)
-				throw new ArgumentNullException("name");
+				throw new ArgumentNullException(nameof(name));
 			this.type = type;
 			this.name = name;
 		}
@@ -60,8 +60,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			get { return isConst; }
 		}
 		
-		public object ConstantValue {
-			get { return constantValue; }
+		public object GetConstantValue(bool throwOnInvalidMetadata)
+		{
+			return constantValue;
 		}
 		
 		public SymbolKind SymbolKind {

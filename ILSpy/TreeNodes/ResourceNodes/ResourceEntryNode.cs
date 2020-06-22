@@ -32,21 +32,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		private readonly string key;
 		private readonly Stream data;
 
-		public override object Text
-		{
-			get { return this.key; }
-		}
+		public override object Text => this.key;
 
-		public override object Icon
-		{
-			get { return Images.Resource; }
-		}
+		public override object Icon => Images.Resource;
 
-		protected Stream Data
-		{
-			get { return data; }
-		}
-
+		protected Stream Data => data;
 
 		public ResourceEntryNode(string key, Stream data)
 		{
@@ -78,7 +68,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			language.WriteCommentLine(output, string.Format("{0} = {1}", key, data));
 		}
 
-		public override bool Save(DecompilerTextView textView)
+		public override bool Save(ViewModels.TabPageModel tabPage)
 		{
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.FileName = Path.GetFileName(DecompilerTextView.CleanUpName(key));

@@ -17,14 +17,12 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Text;
-using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
@@ -48,6 +46,7 @@ namespace ICSharpCode.Decompiler.Metadata
 	{
 		PEFile Resolve(IAssemblyReference reference);
 		PEFile ResolveModule(PEFile mainModule, string moduleName);
+		bool IsGacAssembly(IAssemblyReference reference);
 	}
 
 	public interface IAssemblyReference
@@ -116,7 +115,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		public static AssemblyNameReference Parse(string fullName)
 		{
 			if (fullName == null)
-				throw new ArgumentNullException("fullName");
+				throw new ArgumentNullException(nameof(fullName));
 			if (fullName.Length == 0)
 				throw new ArgumentException("Name can not be empty");
 
@@ -156,44 +155,62 @@ namespace ICSharpCode.Decompiler.Metadata
 
 			return name;
 		}
+
+		public override string ToString()
+		{
+			return FullName;
+		}
 	}
 
 	public class AssemblyReference : IAssemblyReference
 	{
 		static readonly SHA1 sha1 = SHA1.Create();
 
-		public PEFile Module { get; }
+		readonly System.Reflection.Metadata.AssemblyReference entry;
+
+		public MetadataReader Metadata { get; }
 		public AssemblyReferenceHandle Handle { get; }
 
-		System.Reflection.Metadata.AssemblyReference This() => Module.Metadata.GetAssemblyReference(Handle);
+		public bool IsWindowsRuntime => (entry.Flags & AssemblyFlags.WindowsRuntime) != 0;
+		public bool IsRetargetable => (entry.Flags & AssemblyFlags.Retargetable) != 0;
 
-		public bool IsWindowsRuntime => (This().Flags & AssemblyFlags.WindowsRuntime) != 0;
-		public bool IsRetargetable => (This().Flags & AssemblyFlags.Retargetable) != 0;
-
-		public string Name => Module.Metadata.GetString(This().Name);
-		public string FullName => This().GetFullAssemblyName(Module.Metadata);
-		public Version Version => This().Version;
-		public string Culture => Module.Metadata.GetString(This().Culture);
+		public string Name => Metadata.GetString(entry.Name);
+		public string FullName => entry.GetFullAssemblyName(Metadata);
+		public Version Version => entry.Version;
+		public string Culture => Metadata.GetString(entry.Culture);
 		byte[] IAssemblyReference.PublicKeyToken => GetPublicKeyToken();
 
 		public byte[] GetPublicKeyToken()
 		{
-			var inst = This();
-			if (inst.PublicKeyOrToken.IsNil)
-				return Empty<byte>.Array;
-			var bytes = Module.Metadata.GetBlobBytes(inst.PublicKeyOrToken);
-			if ((inst.Flags & AssemblyFlags.PublicKey) != 0) {
+			if (entry.PublicKeyOrToken.IsNil)
+				return null;
+			var bytes = Metadata.GetBlobBytes(entry.PublicKeyOrToken);
+			if ((entry.Flags & AssemblyFlags.PublicKey) != 0) {
 				return sha1.ComputeHash(bytes).Skip(12).ToArray();
 			}
 			return bytes;
 		}
 
-		public AssemblyReference(PEFile module, AssemblyReferenceHandle handle)
+		public AssemblyReference(MetadataReader metadata, AssemblyReferenceHandle handle)
 		{
-			Module = module ?? throw new ArgumentNullException(nameof(module));
+			if (metadata == null)
+				throw new ArgumentNullException(nameof(metadata));
 			if (handle.IsNil)
 				throw new ArgumentNullException(nameof(handle));
+			Metadata = metadata;
 			Handle = handle;
+			entry = metadata.GetAssemblyReference(handle);
+		}
+
+		public AssemblyReference(PEFile module, AssemblyReferenceHandle handle)
+		{
+			if (module == null)
+				throw new ArgumentNullException(nameof(module));
+			if (handle.IsNil)
+				throw new ArgumentNullException(nameof(handle));
+			Metadata = module.Metadata;
+			Handle = handle;
+			entry = Metadata.GetAssemblyReference(handle);
 		}
 
 		public override string ToString()

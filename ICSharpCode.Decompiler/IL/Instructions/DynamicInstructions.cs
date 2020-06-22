@@ -128,7 +128,7 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -180,7 +180,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -224,7 +224,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -260,7 +260,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -297,7 +297,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -329,7 +329,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -349,27 +349,31 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class DynamicInvokeConstructorInstruction
 	{
+		readonly IType resultType;
+
 		public IReadOnlyList<CSharpArgumentInfo> ArgumentInfo { get; }
 
-		public DynamicInvokeConstructorInstruction(CSharpBinderFlags binderFlags, IType context, CSharpArgumentInfo[] argumentInfo, ILInstruction[] arguments)
+		public DynamicInvokeConstructorInstruction(CSharpBinderFlags binderFlags, IType type, IType context, CSharpArgumentInfo[] argumentInfo, ILInstruction[] arguments)
 			: base(OpCode.DynamicInvokeConstructorInstruction, binderFlags, context)
 		{
 			ArgumentInfo = argumentInfo;
 			Arguments = new InstructionCollection<ILInstruction>(this, 0);
 			Arguments.AddRange(arguments);
+			this.resultType = type;
 		}
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
+			resultType?.WriteTo(output);
 			output.Write(".ctor");
 			WriteArgumentList(output, options, Arguments.Zip(ArgumentInfo));
 		}
 
-		public override StackType ResultType => StackType.O;
+		public override StackType ResultType => resultType?.GetStackType() ?? StackType.Unknown;
 
 		public override CSharpArgumentInfo GetArgumentInfoOfChild(int index)
 		{
@@ -397,7 +401,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -438,7 +442,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -484,7 +488,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -529,7 +533,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');
@@ -559,7 +563,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(OpCode);
 			WriteBinderFlags(output, options);
 			output.Write(' ');

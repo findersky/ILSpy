@@ -1,13 +1,17 @@
 ﻿#if DEBUG
 
+using ICSharpCode.ILSpy.Docking;
+using ICSharpCode.ILSpy.Properties;
+using ICSharpCode.ILSpy.ViewModels;
+
 namespace ICSharpCode.ILSpy.Commands
 {
-	[ExportMainMenuCommand(Menu = "_View", Header = "_Show debug steps", MenuOrder = 5000)]
+	[ExportMainMenuCommand(Menu = nameof(Resources._View),  Header = nameof(Resources._ShowDebugSteps),  MenuOrder = 5000)]
 	class ShowDebugSteps : SimpleCommand
 	{
 		public override void Execute(object parameter)
 		{
-			DebugSteps.Show();
+			DockWorkspace.Instance.ShowToolPane(DebugStepsPaneModel.PaneContentId);
 		}
 	}
 }

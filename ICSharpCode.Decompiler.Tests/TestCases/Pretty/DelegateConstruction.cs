@@ -146,8 +146,115 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+
+		public interface IM3
+		{
+			void M3();
+		}
+
+		public class BaseClass : IM3
+		{
+			protected virtual void M1()
+			{
+			}
+			protected virtual void M2()
+			{
+			}
+			public virtual void M3()
+			{
+			}
+		}
+
+		public class SubClass : BaseClass
+		{
+			protected override void M2()
+			{
+			}
+			public new void M3()
+			{
+			}
+
+			public void Test()
+			{
+				Noop("M1.base", base.M1);
+				Noop("M1", M1);
+				Noop("M2.base", base.M2);
+				Noop("M2", M2);
+				Noop("M3.base", base.M3);
+				Noop("M3.base_virt", ((BaseClass)this).M3);
+				Noop("M3.base_interface", ((IM3)this).M3);
+#if CS70
+				Noop("M3", this.M3);
+				Noop("M3", M3);
+
+#if CS80
+				static void M3()
+#else
+				void M3()
+#endif
+				{
+
+				}
+#else
+				Noop("M3", M3);
+#endif
+			}
+
+			public void Test2()
+			{
+				Noop("M3.new", new BaseClass().M3);
+				Noop("M3.new", new SubClass().M3);
+			}
+
+			private void Noop(string name, Action _)
+			{
+			}
+		}
+
+		public class GenericTest<TNonCaptured, TCaptured>
+		{
+			public Func<TCaptured> GetFunc(Func<TNonCaptured, TCaptured> f)
+			{
+				TCaptured captured = f(default(TNonCaptured));
+				return delegate {
+					Console.WriteLine(captured.GetType().FullName);
+					return captured;
+				};
+			}
+
+			public Func<TNonCaptured, TNonCapturedMP, TCaptured> GetFunc<TNonCapturedMP>(Func<TCaptured> f)
+			{
+				TCaptured captured = f();
+				return delegate(TNonCaptured a, TNonCapturedMP d) {
+					Console.WriteLine(a.GetHashCode());
+					Console.WriteLine(captured.GetType().FullName);
+					return captured;
+				};
+			}
+		}
+
+		public static Func<string, string, bool> test0 = (string a, string b) => string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test1 = (string a, string b) => string.IsNullOrEmpty(a) || !string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test2 = (string a, string b) => !string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test3 = (string a, string b) => !string.IsNullOrEmpty(a) || !string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test4 = (string a, string b) => string.IsNullOrEmpty(a) && string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test5 = (string a, string b) => string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test6 = (string a, string b) => !string.IsNullOrEmpty(a) && string.IsNullOrEmpty(b);
+		public static Func<string, string, bool> test7 = (string a, string b) => !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b);
+
 		public static void Test(this string a)
 		{
+		}
+
+		public static Predicate<T> And<T>(this Predicate<T> filter1, Predicate<T> filter2)
+		{
+			if (filter1 == null) {
+				return filter2;
+			}
+			if (filter2 == null) {
+				return filter1;
+			}
+			return (T m) => filter1(m) && filter2(m);
 		}
 
 		public static Action<string> ExtensionMethodUnbound()
@@ -163,6 +270,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static Action ExtensionMethodBoundOnNull()
 		{
 			return ((string)null).Test;
+		}
+
+		public static Predicate<int> NoExtensionMethodOnLambda()
+		{
+			return And((int x) => x >= 0, (int x) => x <= 100);
 		}
 
 		public static object StaticMethod()
@@ -258,6 +370,83 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static Func<int, Func<int, Func<int, int>>> CurriedAddition2(int a)
 		{
 			return (int b) => (int c) => (int d) => a + b + c + d;
+		}
+
+		public static Func<TCaptured> CapturedTypeParameter1<TNonCaptured, TCaptured>(TNonCaptured a, Func<TNonCaptured, TCaptured> f)
+		{
+			TCaptured captured = f(a);
+			return delegate {
+				Console.WriteLine(captured.GetType().FullName);
+				return captured;
+			};
+		}
+
+		public static Func<TCaptured> CapturedTypeParameter2<TNonCaptured, TCaptured>(TNonCaptured a, Func<TNonCaptured, List<TCaptured>> f)
+		{
+			List<TCaptured> captured = f(a);
+			return delegate {
+				Console.WriteLine(captured.GetType().FullName);
+				return captured.FirstOrDefault();
+			};
+		}
+
+		public static Func<int> Issue1773(short data)
+		{
+			int integerData = data;
+			return () => integerData;
+		}
+
+#if !MCS
+		// does not compile with mcs...
+		public static Func<int> Issue1773b(object data)
+		{
+#if ROSLYN
+			dynamic dynamicData = data;
+			return () => dynamicData.DynamicCall();
+#else
+			// This is a bug in the old csc: captured dynamic local variables did not have the [DynamicAttribute]
+			// on the display-class field.
+			return () => ((dynamic)data).DynamicCall();
+#endif
+		}
+
+		public static Func<int> Issue1773c(object data)
+		{
+#if ROSLYN
+			dynamic dynamicData = data;
+			return () => dynamicData;
+#else
+			return () => (dynamic)data;
+#endif
+		}
+#endif
+
+#if ROSLYN
+		public static Func<string> Issue1773d((int Integer, string String) data)
+		{
+			(int Integer, string RenamedString) valueTuple = data;
+			return () => valueTuple.RenamedString;
+		}
+#endif
+	}
+
+	public class Issue1867
+	{
+		private int value;
+
+		public Func<bool> TestLambda(Issue1867 x)
+		{
+			Issue1867 m1;
+			Issue1867 m2;
+			if (x.value > value) {
+				m1 = this;
+				m2 = x;
+			} else {
+				m1 = x;
+				m2 = this;
+			}
+
+			return () => m1.value + 1 == 4 && m2.value > 5;
 		}
 	}
 }

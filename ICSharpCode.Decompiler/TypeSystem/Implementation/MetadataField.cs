@@ -146,7 +146,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 
 			b.AddMarshalInfo(fieldDef.GetMarshallingDescriptor());
-			b.Add(fieldDef.GetCustomAttributes());
+			b.Add(fieldDef.GetCustomAttributes(), SymbolKind.Field);
 
 			return b.Build();
 		}
@@ -178,13 +178,19 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		{
 			var metadata = module.metadata;
 			var fieldDef = metadata.GetFieldDefinition(handle);
-			var ty = fieldDef.DecodeSignature(module.TypeProvider, new GenericContext(DeclaringType?.TypeParameters));
-			if (ty is ModifiedType mod && mod.Modifier.Name == "IsVolatile" && mod.Modifier.Namespace == "System.Runtime.CompilerServices") {
-				Volatile.Write(ref this.isVolatile, true);
-				ty = mod.ElementType;
+			IType ty;
+			try {
+				ty = fieldDef.DecodeSignature(module.TypeProvider, new GenericContext(DeclaringType?.TypeParameters));
+				if (ty is ModifiedType mod && mod.Modifier.Name == "IsVolatile" && mod.Modifier.Namespace == "System.Runtime.CompilerServices") {
+					Volatile.Write(ref this.isVolatile, true);
+					ty = mod.ElementType;
+				}
+				ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation,
+					fieldDef.GetCustomAttributes(), metadata, module.OptionsForEntity(this),
+					DeclaringTypeDefinition?.NullableContext ?? Nullability.Oblivious);
+			} catch (BadImageFormatException) {
+				ty = SpecialType.UnknownType;
 			}
-			ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation,
-				fieldDef.GetCustomAttributes(), metadata, module.TypeSystemOptions);
 			return LazyInit.GetOrSet(ref this.type, ty);
 		}
 
@@ -201,11 +207,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
-		public object ConstantValue {
-			get {
-				object val = LazyInit.VolatileRead(ref this.constantValue);
-				if (val != null)
-					return val;
+		public object GetConstantValue(bool throwOnInvalidMetadata)
+		{
+			object val = LazyInit.VolatileRead(ref this.constantValue);
+			if (val != null)
+				return val;
+			try {
 				var metadata = module.metadata;
 				var fieldDef = metadata.GetFieldDefinition(handle);
 				if (IsDecimalConstant && DecimalConstantHelper.AllowsDecimalConstants(module)) {
@@ -216,9 +223,15 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						return null;
 					var constant = metadata.GetConstant(constantHandle);
 					var blobReader = metadata.GetBlobReader(constant.Value);
-					val = blobReader.ReadConstant(constant.TypeCode);
+					try {
+						val = blobReader.ReadConstant(constant.TypeCode);
+					} catch (ArgumentOutOfRangeException) {
+						throw new BadImageFormatException($"Constant with invalid typecode: {constant.TypeCode}");
+					}
 				}
 				return LazyInit.GetOrSet(ref this.constantValue, val);
+			} catch (BadImageFormatException) when (!throwOnInvalidMetadata) {
+				return null;
 			}
 		}
 

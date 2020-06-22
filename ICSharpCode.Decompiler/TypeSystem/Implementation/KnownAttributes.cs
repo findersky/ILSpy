@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -38,6 +39,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		Extension,
 		Dynamic,
 		TupleElementNames,
+		Nullable,
+		NullableContext,
+		NullablePublicOnly,
 		Conditional,
 		Obsolete,
 		IsReadOnly,
@@ -60,6 +64,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IsByRefLike,
 		IteratorStateMachine,
 		AsyncStateMachine,
+		AsyncMethodBuilder,
+		AsyncIteratorStateMachine,
 
 		// Field attributes:
 		FieldOffset,
@@ -84,6 +90,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		CallerFilePath,
 		CallerLineNumber,
 
+		// Type parameter attributes:
+		IsUnmanaged,
+
 		// Marshalling attributes:
 		MarshalAs,
 
@@ -101,6 +110,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(ExtensionAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(DynamicAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(TupleElementNamesAttribute)),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "NullableAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "NullableContextAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "NullablePublicOnlyAttribute"),
 			new TopLevelTypeName("System.Diagnostics", nameof(ConditionalAttribute)),
 			new TopLevelTypeName("System", nameof(ObsoleteAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", "IsReadOnlyAttribute"),
@@ -121,6 +133,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.CompilerServices", "IsByRefLikeAttribute"),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(IteratorStateMachineAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(AsyncStateMachineAttribute)),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "AsyncMethodBuilderAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "AsyncIteratorStateMachineAttribute"),
 			// Field attributes:
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(FieldOffsetAttribute)),
 			new TopLevelTypeName("System", nameof(NonSerializedAttribute)),
@@ -140,10 +154,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerMemberNameAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerFilePathAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerLineNumberAttribute)),
+			// Type parameter attributes:
+			new TopLevelTypeName("System.Runtime.CompilerServices", "IsUnmanagedAttribute"),
 			// Marshalling attributes:
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(MarshalAsAttribute)),
 			// Security attributes:
-			new TopLevelTypeName("System.Security", "PermissionSetAttribute"),
+			new TopLevelTypeName("System.Security.Permissions", "PermissionSetAttribute"),
 		};
 
 		public static ref readonly TopLevelTypeName GetTypeName(this KnownAttribute attr)
@@ -155,6 +171,17 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public static IType FindType(this ICompilation compilation, KnownAttribute attrType)
 		{
 			return compilation.FindType(attrType.GetTypeName());
+		}
+
+		public static KnownAttribute IsKnownAttributeType(this ITypeDefinition attributeType)
+		{
+			if (!attributeType.GetNonInterfaceBaseTypes().Any(t => t.IsKnownType(KnownTypeCode.Attribute)))
+				return KnownAttribute.None;
+			for (int i = 1; i < typeNames.Length; i++) {
+				if (typeNames[i] == attributeType.FullTypeName)
+					return (KnownAttribute)i;
+			}
+			return KnownAttribute.None;
 		}
 	}
 }

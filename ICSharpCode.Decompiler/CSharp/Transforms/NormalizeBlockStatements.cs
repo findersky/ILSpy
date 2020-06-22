@@ -130,20 +130,65 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			base.VisitPropertyDeclaration(propertyDeclaration);
 		}
 
+		public override void VisitIndexerDeclaration(IndexerDeclaration indexerDeclaration)
+		{
+			if (context.Settings.UseExpressionBodyForCalculatedGetterOnlyProperties) {
+				SimplifyIndexerDeclaration(indexerDeclaration);
+			}
+			base.VisitIndexerDeclaration(indexerDeclaration);
+		}
+
 		static readonly PropertyDeclaration CalculatedGetterOnlyPropertyPattern = new PropertyDeclaration() {
+			Attributes = { new Repeat(new AnyNode()) },
 			Modifiers = Modifiers.Any,
 			Name = Pattern.AnyString,
+			PrivateImplementationType = new AnyNodeOrNull(),
 			ReturnType = new AnyNode(),
-			Getter = new Accessor() { Body = new BlockStatement() { new ReturnStatement(new AnyNode("expression")) } }
+			Getter = new Accessor() { 
+				Modifiers = Modifiers.Any,
+				Body = new BlockStatement() { new ReturnStatement(new AnyNode("expression")) } 
+			}
 		};
+
+		static readonly IndexerDeclaration CalculatedGetterOnlyIndexerPattern = new IndexerDeclaration() {
+			Attributes = { new Repeat(new AnyNode()) },
+			Modifiers = Modifiers.Any,
+			PrivateImplementationType = new AnyNodeOrNull(),
+			Parameters = { new Repeat(new AnyNode()) },
+			ReturnType = new AnyNode(),
+			Getter = new Accessor() {
+				Modifiers = Modifiers.Any,
+				Body = new BlockStatement() { new ReturnStatement(new AnyNode("expression")) } 
+			}
+		};
+
+		/// <summary>
+		/// Modifiers that are emitted on accessors, but can be moved to the property declaration.
+		/// </summary>
+		const Modifiers movableModifiers = Modifiers.Readonly;
 
 		void SimplifyPropertyDeclaration(PropertyDeclaration propertyDeclaration)
 		{
 			var m = CalculatedGetterOnlyPropertyPattern.Match(propertyDeclaration);
 			if (!m.Success)
 				return;
+			if ((propertyDeclaration.Getter.Modifiers & ~movableModifiers) != 0)
+				return;
+			propertyDeclaration.Modifiers |= propertyDeclaration.Getter.Modifiers;
 			propertyDeclaration.ExpressionBody = m.Get<Expression>("expression").Single().Detach();
 			propertyDeclaration.Getter.Remove();
+		}
+
+		void SimplifyIndexerDeclaration(IndexerDeclaration indexerDeclaration)
+		{
+			var m = CalculatedGetterOnlyIndexerPattern.Match(indexerDeclaration);
+			if (!m.Success)
+				return;
+			if ((indexerDeclaration.Getter.Modifiers & ~movableModifiers) != 0)
+				return;
+			indexerDeclaration.Modifiers |= indexerDeclaration.Getter.Modifiers;
+			indexerDeclaration.ExpressionBody = m.Get<Expression>("expression").Single().Detach();
+			indexerDeclaration.Getter.Remove();
 		}
 	}
 }

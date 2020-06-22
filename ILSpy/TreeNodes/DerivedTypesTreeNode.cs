@@ -22,7 +22,7 @@ using System.Threading;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
-
+using ICSharpCode.ILSpy.Properties;
 using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.ILSpy.TreeNodes
@@ -44,7 +44,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			this.threading = new ThreadingSupport();
 		}
 
-		public override object Text => "Derived Types";
+		public override object Text => Resources.DerivedTypes;
 
 		public override object Icon => Images.SubTypes;
 
@@ -73,7 +73,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					var td = metadata.GetTypeDefinition(h);
 					foreach (var iface in td.GetInterfaceImplementations()) {
 						var ifaceImpl = metadata.GetInterfaceImplementation(iface);
-						if (IsSameType(metadata, ifaceImpl.Interface, definitionMetadata, metadataToken))
+						if (!ifaceImpl.Interface.IsNil && IsSameType(metadata, ifaceImpl.Interface, definitionMetadata, metadataToken))
 							yield return new DerivedTypesEntryNode(list, assembly.GetDefinition(h));
 					}
 					SRM.EntityHandle baseType = td.GetBaseTypeOrNil();

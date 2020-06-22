@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -112,20 +113,53 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 		}
 
+		public bool ReturnTypeIsRefReadOnly {
+			get {
+				var propertyDef = module.metadata.GetPropertyDefinition(propertyHandle);
+				return propertyDef.GetCustomAttributes().HasKnownAttribute(module.metadata, KnownAttribute.IsReadOnly);
+			}
+		}
+
 		private void DecodeSignature()
 		{
 			var propertyDef = module.metadata.GetPropertyDefinition(propertyHandle);
 			var genericContext = new GenericContext(DeclaringType.TypeParameters);
-			var signature = propertyDef.DecodeSignature(module.TypeProvider, genericContext);
-			var accessors = propertyDef.GetAccessors();
-			ParameterHandleCollection? parameterHandles;
-			if (!accessors.Getter.IsNil)
-				parameterHandles = module.metadata.GetMethodDefinition(accessors.Getter).GetParameters();
-			else if (!accessors.Setter.IsNil)
-				parameterHandles = module.metadata.GetMethodDefinition(accessors.Setter).GetParameters();
-			else
-				parameterHandles = null;
-			var (returnType, parameters) = MetadataMethod.DecodeSignature(module, this, signature, parameterHandles);
+			IType returnType;
+			IParameter[] parameters;
+			try {
+				var signature = propertyDef.DecodeSignature(module.TypeProvider, genericContext);
+				var accessors = propertyDef.GetAccessors();
+				var declTypeDef = this.DeclaringTypeDefinition;
+				ParameterHandleCollection? parameterHandles;
+				Nullability nullableContext;
+				if (!accessors.Getter.IsNil) {
+					var getter = module.metadata.GetMethodDefinition(accessors.Getter);
+					parameterHandles = getter.GetParameters();
+					nullableContext = getter.GetCustomAttributes().GetNullableContext(module.metadata)
+						?? declTypeDef?.NullableContext ?? Nullability.Oblivious;
+				} else if (!accessors.Setter.IsNil) {
+					var setter = module.metadata.GetMethodDefinition(accessors.Setter);
+					parameterHandles = setter.GetParameters();
+					nullableContext = setter.GetCustomAttributes().GetNullableContext(module.metadata)
+						?? declTypeDef?.NullableContext ?? Nullability.Oblivious;
+				} else {
+					parameterHandles = null;
+					nullableContext = declTypeDef?.NullableContext ?? Nullability.Oblivious;
+				}
+				// We call OptionsForEntity() for the declaring type, not the property itself,
+				// because the property's accessibilty isn't stored in metadata but computed.
+				// Otherwise we'd get infinite recursion, because computing the accessibility
+				// requires decoding the signature for the GetBaseMembers() call.
+				// Roslyn uses the same workaround (see the NullableTypeDecoder.TransformType
+				// call in PEPropertySymbol).
+				var typeOptions = module.OptionsForEntity(declTypeDef);
+				(returnType, parameters) = MetadataMethod.DecodeSignature(module, this, signature,
+					parameterHandles, nullableContext, typeOptions,
+					returnTypeAttributes: propertyDef.GetCustomAttributes());
+			} catch (BadImageFormatException) {
+				returnType = SpecialType.UnknownType;
+				parameters = Empty<IParameter>.Array;
+			}
 			LazyInit.GetOrSet(ref this.returnType, returnType);
 			LazyInit.GetOrSet(ref this.parameters, parameters);
 		}
@@ -155,7 +189,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			if (IsIndexer && Name != "Item" && !IsExplicitInterfaceImplementation) {
 				b.Add(KnownAttribute.IndexerName, KnownTypeCode.String, Name);
 			}
-			b.Add(propertyDef.GetCustomAttributes());
+			b.Add(propertyDef.GetCustomAttributes(), symbolKind);
 			return b.Build();
 		}
 		#endregion
@@ -179,36 +213,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						return baseMember.Accessibility;
 				}
 			}
-			return MergePropertyAccessibility(
+			return AccessibilityExtensions.Union(
 				this.Getter?.Accessibility ?? Accessibility.None,
 				this.Setter?.Accessibility ?? Accessibility.None);
-		}
-
-		static internal Accessibility MergePropertyAccessibility(Accessibility left, Accessibility right)
-		{
-			if (left == Accessibility.Public || right == Accessibility.Public)
-				return Accessibility.Public;
-
-			if (left == Accessibility.ProtectedOrInternal || right == Accessibility.ProtectedOrInternal)
-				return Accessibility.ProtectedOrInternal;
-
-			if (left == Accessibility.Protected && right == Accessibility.Internal ||
-				left == Accessibility.Internal && right == Accessibility.Protected)
-				return Accessibility.ProtectedOrInternal;
-
-			if (left == Accessibility.Protected || right == Accessibility.Protected)
-				return Accessibility.Protected;
-
-			if (left == Accessibility.Internal || right == Accessibility.Internal)
-				return Accessibility.Internal;
-
-			if (left == Accessibility.ProtectedAndInternal || right == Accessibility.ProtectedAndInternal)
-				return Accessibility.ProtectedAndInternal;
-
-			if (left == Accessibility.Private || right == Accessibility.Private)
-				return Accessibility.Private;
-
-			return left;
 		}
 		#endregion
 

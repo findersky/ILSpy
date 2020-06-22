@@ -40,6 +40,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		internal readonly MetadataReader metadata;
 		readonly TypeSystemOptions options;
 		internal readonly TypeProvider TypeProvider;
+		internal readonly Nullability NullableContext;
 
 		readonly MetadataNamespace rootNamespace;
 		readonly MetadataTypeDefinition[] typeDefs;
@@ -66,6 +67,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				this.AssemblyName = metadata.GetString(moddef.Name);
 				this.FullAssemblyName = this.AssemblyName;
 			}
+			var customAttrs = metadata.GetModuleDefinition().GetCustomAttributes();
+			this.NullableContext = customAttrs.GetNullableContext(metadata) ?? Nullability.Oblivious;
+			this.minAccessibilityForNRT = FindMinimumAccessibilityForNRT(metadata, customAttrs);
 			this.rootNamespace = new MetadataNamespace(this, null, string.Empty, metadata.GetNamespaceDefinitionRoot());
 
 			if (!options.HasFlag(TypeSystemOptions.Uncached)) {
@@ -141,7 +145,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 						var attrValue = attr.DecodeValue(this.TypeProvider);
 						if (attrValue.FixedArguments.Length == 1) {
 							if (attrValue.FixedArguments[0].Value is string s) {
-								list.Add(s);
+								list.Add(GetShortName(s));
 							}
 						}
 					}
@@ -151,6 +155,17 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				result = Empty<string>.Array;
 			}
 			return LazyInit.GetOrSet(ref this.internalsVisibleTo, result);
+		}
+
+		static string GetShortName(string fullAssemblyName)
+		{
+			if (fullAssemblyName == null)
+				return null;
+			int pos = fullAssemblyName.IndexOf(',');
+			if (pos < 0)
+				return fullAssemblyName;
+			else
+				return fullAssemblyName.Substring(0, pos);
 		}
 		#endregion
 
@@ -256,12 +271,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		#endregion
 
 		#region Resolve Type
-		public IType ResolveType(EntityHandle typeRefDefSpec, GenericContext context, CustomAttributeHandleCollection? typeAttributes = null)
+		public IType ResolveType(EntityHandle typeRefDefSpec, GenericContext context, CustomAttributeHandleCollection? typeAttributes = null, Nullability nullableContext = Nullability.Oblivious)
 		{
-			return ResolveType(typeRefDefSpec, context, options, typeAttributes);
+			return ResolveType(typeRefDefSpec, context, options, typeAttributes, nullableContext);
 		}
 
-		public IType ResolveType(EntityHandle typeRefDefSpec, GenericContext context, TypeSystemOptions customOptions,  CustomAttributeHandleCollection? typeAttributes = null)
+		public IType ResolveType(EntityHandle typeRefDefSpec, GenericContext context, TypeSystemOptions customOptions, CustomAttributeHandleCollection? typeAttributes = null, Nullability nullableContext = Nullability.Oblivious)
 		{
 			if (typeRefDefSpec.IsNil)
 				return SpecialType.UnknownType;
@@ -282,7 +297,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				default:
 					throw new BadImageFormatException("Not a type handle");
 			}
-			ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, typeAttributes, metadata, customOptions);
+			ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, typeAttributes, metadata, customOptions, nullableContext);
 			return ty;
 		}
 
@@ -290,16 +305,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		{
 			// resolve without substituting dynamic/tuple types
 			var ty = ResolveType(declaringTypeReference, context,
-				options & ~(TypeSystemOptions.Dynamic | TypeSystemOptions.Tuple));
+				options & ~(TypeSystemOptions.Dynamic | TypeSystemOptions.Tuple | TypeSystemOptions.NullabilityAnnotations));
 			// but substitute tuple types in type arguments:
-			ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, null, metadata, options, typeChildrenOnly: true);
+			ty = ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, null, metadata, options, Nullability.Oblivious, typeChildrenOnly: true);
 			return ty;
 		}
 
 		IType IntroduceTupleTypes(IType ty)
 		{
 			// run ApplyAttributeTypeVisitor without attributes, in order to introduce tuple types
-			return ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, null, metadata, options);
+			return ApplyAttributeTypeVisitor.ApplyAttributesToType(ty, Compilation, null, metadata, options, Nullability.Oblivious);
 		}
 		#endregion
 
@@ -464,7 +479,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					typeParameters.Add(new DefaultTypeParameter(m, i));
 				}
 				m.TypeParameters = typeParameters;
-				substitution = new TypeParameterSubstitution(null, typeParameters);
+				substitution = new TypeParameterSubstitution(declaringType.TypeArguments, typeParameters);
+			} else if (declaringType.TypeArguments.Count > 0) {
+				substitution = declaringType.GetSubstitution();
 			}
 			var parameters = new List<IParameter>();
 			for (int i = 0; i < signature.RequiredParameterCount; i++) {
@@ -540,6 +557,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var field = declaringType.GetFields(f => f.Name == name && CompareTypes(f.ReturnType, signature),
 				GetMemberOptions.IgnoreInheritedMembers).FirstOrDefault();
 			if (field == null) {
+				// If it's a field in a generic type, we need to substitute the type arguments:
+				if (declaringType.TypeArguments.Count > 0) {
+					signature = signature.AcceptVisitor(declaringType.GetSubstitution());
+				}
 				field = new FakeField(Compilation) {
 					ReturnType = signature,
 					Name = name,
@@ -587,7 +608,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var b = new AttributeListBuilder(this);
 			if (metadata.IsAssembly) {
 				var assembly = metadata.GetAssemblyDefinition();
-				b.Add(metadata.GetCustomAttributes(Handle.AssemblyDefinition));
+				b.Add(metadata.GetCustomAttributes(Handle.AssemblyDefinition), SymbolKind.Module);
 				b.AddSecurityAttributes(assembly.GetDeclarativeSecurityAttributes());
 
 				// AssemblyVersionAttribute
@@ -606,7 +627,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public IEnumerable<IAttribute> GetModuleAttributes()
 		{
 			var b = new AttributeListBuilder(this);
-			b.Add(metadata.GetCustomAttributes(Handle.ModuleDefinition));
+			b.Add(metadata.GetCustomAttributes(Handle.ModuleDefinition), SymbolKind.Module);
 			if (!metadata.IsAssembly) {
 				AddTypeForwarderAttributes(ref b);
 			}
@@ -718,6 +739,52 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				|| att == MethodAttributes.Public
 				|| att == MethodAttributes.Family
 				|| att == MethodAttributes.FamORAssem;
+		}
+		#endregion
+
+		#region Nullability Reference Type Support
+		readonly Accessibility minAccessibilityForNRT;
+
+		static Accessibility FindMinimumAccessibilityForNRT(MetadataReader metadata, CustomAttributeHandleCollection customAttributes)
+		{
+			// Determine the minimum effective accessibility an entity must have, so that the metadata stores the nullability for its type.
+			foreach (var handle in customAttributes) {
+				var customAttribute = metadata.GetCustomAttribute(handle);
+				if (customAttribute.IsKnownAttribute(metadata, KnownAttribute.NullablePublicOnly)) {
+					CustomAttributeValue<IType> value;
+					try {
+						value = customAttribute.DecodeValue(Metadata.MetadataExtensions.MinimalAttributeTypeProvider);
+					} catch (BadImageFormatException) {
+						continue;
+					} catch (EnumUnderlyingTypeResolveException) {
+						continue;
+					}
+					if (value.FixedArguments.Length == 1 && value.FixedArguments[0].Value is bool includesInternals) {
+						return includesInternals ? Accessibility.ProtectedAndInternal : Accessibility.Protected;
+					}
+				}
+			}
+			return Accessibility.None;
+		}
+
+		internal bool ShouldDecodeNullableAttributes(IEntity entity)
+		{
+			if ((options & TypeSystemOptions.NullabilityAnnotations) == 0)
+				return false;
+			if (minAccessibilityForNRT == Accessibility.None || entity == null)
+				return true;
+			return minAccessibilityForNRT.LessThanOrEqual(entity.EffectiveAccessibility());
+		}
+
+		internal TypeSystemOptions OptionsForEntity(IEntity entity)
+		{
+			var opt = this.options;
+			if ((opt & TypeSystemOptions.NullabilityAnnotations) != 0) {
+				if (!ShouldDecodeNullableAttributes(entity)) {
+					opt &= ~TypeSystemOptions.NullabilityAnnotations;
+				}
+			}
+			return opt;
 		}
 		#endregion
 	}

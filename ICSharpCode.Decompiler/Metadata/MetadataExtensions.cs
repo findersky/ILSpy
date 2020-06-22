@@ -49,7 +49,7 @@ namespace ICSharpCode.Decompiler.Metadata
 			return publicKeyTokenBytes.TakeLast(8).Reverse().ToHexString(8);
 		}
 
-		public static string GetFullAssemblyName(this MetadataReader reader)
+		public static string GetPublicKeyToken(this MetadataReader reader)
 		{
 			if (!reader.IsAssembly)
 				return string.Empty;
@@ -59,6 +59,15 @@ namespace ICSharpCode.Decompiler.Metadata
 				// AssemblyFlags.PublicKey does not apply to assembly definitions
 				publicKey = CalculatePublicKeyToken(asm.PublicKey, reader);
 			}
+			return publicKey;
+		}
+
+		public static string GetFullAssemblyName(this MetadataReader reader)
+		{
+			if (!reader.IsAssembly)
+				return string.Empty;
+			var asm = reader.GetAssemblyDefinition();
+			string publicKey = reader.GetPublicKeyToken();
 			return $"{reader.GetString(asm.Name)}, " +
 				$"Version={asm.Version}, " +
 				$"Culture={(asm.Culture.IsNil ? "neutral" : reader.GetString(asm.Culture))}, " +
@@ -84,11 +93,23 @@ namespace ICSharpCode.Decompiler.Metadata
 				$"PublicKeyToken={publicKey}{properties}";
 		}
 
-		static string ToHexString(this IEnumerable<byte> bytes, int estimatedLength)
+		public static string ToHexString(this IEnumerable<byte> bytes, int estimatedLength)
 		{
 			StringBuilder sb = new StringBuilder(estimatedLength * 2);
 			foreach (var b in bytes)
 				sb.AppendFormat("{0:x2}", b);
+			return sb.ToString();
+		}
+
+		public static string ToHexString(this BlobReader reader)
+		{
+			StringBuilder sb = new StringBuilder(reader.Length * 3);
+			for (int i = 0; i < reader.Length; i++) {
+				if (i == 0)
+					sb.AppendFormat("{0:X2}", reader.ReadByte());
+				else
+					sb.AppendFormat("-{0:X2}", reader.ReadByte());
+			}
 			return sb.ToString();
 		}
 
@@ -101,24 +122,26 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
-		public static string ToILNameString(this FullTypeName typeName)
+		public static string ToILNameString(this FullTypeName typeName, bool omitGenerics = false)
 		{
 			string name;
 			if (typeName.IsNested) {
 				name = typeName.Name;
-				int localTypeParameterCount = typeName.GetNestedTypeAdditionalTypeParameterCount(typeName.NestingLevel - 1);
-				if (localTypeParameterCount > 0)
-					name += "`" + localTypeParameterCount;
+				if (!omitGenerics) {
+					int localTypeParameterCount = typeName.GetNestedTypeAdditionalTypeParameterCount(typeName.NestingLevel - 1);
+					if (localTypeParameterCount > 0)
+						name += "`" + localTypeParameterCount;
+				}
 				name = Disassembler.DisassemblerHelpers.Escape(name);
-				return $"{typeName.GetDeclaringType().ToILNameString()}/{name}";
+				return $"{typeName.GetDeclaringType().ToILNameString(omitGenerics)}/{name}";
 			}
 			if (!string.IsNullOrEmpty(typeName.TopLevelTypeName.Namespace)) {
 				name = $"{typeName.TopLevelTypeName.Namespace}.{typeName.Name}";
-				if (typeName.TypeParameterCount > 0)
+				if (!omitGenerics && typeName.TypeParameterCount > 0)
 					name += "`" + typeName.TypeParameterCount;
 			} else {
 				name = typeName.Name;
-				if (typeName.TypeParameterCount > 0)
+				if (!omitGenerics && typeName.TypeParameterCount > 0)
 					name += "`" + typeName.TypeParameterCount;
 			}
 			return Disassembler.DisassemblerHelpers.Escape(name);
@@ -149,6 +172,10 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// that only mention built-in types.
 		/// </summary>
 		public static ICustomAttributeTypeProvider<IType> MinimalAttributeTypeProvider {
+			get => minimalCorlibTypeProvider;
+		}
+
+		public static ISignatureTypeProvider<IType, TypeSystem.GenericContext> MinimalSignatureTypeProvider {
 			get => minimalCorlibTypeProvider;
 		}
 
@@ -246,6 +273,77 @@ namespace ICSharpCode.Decompiler.Metadata
 			for (int row = 1; row <= rowCount; row++) {
 				yield return MetadataTokens.ModuleReferenceHandle(row);
 			}
+		}
+
+		public static IEnumerable<TypeSpecificationHandle> GetTypeSpecifications(this MetadataReader metadata)
+		{
+			var rowCount = metadata.GetTableRowCount(TableIndex.TypeSpec);
+			for (int row = 1; row <= rowCount; row++) {
+				yield return MetadataTokens.TypeSpecificationHandle(row);
+			}
+		}
+
+		public static IEnumerable<MethodSpecificationHandle> GetMethodSpecifications(this MetadataReader metadata)
+		{
+			var rowCount = metadata.GetTableRowCount(TableIndex.MethodSpec);
+			for (int row = 1; row <= rowCount; row++) {
+				yield return MetadataTokens.MethodSpecificationHandle(row);
+			}
+		}
+
+		public static IEnumerable<(Handle Handle, MethodSemanticsAttributes Semantics, MethodDefinitionHandle Method, EntityHandle Association)> GetMethodSemantics(this MetadataReader metadata)
+		{
+			int offset = metadata.GetTableMetadataOffset(TableIndex.MethodSemantics);
+			int rowSize = metadata.GetTableRowSize(TableIndex.MethodSemantics);
+			int rowCount = metadata.GetTableRowCount(TableIndex.MethodSemantics);
+
+			bool methodSmall = metadata.GetTableRowCount(TableIndex.MethodDef) <= ushort.MaxValue;
+			bool assocSmall = metadata.GetTableRowCount(TableIndex.Property) <= ushort.MaxValue && metadata.GetTableRowCount(TableIndex.Event) <= ushort.MaxValue;
+			int assocOffset = (methodSmall ? 2 : 4) + 2;
+			for (int row = 0; row < rowCount; row++) {
+				yield return Read(row);
+			}
+
+			unsafe (Handle Handle, MethodSemanticsAttributes Semantics, MethodDefinitionHandle Method, EntityHandle Association) Read(int row)
+			{
+				byte* ptr = metadata.MetadataPointer + offset + rowSize * row;
+				int methodDef = methodSmall ? *(ushort*)(ptr + 2) : (int)*(uint*)(ptr + 2);
+				int assocDef = assocSmall ? *(ushort*)(ptr + assocOffset) : (int)*(uint*)(ptr + assocOffset);
+				EntityHandle propOrEvent;
+				if ((assocDef & 0x1) == 1) {
+					propOrEvent = MetadataTokens.PropertyDefinitionHandle(assocDef >> 1);
+				} else {
+					propOrEvent = MetadataTokens.EventDefinitionHandle(assocDef >> 1);
+				}
+				return (MetadataTokens.Handle(0x18000000 | (row + 1)), (MethodSemanticsAttributes)(*(ushort*)ptr), MetadataTokens.MethodDefinitionHandle(methodDef), propOrEvent);
+			}
+		}
+
+		public static IEnumerable<EntityHandle> GetFieldLayouts(this MetadataReader metadata)
+		{
+			var rowCount = metadata.GetTableRowCount(TableIndex.FieldLayout);
+			for (int row = 1; row <= rowCount; row++) {
+				yield return MetadataTokens.EntityHandle(TableIndex.FieldLayout, row);
+			}
+		}
+
+		public unsafe static (int Offset, FieldDefinitionHandle FieldDef) GetFieldLayout(this MetadataReader metadata, EntityHandle fieldLayoutHandle)
+		{
+			byte* startPointer = metadata.MetadataPointer;
+			int offset = metadata.GetTableMetadataOffset(TableIndex.FieldLayout);
+			int rowSize = metadata.GetTableRowSize(TableIndex.FieldLayout);
+			int rowCount = metadata.GetTableRowCount(TableIndex.FieldLayout);
+			
+			int fieldRowNo = metadata.GetRowNumber(fieldLayoutHandle);
+			bool small = metadata.GetTableRowCount(TableIndex.Field) <= ushort.MaxValue;
+			for (int row = rowCount - 1; row >= 0; row--) {
+				byte* ptr = startPointer + offset + rowSize * row;
+				uint rowNo = small ? *(ushort*)(ptr + 4) : *(uint*)(ptr + 4);
+				if (fieldRowNo == rowNo) {
+					return (*(int*)ptr, MetadataTokens.FieldDefinitionHandle(fieldRowNo));
+				}
+			}
+			return (0, default);
 		}
 	}
 }

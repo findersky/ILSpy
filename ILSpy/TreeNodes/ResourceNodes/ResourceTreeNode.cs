@@ -24,7 +24,9 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
+using ICSharpCode.ILSpy.ViewModels;
 using Microsoft.Win32;
 
 namespace ICSharpCode.ILSpy.TreeNodes
@@ -35,49 +37,41 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	/// </summary>
 	public class ResourceTreeNode : ILSpyTreeNode
 	{
-		readonly Resource r;
-		
 		public ResourceTreeNode(Resource r)
 		{
 			if (r.IsNil)
 				throw new ArgumentNullException(nameof(r));
-			this.r = r;
+			this.Resource = r;
 		}
-		
-		public Resource Resource {
-			get { return r; }
-		}
-		
-		public override object Text {
-			get { return r.Name; }
-		}
-		
-		public override object Icon {
-			get { return Images.Resource; }
-		}
-		
+
+		public Resource Resource { get; }
+
+		public override object Text => Resource.Name;
+
+		public override object Icon => Images.Resource;
+
 		public override FilterResult Filter(FilterSettings settings)
 		{
-			if (!settings.ShowInternalApi && (r.Attributes & ManifestResourceAttributes.VisibilityMask) == ManifestResourceAttributes.Private)
+			if (settings.ShowApiLevel == ApiVisibility.PublicOnly && (Resource.Attributes & ManifestResourceAttributes.VisibilityMask) == ManifestResourceAttributes.Private)
 				return FilterResult.Hidden;
-			if (settings.SearchTermMatches(r.Name))
+			if (settings.SearchTermMatches(Resource.Name))
 				return FilterResult.Match;
 			else
 				return FilterResult.Hidden;
 		}
-		
+
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			language.WriteCommentLine(output, string.Format("{0} ({1}, {2})", r.Name, r.ResourceType, r.Attributes));
-			
+			language.WriteCommentLine(output, string.Format("{0} ({1}, {2})", Resource.Name, Resource.ResourceType, Resource.Attributes));
+
 			ISmartTextOutput smartOutput = output as ISmartTextOutput;
 			if (smartOutput != null) {
-				smartOutput.AddButton(Images.Save, "Save", delegate { Save(null); });
+				smartOutput.AddButton(Images.Save, Resources.Save, delegate { Save(Docking.DockWorkspace.Instance.ActiveTabPage); });
 				output.WriteLine();
 			}
 		}
-		
-		public override bool View(DecompilerTextView textView)
+
+		public override bool View(TabPageModel tabPage)
 		{
 			Stream s = Resource.TryOpenStream();
 			if (s != null && s.Length < DecompilerTextView.DefaultOutputLengthLimit) {
@@ -92,14 +86,15 @@ namespace ICSharpCode.ILSpy.TreeNodes
 						ext = ".xml";
 					else
 						ext = Path.GetExtension(DecompilerTextView.CleanUpName(Resource.Name));
-					textView.ShowNode(output, this, HighlightingManager.Instance.GetDefinitionByExtension(ext));
+					tabPage.ShowTextView(textView => textView.ShowNode(output, this, HighlightingManager.Instance.GetDefinitionByExtension(ext)));
+					tabPage.SupportsLanguageSwitching = false;
 					return true;
 				}
 			}
 			return false;
 		}
-		
-		public override bool Save(DecompilerTextView textView)
+
+		public override bool Save(TabPageModel tabPage)
 		{
 			Stream s = Resource.TryOpenStream();
 			if (s == null)
@@ -114,7 +109,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 			return true;
 		}
-		
+
 		public static ILSpyTreeNode Create(Resource resource)
 		{
 			ILSpyTreeNode result = null;

@@ -1,13 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using SRM = System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 using System.Reflection.Metadata.Ecma335;
 
@@ -69,12 +66,17 @@ namespace ICSharpCode.Decompiler
 				return false;
 			if (!baseType.IsKnownType(reader, KnownTypeCode.Enum))
 				return false;
-			var field = reader.GetFieldDefinition(typeDefinition.GetFields().First());
-			var blob = reader.GetBlobReader(field.Signature);
-			if (blob.ReadSignatureHeader().Kind != SignatureKind.Field)
-				return false;
-			underlyingType = (PrimitiveTypeCode)blob.ReadByte();
-			return true;
+			foreach (var handle in typeDefinition.GetFields()) {
+				var field = reader.GetFieldDefinition(handle);
+				if ((field.Attributes & FieldAttributes.Static) != 0)
+					continue;
+				var blob = reader.GetBlobReader(field.Signature);
+				if (blob.ReadSignatureHeader().Kind != SignatureKind.Field)
+					return false;
+				underlyingType = (PrimitiveTypeCode)blob.ReadByte();
+				return true;
+			}
+			return false;
 		}
 
 		public static bool IsDelegate(this TypeDefinitionHandle handle, MetadataReader reader)
@@ -173,12 +175,12 @@ namespace ICSharpCode.Decompiler
 
 		public static bool IsKnownType(this EntityHandle handle, MetadataReader reader, KnownTypeCode knownType)
 		{
-			return GetFullTypeName(handle, reader) == KnownTypeReference.Get(knownType).TypeName;
+			return !handle.IsNil && GetFullTypeName(handle, reader) == KnownTypeReference.Get(knownType).TypeName;
 		}
 		
 		internal static bool IsKnownType(this EntityHandle handle, MetadataReader reader, KnownAttribute knownType)
 		{
-			return GetFullTypeName(handle, reader) == knownType.GetTypeName();
+			return !handle.IsNil && GetFullTypeName(handle, reader) == knownType.GetTypeName();
 		}
 
 		public static FullTypeName GetFullTypeName(this TypeSpecificationHandle handle, MetadataReader reader)
@@ -241,9 +243,14 @@ namespace ICSharpCode.Decompiler
 
 		public static FullTypeName GetFullTypeName(this ExportedType type, MetadataReader metadata)
 		{
-			string ns = type.Namespace.IsNil ? "" : metadata.GetString(type.Namespace);
 			string name = ReflectionHelper.SplitTypeParameterCountFromReflectionName(metadata.GetString(type.Name), out int typeParameterCount);
-			return new TopLevelTypeName(ns, name, typeParameterCount);
+			if (type.Implementation.Kind == HandleKind.ExportedType) {
+				var outerType = metadata.GetExportedType((ExportedTypeHandle)type.Implementation);
+				return outerType.GetFullTypeName(metadata).NestedType(name, typeParameterCount);
+			} else {
+				string ns = type.Namespace.IsNil ? "" : metadata.GetString(type.Namespace);
+				return new TopLevelTypeName(ns, name, typeParameterCount);
+			}
 		}
 
 		public static bool IsAnonymousType(this TypeDefinition type, MetadataReader metadata)
@@ -289,6 +296,28 @@ namespace ICSharpCode.Decompiler
 		public static bool IsCompilerGenerated(this MethodDefinitionHandle handle, MetadataReader metadata)
 		{
 			return metadata.GetMethodDefinition(handle).IsCompilerGenerated(metadata);
+		}
+
+		public static bool IsCompilerGeneratedOrIsInCompilerGeneratedClass(this MethodDefinitionHandle handle, MetadataReader metadata)
+		{
+			MethodDefinition method = metadata.GetMethodDefinition(handle);
+			if (method.IsCompilerGenerated(metadata))
+				return true;
+			TypeDefinitionHandle declaringTypeHandle = method.GetDeclaringType();
+			if (!declaringTypeHandle.IsNil && declaringTypeHandle.IsCompilerGenerated(metadata))
+				return true;
+			return false;
+		}
+
+		public static bool IsCompilerGeneratedOrIsInCompilerGeneratedClass(this TypeDefinitionHandle handle, MetadataReader metadata)
+		{
+			TypeDefinition type = metadata.GetTypeDefinition(handle);
+			if (type.IsCompilerGenerated(metadata))
+				return true;
+			TypeDefinitionHandle declaringTypeHandle = type.GetDeclaringType();
+			if (!declaringTypeHandle.IsNil && declaringTypeHandle.IsCompilerGenerated(metadata))
+				return true;
+			return false;
 		}
 
 		public static bool IsCompilerGenerated(this MethodDefinition method, MetadataReader metadata)
@@ -350,6 +379,28 @@ namespace ICSharpCode.Decompiler
 		{
 			return attr.GetAttributeType(metadata).IsKnownType(metadata, attrType);
 		}
+
+		public static Nullability? GetNullableContext(this CustomAttributeHandleCollection customAttributes, MetadataReader metadata)
+		{
+			foreach (var handle in customAttributes) {
+				var customAttribute = metadata.GetCustomAttribute(handle);
+				if (customAttribute.IsKnownAttribute(metadata, KnownAttribute.NullableContext)) {
+					// Decode 
+					CustomAttributeValue<IType> value;
+					try {
+						value = customAttribute.DecodeValue(Metadata.MetadataExtensions.MinimalAttributeTypeProvider);
+					} catch (BadImageFormatException) {
+						continue;
+					} catch (Metadata.EnumUnderlyingTypeResolveException) {
+						continue;
+					}
+					if (value.FixedArguments.Length == 1 && value.FixedArguments[0].Value is byte b && b <= 2) {
+						return (Nullability)b;
+					}
+				}
+			}
+			return null;
+		}
 		#endregion
 
 		public static unsafe SRM.BlobReader GetInitialValue(this FieldDefinition field, PEReader pefile, ICompilation typeSystem)
@@ -370,23 +421,28 @@ namespace ICSharpCode.Decompiler
 
 		sealed class FieldValueSizeDecoder : ISignatureTypeProvider<int, GenericContext>
 		{
-			MetadataModule module;
+			readonly MetadataModule module;
+			readonly int pointerSize;
 
-			public FieldValueSizeDecoder(ICompilation typeSystem)
+			public FieldValueSizeDecoder(ICompilation typeSystem = null)
 			{
-				this.module = (MetadataModule)typeSystem.MainModule;
+				this.module = (MetadataModule)typeSystem?.MainModule;
+				if (module == null)
+					this.pointerSize = IntPtr.Size;
+				else
+					this.pointerSize = module.PEFile.Reader.PEHeaders.PEHeader.Magic == PEMagic.PE32 ? 4 : 8;
 			}
 
 			public int GetArrayType(int elementType, ArrayShape shape) => GetPrimitiveType(PrimitiveTypeCode.Object);
 			public int GetSZArrayType(int elementType) => GetPrimitiveType(PrimitiveTypeCode.Object);
-			public int GetByReferenceType(int elementType) => GetPointerType(elementType);
-			public int GetFunctionPointerType(MethodSignature<int> signature) => GetPrimitiveType(PrimitiveTypeCode.IntPtr);
+			public int GetByReferenceType(int elementType) => pointerSize;
+			public int GetFunctionPointerType(MethodSignature<int> signature) => pointerSize;
 			public int GetGenericInstantiation(int genericType, ImmutableArray<int> typeArguments) => genericType;
 			public int GetGenericMethodParameter(GenericContext genericContext, int index) => 0;
 			public int GetGenericTypeParameter(GenericContext genericContext, int index) => 0;
 			public int GetModifiedType(int modifier, int unmodifiedType, bool isRequired) => unmodifiedType;
 			public int GetPinnedType(int elementType) => elementType;
-			public int GetPointerType(int elementType) => GetPrimitiveType(PrimitiveTypeCode.IntPtr);
+			public int GetPointerType(int elementType) => pointerSize;
 
 			public int GetPrimitiveType(PrimitiveTypeCode typeCode) 
 			{
@@ -409,8 +465,7 @@ namespace ICSharpCode.Decompiler
 						return 8;
 					case PrimitiveTypeCode.IntPtr:
 					case PrimitiveTypeCode.UIntPtr:
-						// This is the same as Cecil does, but probably not a good idea.
-						return IntPtr.Size;
+						return pointerSize;
 					default:
 						return 0;
 				}
@@ -424,7 +479,7 @@ namespace ICSharpCode.Decompiler
 
 			public int GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
 			{
-				var typeDef = module.ResolveType(handle, new GenericContext()).GetDefinition();
+				var typeDef = module?.ResolveType(handle, new GenericContext()).GetDefinition();
 				if (typeDef == null || typeDef.MetadataToken.IsNil)
 					return 0;
 				reader = typeDef.ParentModule.PEFile.Metadata;

@@ -86,7 +86,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			: base(SpecialType.NoType)
 		{
 			if (methods == null)
-				throw new ArgumentNullException("methods");
+				throw new ArgumentNullException(nameof(methods));
 			this.targetResult = targetResult;
 			this.methodName = methodName;
 			this.methodLists = methods;
@@ -174,12 +174,12 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			}
 			return extensionMethods ?? Enumerable.Empty<IEnumerable<IMethod>>();
 		}
-		
+
 		/// <summary>
 		/// Gets the eligible extension methods.
 		/// </summary>
 		/// <param name="substituteInferredTypes">
-		/// Specifies whether to produce a <see cref="SpecializedMethod"/>
+		/// Specifies whether to produce a <c>SpecializedMethod</c>
 		/// when type arguments could be inferred from <see cref="TargetType"/>.
 		/// This setting is only used for inferred types and has no effect if the type parameters are
 		/// specified explicitly.
@@ -199,8 +199,7 @@ namespace ICSharpCode.Decompiler.CSharp.Resolver
 			foreach (var methodGroup in GetExtensionMethods()) {
 				var outputGroup = new List<IMethod>();
 				foreach (var method in methodGroup) {
-					IType[] inferredTypes;
-					if (CSharpResolver.IsEligibleExtensionMethod(this.TargetType, method, true, out inferredTypes)) {
+					if (CSharpResolver.IsEligibleExtensionMethod(this.TargetType, method, true, out IType[] inferredTypes)) {
 						if (substituteInferredTypes && inferredTypes != null) {
 							outputGroup.Add(method.Specialize(new TypeParameterSubstitution(null, inferredTypes)));
 						} else {

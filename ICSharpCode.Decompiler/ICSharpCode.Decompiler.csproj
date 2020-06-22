@@ -1,15 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project>
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework Condition=" '$(OS)' != 'Windows_NT' ">netstandard2.0</TargetFramework>
-    <TargetFrameworks Condition=" '$(OS)' == 'Windows_NT' ">netstandard2.0;net46;net45</TargetFrameworks>
+    <TargetFramework>netstandard2.0</TargetFramework>
 
     <Description>IL decompiler engine</Description>
     <Company>ic#code</Company>
     <Product>ILSpy</Product>
-    <Copyright>Copyright 2011-2018 AlphaSierraPapa for the SharpDevelop Team</Copyright>
+    <Copyright>Copyright 2011-2020 AlphaSierraPapa for the SharpDevelop Team</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
     <GenerateAssemblyVersionAttribute>False</GenerateAssemblyVersionAttribute>
     <GenerateAssemblyFileVersionAttribute>False</GenerateAssemblyFileVersionAttribute>
@@ -17,9 +15,10 @@
 
     <EnableDefaultItems>false</EnableDefaultItems>
     <LangVersion>7.2</LangVersion>
-
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>ICSharpCode.Decompiler.snk</AssemblyOriginatorKeyFile>
+    <NoWarn>1701;1702;1591;1573</NoWarn>
   </PropertyGroup>
   
   <!-- HACK: Disable package generation on Unix due to tooling issues. -->
@@ -33,7 +32,6 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <EmbedAllSources>true</EmbedAllSources>
     <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
     <DefineConstants>$(DefineConstants);STEP</DefineConstants>
   </PropertyGroup>
@@ -41,7 +39,6 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <EmbedAllSources>true</EmbedAllSources>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -51,17 +48,37 @@
 
   <ItemGroup>
     <PackageReference Include="Humanizer.Core" Version="2.2.0" />
-    <PackageReference Include="System.Collections.Immutable" Version="1.3.1" />
-    <PackageReference Include="System.Reflection.Metadata" Version="1.4.2" />
+    <PackageReference Include="System.Collections.Immutable" Version="1.5.0" />
+    <PackageReference Include="System.Reflection.Metadata" Version="1.6.0" />
     <PackageReference Include="System.ValueTuple" Version="4.3.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="CSharp\Annotations.cs" />
     <Compile Include="CSharp\CallBuilder.cs" />
     <Compile Include="CSharp\CSharpLanguageVersion.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\IProjectFileWriter.cs" />
+    <Compile Include="CSharp\OutputVisitor\GenericGrammarAmbiguityVisitor.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\IProjectInfoProvider.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\ProjectFileWriterSdkStyle.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\ProjectFileWriterDefault.cs" />
     <Compile Include="CSharp\RequiredNamespaceCollector.cs" />
     <Compile Include="CSharp\SequencePointBuilder.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\TargetFramework.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\TargetServices.cs" />
+    <Compile Include="IL\Transforms\IndexRangeTransform.cs" />
+    <Compile Include="CSharp\TranslatedStatement.cs" />
+    <Compile Include="DebugInfo\KnownGuids.cs" />
+    <Compile Include="Disassembler\DisassemblerSignatureTypeProvider.cs" />
+    <Compile Include="Documentation\XmlDocumentationElement.cs" />
+    <Compile Include="IL\ControlFlow\AwaitInFinallyTransform.cs" />
+    <Compile Include="Solution\ProjectId.cs" />
+    <Compile Include="Solution\ProjectItem.cs" />
+    <Compile Include="Solution\SolutionCreator.cs" />
     <Compile Include="CSharp\Syntax\AstNode.cs" />
     <Compile Include="CSharp\Syntax\AstNodeCollection.cs" />
     <Compile Include="CSharp\Syntax\AstType.cs" />
@@ -74,9 +91,7 @@
     <Compile Include="CSharp\Syntax\ErrorNode.cs" />
     <Compile Include="CSharp\Syntax\Expressions\AnonymousMethodExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\AnonymousTypeCreateExpression.cs" />
-    <Compile Include="CSharp\Syntax\Expressions\ArrayCreateExpression.cs">
-      <DependentUpon>ArrayInitializerExpression.cs</DependentUpon>
-    </Compile>
+    <Compile Include="CSharp\Syntax\Expressions\ArrayCreateExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\ArrayInitializerExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\AsExpression.cs" />
     <Compile Include="CSharp\Syntax\Expressions\AssignmentExpression.cs" />
@@ -164,6 +179,7 @@
     <Compile Include="CSharp\Syntax\Statements\GotoStatement.cs" />
     <Compile Include="CSharp\Syntax\Statements\IfElseStatement.cs" />
     <Compile Include="CSharp\Syntax\Statements\LabelStatement.cs" />
+    <Compile Include="CSharp\Syntax\Statements\LocalFunctionDeclarationStatement.cs" />
     <Compile Include="CSharp\Syntax\Statements\LockStatement.cs" />
     <Compile Include="CSharp\Syntax\Statements\ReturnStatement.cs" />
     <Compile Include="CSharp\Syntax\Statements\Statement.cs" />
@@ -225,8 +241,9 @@
     <Compile Include="CSharp\Resolver\NameLookupMode.cs" />
     <Compile Include="CSharp\Resolver\OverloadResolution.cs" />
     <Compile Include="CSharp\Resolver\OverloadResolutionErrors.cs" />
-    <Compile Include="CSharp\Resolver\ReducedExtensionMethod.cs" />
-    <Compile Include="CSharp\Resolver\RenameCallbackArguments.cs" />
+    <Compile Include="IL\Transforms\FixRemainingIncrements.cs" />
+    <Compile Include="IL\Transforms\ILExtraction.cs" />
+    <Compile Include="TypeSystem\Implementation\LocalFunctionMethod.cs" />
     <Compile Include="CSharp\Resolver\TypeInference.cs" />
     <Compile Include="CSharp\Transforms\CombineQueryExpressions.cs" />
     <Compile Include="CSharp\Transforms\FlattenSwitchBlocks.cs" />
@@ -243,6 +260,9 @@
     <Compile Include="CSharp\TypeSystem\SimpleTypeOrNamespaceReference.cs" />
     <Compile Include="CSharp\TypeSystem\TypeOrNamespaceReference.cs" />
     <Compile Include="CSharp\TypeSystem\UsingScope.cs" />
+    <Compile Include="DebugInfo\AsyncDebugInfo.cs" />
+    <Compile Include="DebugInfo\ImportScopeInfo.cs" />
+    <Compile Include="DebugInfo\DebugInfoGenerator.cs" />
     <Compile Include="DecompilerException.cs" />
     <Compile Include="DecompilerSettings.cs" />
     <Compile Include="CSharp\Transforms\ContextTrackingVisitor.cs" />
@@ -258,16 +278,21 @@
     <Compile Include="CSharp\ExpressionBuilder.cs" />
     <Compile Include="CSharp\StatementBuilder.cs" />
     <Compile Include="CSharp\Transforms\AddCheckedBlocks.cs" />
-    <Compile Include="CSharp\Transforms\ConvertConstructorCallIntoInitializer.cs" />
+    <Compile Include="CSharp\Transforms\TransformFieldAndConstructorInitializers.cs" />
     <Compile Include="CSharp\Transforms\CustomPatterns.cs" />
     <Compile Include="CSharp\Transforms\IAstTransform.cs" />
     <Compile Include="CSharp\Transforms\IntroduceUnsafeModifier.cs" />
     <Compile Include="CSharp\Transforms\ReplaceMethodCallsWithOperators.cs" />
-    <Compile Include="CSharp\WholeProjectDecompiler.cs" />
+    <Compile Include="CSharp\ProjectDecompiler\WholeProjectDecompiler.cs" />
     <Compile Include="CSharp\Transforms\AddXmlDocumentationTransform.cs" />
     <Compile Include="DecompileRun.cs" />
     <Compile Include="Disassembler\ILParser.cs" />
+    <Compile Include="IL\ILInstructionExtensions.cs" />
+    <Compile Include="IL\Transforms\CombineExitsTransform.cs" />
+    <Compile Include="IL\Transforms\DynamicIsEventAssignmentTransform.cs" />
+    <Compile Include="IL\Transforms\ReduceNestingTransform.cs" />
     <Compile Include="IL\Transforms\LocalFunctionDecompiler.cs" />
+    <Compile Include="IL\Transforms\TransformDisplayClassUsage.cs" />
     <Compile Include="IL\Transforms\UserDefinedLogicTransform.cs" />
     <Compile Include="Metadata\AssemblyReferences.cs" />
     <Compile Include="Metadata\CodeMappingInfo.cs" />
@@ -315,6 +340,7 @@
     <Compile Include="IL\Transforms\HighLevelLoopTransform.cs" />
     <Compile Include="IL\Transforms\NamedArgumentTransform.cs" />
     <Compile Include="IL\Transforms\IntroduceDynamicTypeOnLocals.cs" />
+    <Compile Include="IL\Transforms\IntroduceRefReadOnlyModifierOnLocals.cs" />
     <Compile Include="IL\Transforms\NullPropagationTransform.cs" />
     <Compile Include="IL\Transforms\ProxyCallReplacer.cs" />
     <Compile Include="IL\Instructions\StringToInt.cs" />
@@ -352,6 +378,7 @@
     <Compile Include="TypeSystem\Implementation\AttributeListBuilder.cs" />
     <Compile Include="TypeSystem\Implementation\CustomAttribute.cs" />
     <Compile Include="TypeSystem\Implementation\DecimalConstantHelper.cs" />
+    <Compile Include="TypeSystem\Implementation\DecoratedType.cs" />
     <Compile Include="TypeSystem\Implementation\DefaultTypeParameter.cs" />
     <Compile Include="TypeSystem\Implementation\FakeMember.cs" />
     <Compile Include="TypeSystem\Implementation\KnownAttributes.cs" />
@@ -364,13 +391,17 @@
     <Compile Include="TypeSystem\Implementation\MetadataTypeDefinition.cs" />
     <Compile Include="TypeSystem\Implementation\MetadataTypeParameter.cs" />
     <Compile Include="TypeSystem\Implementation\SpecializedParameter.cs" />
+    <Compile Include="TypeSystem\Implementation\SyntheticRangeIndexer.cs" />
     <Compile Include="TypeSystem\Implementation\ThreeState.cs" />
     <Compile Include="TypeSystem\MetadataModule.cs" />
     <Compile Include="TypeSystem\ModifiedType.cs" />
     <Compile Include="TypeSystem\Implementation\PinnedType.cs" />
     <Compile Include="Metadata\MetadataExtensions.cs" />
+    <Compile Include="Semantics\ThrowResolveResult.cs" />
     <Compile Include="Semantics\TupleResolveResult.cs" />
     <Compile Include="TypeSystem\NormalizeTypeVisitor.cs" />
+    <Compile Include="TypeSystem\Nullability.cs" />
+    <Compile Include="TypeSystem\Implementation\NullabilityAnnotatedType.cs" />
     <Compile Include="TypeSystem\TupleType.cs" />
     <Compile Include="TypeSystem\TypeProvider.cs" />
     <Compile Include="Util\GraphVizGraph.cs" />
@@ -417,7 +448,6 @@
     <Compile Include="IL\Instructions\SwitchInstruction.cs" />
     <Compile Include="IL\Instructions\TryInstruction.cs" />
     <Compile Include="IL\Instructions\UnaryInstruction.cs" />
-    <Compile Include="IL\IInlineContext.cs" />
     <Compile Include="IL\Patterns\ListMatch.cs" />
     <Compile Include="IL\Patterns\Match.cs" />
     <Compile Include="IL\SlotInfo.cs" />
@@ -427,7 +457,6 @@
     <Compile Include="IL\Transforms\IILTransform.cs" />
     <Compile Include="IL\Transforms\ILInlining.cs" />
     <Compile Include="IL\Transforms\ExpressionTransforms.cs" />
-    <Compile Include="IL\Transforms\LoopingTransform.cs" />
     <Compile Include="IL\Transforms\DelegateConstruction.cs" />
     <Compile Include="IL\Transforms\RemoveDeadVariableInit.cs" />
     <Compile Include="IL\Transforms\SplitVariables.cs" />
@@ -481,7 +510,6 @@
     <Compile Include="Semantics\TypeResolveResult.cs" />
     <Compile Include="Semantics\UnknownMemberResolveResult.cs" />
     <Compile Include="TypeSystem\Accessibility.cs" />
-    <Compile Include="TypeSystem\AnonymousType.cs" />
     <Compile Include="TypeSystem\ArrayType.cs" />
     <Compile Include="TypeSystem\AssemblyQualifiedTypeName.cs" />
     <Compile Include="TypeSystem\ByReferenceType.cs" />
@@ -605,12 +633,14 @@
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
 
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
-
-  <Target Name="BeforeBuild">
-    <PropertyGroup>
+  <Target Name="ILSpyUpdateAssemblyInfo" BeforeTargets="BeforeBuild">
+    <PropertyGroup Condition=" '$(OS)' == 'Windows_NT' ">
       <UpdateAssemblyInfo>powershell -NoProfile -ExecutionPolicy Bypass -File BuildTools/update-assemblyinfo.ps1 $(Configuration)</UpdateAssemblyInfo>
+    </PropertyGroup>
+    <PropertyGroup Condition=" '$(OS)' != 'Windows_NT' ">
+      <UpdateAssemblyInfo>pwsh -NoProfile -ExecutionPolicy Bypass -File BuildTools/update-assemblyinfo.ps1 $(Configuration)</UpdateAssemblyInfo>
     </PropertyGroup>
     <Exec WorkingDirectory=".." Command="$(UpdateAssemblyInfo)" Timeout="60000" />
   </Target>
+  
 </Project>

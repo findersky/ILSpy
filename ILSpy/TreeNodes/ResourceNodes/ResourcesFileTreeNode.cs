@@ -21,12 +21,15 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.Linq;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Util;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Controls;
 using ICSharpCode.ILSpy.TextView;
 using Microsoft.Win32;
+using ICSharpCode.ILSpy.Properties;
+using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
@@ -58,9 +61,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			this.LazyLoading = true;
 		}
 
-		public override object Icon {
-			get { return Images.ResourceResourcesFile; }
-		}
+		public override object Icon => Images.ResourceResourcesFile;
 
 		protected override void LoadChildren()
 		{
@@ -68,17 +69,19 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			if (s == null) return;
 			s.Position = 0;
 			try {
-				foreach (var entry in new ResourcesFile(s)) {
+				foreach (var entry in new ResourcesFile(s).OrderBy(e => e.Key, NaturalStringComparer.Instance)) {
 					ProcessResourceEntry(entry);
 				}
 			} catch (BadImageFormatException) {
+				// ignore errors
+			} catch (EndOfStreamException) {
 				// ignore errors
 			}
 		}
 
 		private void ProcessResourceEntry(KeyValuePair<string, object> entry)
 		{
-			if (entry.Value is String) {
+			if (entry.Value is string) {
 				stringTableEntries.Add(new KeyValuePair<string, string>(entry.Key, (string)entry.Value));
 				return;
 			}
@@ -103,13 +106,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
-		public override bool Save(DecompilerTextView textView)
+		public override bool Save(TabPageModel tabPage)
 		{
 			Stream s = Resource.TryOpenStream();
 			if (s == null) return false;
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.FileName = DecompilerTextView.CleanUpName(Resource.Name);
-			dlg.Filter = "Resources file (*.resources)|*.resources|Resource XML file|*.resx";
+			dlg.Filter = Resources.ResourcesFileFilter;
 			if (dlg.ShowDialog() == true) {
 				s.Position = 0;
 				switch (dlg.FilterIndex) {
@@ -119,14 +122,22 @@ namespace ICSharpCode.ILSpy.TreeNodes
 						}
 						break;
 					case 2:
-						using (var writer = new ResXResourceWriter(dlg.OpenFile())) {
-							foreach (var entry in new ResourcesFile(s)) {
-								writer.AddResource(entry.Key, entry.Value);
+						try {
+							using (var fs = dlg.OpenFile())
+							using (var writer = new ResXResourceWriter(fs)) {
+								foreach (var entry in new ResourcesFile(s)) {
+									writer.AddResource(entry.Key, entry.Value);
+								}
 							}
+						} catch (BadImageFormatException) {
+							// ignore errors
+						} catch (EndOfStreamException) {
+							// ignore errors
 						}
 						break;
 				}
 			}
+
 			return true;
 		}
 
@@ -134,12 +145,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		{
 			EnsureLazyChildren();
 			base.Decompile(language, output, options);
+			var textView = (DecompilerTextView)Docking.DockWorkspace.Instance.ActiveTabPage.Content;
 			if (stringTableEntries.Count != 0) {
 				ISmartTextOutput smartOutput = output as ISmartTextOutput;
 				if (null != smartOutput) {
 					smartOutput.AddUIElement(
 						delegate {
-							return new ResourceStringTable(stringTableEntries, MainWindow.Instance.mainPane);
+							return new ResourceStringTable(stringTableEntries, textView);
 						}
 					);
 				}
@@ -151,7 +163,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				if (null != smartOutput) {
 					smartOutput.AddUIElement(
 						delegate {
-							return new ResourceObjectTable(otherEntries, MainWindow.Instance.mainPane);
+							return new ResourceObjectTable(otherEntries, textView);
 						}
 					);
 				}

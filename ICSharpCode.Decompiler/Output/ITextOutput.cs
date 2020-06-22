@@ -26,13 +26,14 @@ namespace ICSharpCode.Decompiler
 {
 	public interface ITextOutput
 	{
+		string IndentationString { get; set; }
 		void Indent();
 		void Unindent();
 		void Write(char ch);
 		void Write(string text);
 		void WriteLine();
-		void WriteReference(OpCodeInfo opCode);
-		void WriteReference(PEFile module, EntityHandle handle, string text, bool isDefinition = false);
+		void WriteReference(OpCodeInfo opCode, bool omitSuffix = false);
+		void WriteReference(PEFile module, Handle handle, string text, string protocol = "decompile", bool isDefinition = false);
 		void WriteReference(IType type, string text, bool isDefinition = false);
 		void WriteReference(IMember member, string text, bool isDefinition = false);
 		void WriteLocalReference(string text, object reference, bool isDefinition = false);

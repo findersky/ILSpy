@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
@@ -37,33 +38,34 @@ namespace ICSharpCode.Decompiler.Metadata
 	/// </summary>
 	/// <remarks>
 	/// In addition to wrapping a <c>System.Reflection.Metadata.PEReader</c>, this class
-	/// contains a few decompiled-specific caches to allow efficiently constructing a type
+	/// contains a few decompiler-specific caches to allow efficiently constructing a type
 	/// system from multiple PEFiles. This allows the caches to be shared across multiple
 	/// decompiled type systems.
 	/// </remarks>
+	[DebuggerDisplay("{FileName}")]
 	public class PEFile : IDisposable, TypeSystem.IModuleReference
 	{
 		public string FileName { get; }
 		public PEReader Reader { get; }
 		public MetadataReader Metadata { get; }
 
-		public PEFile(string fileName, PEStreamOptions options = PEStreamOptions.Default)
-			: this(fileName, new PEReader(new FileStream(fileName, FileMode.Open, FileAccess.Read), options))
+		public PEFile(string fileName, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
+			: this(fileName, new PEReader(new FileStream(fileName, FileMode.Open, FileAccess.Read), streamOptions), metadataOptions)
 		{
 		}
 
-		public PEFile(string fileName, Stream stream, PEStreamOptions options = PEStreamOptions.Default)
-			: this(fileName, new PEReader(stream, options))
+		public PEFile(string fileName, Stream stream, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
+			: this(fileName, new PEReader(stream, streamOptions), metadataOptions)
 		{
 		}
 
-		public PEFile(string fileName, PEReader reader)
+		public PEFile(string fileName, PEReader reader, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
 		{
 			this.FileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
 			this.Reader = reader ?? throw new ArgumentNullException(nameof(reader));
 			if (!reader.HasMetadata)
 				throw new PEFileNotSupportedException("PE file does not contain any managed metadata.");
-			this.Metadata = reader.GetMetadataReader();
+			this.Metadata = reader.GetMetadataReader(metadataOptions);
 		}
 
 		public bool IsAssembly => Metadata.IsAssembly;
@@ -86,7 +88,6 @@ namespace ICSharpCode.Decompiler.Metadata
 				default:
 					return TargetRuntime.Unknown;
 			}
-
 		}
 
 		string GetName()

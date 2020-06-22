@@ -43,6 +43,11 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 				currentList.Add(node);
 				nodes.Push(currentList);
 				currentList = new List<AstNode>();
+			} else if (node is Comment comment) {
+				comment.SetStartLocation(locationProvider.Location);
+			}
+			if (node is ErrorExpression error) {
+				error.Location = locationProvider.Location;
 			}
 			base.StartNode(node);
 		}
@@ -62,6 +67,8 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 					node.AddChildWithExistingRole(child);
 				}
 				currentList = nodes.Pop();
+			} else if (node is Comment comment) {
+				comment.SetEndLocation(locationProvider.Location);
 			}
 			base.EndNode(node);
 		}
@@ -116,11 +123,11 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			base.WriteIdentifier(identifier);
 		}
 		
-		public override void WritePrimitiveValue(object value, string literalValue = null)
+		public override void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None)
 		{
 			Expression node = nodes.Peek().LastOrDefault() as Expression;
 			var startLocation = locationProvider.Location;
-			base.WritePrimitiveValue(value, literalValue);
+			base.WritePrimitiveValue(value, format);
 			if (node is PrimitiveExpression) {
 				((PrimitiveExpression)node).SetLocation(startLocation, locationProvider.Location);
 			}
@@ -128,7 +135,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 				((NullReferenceExpression)node).SetStartLocation(startLocation);
 			}
 		}
-		
+
 		public override void WritePrimitiveType(string type)
 		{
 			PrimitiveType node = nodes.Peek().LastOrDefault() as PrimitiveType;

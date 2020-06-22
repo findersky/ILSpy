@@ -29,8 +29,16 @@ namespace ICSharpCode.Decompiler.Metadata
 	public static class DotNetCorePathFinderExtensions
 	{
 		static readonly string RefPathPattern =
-			@"(Reference Assemblies[/\\]Microsoft[/\\]Framework[/\\](?<1>.NETFramework)[/\\]v(?<2>[^/\\]+)[/\\])" +
-			@"|(NuGetFallbackFolder[/\\](?<1>[^/\\]+)\\(?<2>[^/\\]+)([/\\].*)?[/\\]ref[/\\])";
+			@"(Reference Assemblies[/\\]Microsoft[/\\]Framework[/\\](?<type>.NETFramework)[/\\]v(?<version>[^/\\]+)[/\\])" +
+			@"|((?<type>Microsoft\.NET)[/\\]assembly[/\\]GAC_(MSIL|32|64)[/\\])" +
+			@"|((?<type>Microsoft\.NET)[/\\]Framework(64)?[/\\](?<version>[^/\\]+)[/\\])" +
+			@"|(NuGetFallbackFolder[/\\](?<type>[^/\\]+)\\(?<version>[^/\\]+)([/\\].*)?[/\\]ref[/\\])" +
+			@"|(shared[/\\](?<type>[^/\\]+)\\(?<version>[^/\\]+)([/\\].*)?[/\\])";
+
+		public static string DetectTargetFrameworkId(this PEFile assembly)
+		{
+			return DetectTargetFrameworkId(assembly.Reader, assembly.FileName);
+		}
 
 		public static string DetectTargetFrameworkId(this PEReader assembly, string assemblyPath = null)
 		{
@@ -50,6 +58,38 @@ namespace ICSharpCode.Decompiler.Metadata
 				}
 			}
 
+			foreach (var h in reader.AssemblyReferences) {
+				var r = reader.GetAssemblyReference(h);
+				if (r.PublicKeyOrToken.IsNil)
+					continue;
+				string version;
+				switch (reader.GetString(r.Name)) {
+					case "netstandard":
+						version = r.Version.ToString(3);
+						return $".NETStandard,Version=v{version}";
+					case "System.Runtime":
+						// System.Runtime.dll uses the following scheme:
+						// 4.2.0 => .NET Core 2.0
+						// 4.2.1 => .NET Core 2.1 / 3.0
+						// 4.2.2 => .NET Core 3.1
+						if (r.Version >= new Version(4, 2, 0)) {
+							version = "2.0";
+							if (r.Version >= new Version(4, 2, 1)) {
+								version = "3.0";
+							}
+							if (r.Version >= new Version(4, 2, 2)) {
+								version = "3.1";
+							}
+							return $".NETCoreApp,Version=v{version}";
+						} else {
+							continue;
+						}
+					case "mscorlib":
+						version = r.Version.ToString(2);
+						return $".NETFramework,Version=v{version}";
+				}
+			}
+
 			// Optionally try to detect target version through assembly path as a fallback (use case: reference assemblies)
 			if (assemblyPath != null) {
 				/*
@@ -59,19 +99,23 @@ namespace ICSharpCode.Decompiler.Metadata
 				 * - .NETCore      -> C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.netcore.app\2.1.0\ref\netcoreapp2.1\System.Console.dll
 				 * - .NETStandard  -> C:\Program Files\dotnet\sdk\NuGetFallbackFolder\netstandard.library\2.0.3\build\netstandard2.0\ref\netstandard.dll
 				 */
-				var pathMatch = Regex.Match(assemblyPath, RefPathPattern, 
+				var pathMatch = Regex.Match(assemblyPath, RefPathPattern,
 					RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.ExplicitCapture);
 				if (pathMatch.Success) {
-					var type = pathMatch.Groups[1].Value;
-					var version = pathMatch.Groups[2].Value;
+					var type = pathMatch.Groups["type"].Value;
+					var version = pathMatch.Groups["version"].Value;
+					if (string.IsNullOrEmpty(version))
+						version = reader.MetadataVersion;
 
-					if (type == ".NETFramework") {
-						return $".NETFramework,Version=v{version}";
-					} else if (type.Contains("netcore")) {
+					if (type == "Microsoft.NET" || type == ".NETFramework") {
+						return $".NETFramework,Version=v{version.TrimStart('v').Substring(0, 3)}";
+					} else if (type.IndexOf("netcore", StringComparison.OrdinalIgnoreCase) >= 0) {
 						return $".NETCoreApp,Version=v{version}";
-					} else if (type.Contains("netstandard")) {
+					} else if (type.IndexOf("netstandard", StringComparison.OrdinalIgnoreCase) >= 0) {
 						return $".NETStandard,Version=v{version}";
 					}
+				} else {
+					return $".NETFramework,Version={reader.MetadataVersion.Substring(0, 4)}";
 				}
 			}
 
@@ -113,6 +157,14 @@ namespace ICSharpCode.Decompiler.Metadata
 		{
 			lock (loadedAssemblyReferences) {
 				return loadedAssemblyReferences.TryGetValue(fullName, out info);
+			}
+		}
+
+		public IReadOnlyList<UnresolvedAssemblyNameReference> Entries {
+			get {
+				lock (loadedAssemblyReferences) {
+					return loadedAssemblyReferences.Values.ToList();
+				}
 			}
 		}
 

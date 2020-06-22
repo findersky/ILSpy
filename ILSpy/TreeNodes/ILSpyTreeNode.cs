@@ -16,9 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
+using System.Windows;
+using System.Windows.Threading;
 using ICSharpCode.Decompiler;
 using ICSharpCode.TreeView;
 
@@ -64,9 +67,15 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// This method is called on the main thread when only a single item is selected.
 		/// If it returns false, normal decompilation is used to view the item.
 		/// </summary>
-		public virtual bool View(TextView.DecompilerTextView textView)
+		public virtual bool View(ViewModels.TabPageModel tabPage)
 		{
 			return false;
+		}
+
+		public override void ActivateItemSecondary(RoutedEventArgs e)
+		{
+			MainWindow.Instance.SelectNode(this, inNewTabPage: true);
+			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.RefreshDecompiledView);
 		}
 
 		/// <summary>
@@ -74,7 +83,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		/// This method is called on the main thread when only a single item is selected.
 		/// If it returns false, normal decompilation is used to save the item.
 		/// </summary>
-		public virtual bool Save(TextView.DecompilerTextView textView)
+		public virtual bool Save(ViewModels.TabPageModel tabPage)
 		{
 			return false;
 		}

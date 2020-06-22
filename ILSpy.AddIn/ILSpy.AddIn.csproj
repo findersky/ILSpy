@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <TargetFramework>net46</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
     <RootNamespace>ICSharpCode.ILSpy.AddIn</RootNamespace>
 
     <Company>IC#Code</Company>
@@ -31,7 +31,6 @@
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>pdbonly</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(AppVeyor)' != ''">
@@ -44,24 +43,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="EnvDTE" Version="8.0.2" />
-    <PackageReference Include="EnvDTE80" Version="8.0.2" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK " Version="15.9.3" />
     <PackageReference Include="Microsoft.CodeAnalysis" Version="2.4.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="2.4.0" />
-    <PackageReference Include="Microsoft.VisualStudio.ComponentModelHost" Version="15.6.27413" />
-    <PackageReference Include="Microsoft.VisualStudio.Editor" Version="15.6.27740" />
     <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="2.4.0" />
-    <PackageReference Include="Microsoft.VisualStudio.Shell.14.0" Version="14.3.25407" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.UI" Version="15.6.27740" />
-    <PackageReference Include="Microsoft.VisualStudio.Text.UI.Wpf" Version="15.6.27740" />
-    <PackageReference Include="Mono.Cecil" Version="0.10.0" />
-    <PackageReference Include="VSLangProj" Version="7.0.3301" />
+    <PackageReference Include="Mono.Cecil" Version="0.10.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ICSharpCode.Decompiler\ICSharpCode.Decompiler.csproj" />
     <ProjectReference Include="..\ILSpy\ILSpy.csproj" />
-    <ProjectReference Include="..\SharpTreeView\ICSharpCode.TreeView.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -74,6 +64,7 @@
     <Compile Include="Commands\OpenProjectOutputCommand.cs" />
     <Compile Include="Commands\OpenReferenceCommand.cs" />
     <Compile Include="Guids.cs" />
+    <Compile Include="ILSpyInstance.cs" />
     <Compile Include="Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -100,12 +91,47 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!--
+  BEGIN WORKAROUND:
+  Nuget packages do not get added to the vsix automatically.
+  (related to https://github.com/icsharpcode/ILSpy/issues/511)
+  -->
+  <PropertyGroup>
+    <ILSpyBuildPath>..\ILSpy\bin\$(Configuration)\$(TargetFramework)\</ILSpyBuildPath>
+  </PropertyGroup>
+
   <ItemGroup>
-	  <Content Include="Packages/*">
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Collections.Immutable.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Composition.AttributedModel.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Composition.Convention.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Composition.Hosting.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Composition.Runtime.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Composition.TypedParts.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Threading.Tasks.Dataflow.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)ICSharpCode.AvalonEdit.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Humanizer.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)System.Reflection.Metadata.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Microsoft.VisualStudio.Composition.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Microsoft.VisualStudio.Validation.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Mono.Cecil.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Mono.Cecil.Pdb.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)ILSpy.BamlDecompiler.Plugin.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Microsoft.DiaSymReader*.dll" />
+  	<AdditionalDependencies Include="$(ILSpyBuildPath)OSVersionHelper.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Xceed.Wpf.AvalonDock.dll" />
+    <AdditionalDependencies Include="$(ILSpyBuildPath)DataGridExtensions.dll" />  
+    <AdditionalDependencies Include="$(ILSpyBuildPath)Iced.dll" />  
+    <AdditionalDependencies Include="$(ILSpyBuildPath)ILCompiler.Reflection.ReadyToRun.dll" />  
+    <AdditionalDependencies Include="$(ILSpyBuildPath)ILSpy.ReadyToRun.Plugin.dll" />  
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="@(AdditionalDependencies)">
       <IncludeInVSIX>true</IncludeInVSIX>
       <VSIXSubPath>\</VSIXSubPath>
-	  </Content>
+    </Content>
   </ItemGroup>
+  <!-- END WORKAROUND -->
 
   <ItemGroup>
     <None Include="ILSpyAddIn.vsct" />
@@ -136,7 +162,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="license.txt">
+    <Content Include="..\doc\license.txt" Link="license.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -150,17 +176,5 @@
   <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
 
   <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="Exists('$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets')" />
-
-  <ItemGroup>
-    <!-- https://github.com/dotnet/sdk/issues/433 -->
-    <ProjectReference Update="@(ProjectReference)" AdditionalProperties="TargetFramework=net46" />
-
-    <!-- https://github.com/Microsoft/extendvs/issues/57 -->
-    <ProjectReference Update="@(ProjectReference)" Name="%(Filename)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Packages\" />
-  </ItemGroup>
 
 </Project>

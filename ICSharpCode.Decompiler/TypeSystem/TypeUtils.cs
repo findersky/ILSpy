@@ -116,7 +116,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets whether the type is a C# small integer type: byte, sbyte, short or ushort.
 		/// 
-		/// Unlike the ILAst, C# does not consider bool or enums to be small integers.
+		/// Unlike the ILAst, C# does not consider bool, char or enums to be small integers.
 		/// </summary>
 		public static bool IsCSharpSmallIntegerType(this IType type)
 		{
@@ -398,6 +398,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				case PrimitiveType.R4:
 					return KnownTypeCode.Single;
 				case PrimitiveType.R8:
+				case PrimitiveType.R:
 					return KnownTypeCode.Double;
 				case PrimitiveType.U1:
 					return KnownTypeCode.Byte;

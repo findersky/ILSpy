@@ -47,7 +47,6 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		private BlockTransformContext context;
 		private ControlFlowNode cfgNode;
 		private BlockContainer currentContainer;
-		private Block continueBlock;
 
 		/// <summary>
 		/// Builds structured control flow for the block associated with the control flow node.
@@ -60,9 +59,6 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		{
 			this.context = context;
 			currentContainer = (BlockContainer)block.Parent;
-
-			// for detection of continue statements
-			continueBlock = GuessContinueBlock();
 
 			// We only embed blocks into this block if they aren't referenced anywhere else,
 			// so those blocks are dominated by this block.
@@ -113,7 +109,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 					if (DetectExitPoints.CompatibleExitInstruction(ifInst.TrueInst, exitInst)) {
 						// if (...) exitInst; exitInst;
 						context.Step("Use empty block as then-branch", ifInst.TrueInst);
-						ifInst.TrueInst = new Nop() { ILRange = ifInst.TrueInst.ILRange };
+						ifInst.TrueInst = new Nop().WithILRange(ifInst.TrueInst);
 						// false, because we didn't inline a real block
 						// this will cause HandleIfInstruction() to attempt to inline the exitInst.
 						return false;
@@ -235,7 +231,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			// -> if (...) { ... } else { ... } blockExit;
 			context.Step("Remove redundant 'goto blockExit;' in then-branch", ifInst);
 			if (!(ifInst.TrueInst is Block trueBlock) || trueBlock.Instructions.Count == 1)
-				ifInst.TrueInst = new Nop { ILRange = ifInst.TrueInst.ILRange };
+				ifInst.TrueInst = new Nop().WithILRange(ifInst.TrueInst);
 			else
 				trueBlock.Instructions.RemoveAt(trueBlock.Instructions.Count - 1);
 
@@ -339,6 +335,8 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			       && ThenInstIsSingleExit(elseIfInst);
 		}
 
+		private void InvertIf(Block block, IfInstruction ifInst) => InvertIf(block, ifInst, context);
+
 		/// <summary>
 		///   if (cond) { then... }
 		///   else...;
@@ -349,14 +347,14 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		/// 
 		/// Assumes ifInst does not have an else block
 		/// </summary>
-		private void InvertIf(Block block, IfInstruction ifInst)
+		internal static void InvertIf(Block block, IfInstruction ifInst, ILTransformContext context)
 		{
 			Debug.Assert(ifInst.Parent == block);
 			
 			//assert then block terminates
 			var trueExitInst = GetExit(ifInst.TrueInst);
 			var exitInst = GetExit(block);
-			context.Step("Negate if for desired branch "+trueExitInst, ifInst);
+			context.Step($"InvertIf at IL_{ifInst.StartILOffset:x4}", ifInst);
 			
 			//if the then block terminates, else blocks are redundant, and should not exist
 			Debug.Assert(IsEmpty(ifInst.FalseInst));
@@ -398,14 +396,14 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			context.Step("Swap empty then-branch with else-branch", ifInst);
 			var oldTrue = ifInst.TrueInst;
 			ifInst.TrueInst = ifInst.FalseInst;
-			ifInst.FalseInst = new Nop { ILRange = oldTrue.ILRange };
+			ifInst.FalseInst = new Nop().WithILRange(oldTrue);
 			ifInst.Condition = Comp.LogicNot(ifInst.Condition);
 		}
 
 		/// <summary>
 		///   if (cond) { if (nestedCond) { nestedThen... } }
 		/// ->
-		///   if (cond && nestedCond) { nestedThen... }
+		///   if (cond &amp;&amp; nestedCond) { nestedThen... }
 		/// </summary>
 		private void IntroduceShortCircuit(IfInstruction ifInst)
 		{
@@ -427,7 +425,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		/// </summary>
 		private void OrderIfBlocks(IfInstruction ifInst)
 		{
-			if (IsEmpty(ifInst.FalseInst) || ifInst.TrueInst.ILRange.Start <= ifInst.FalseInst.ILRange.Start)
+			if (IsEmpty(ifInst.FalseInst) || GetStartILOffset(ifInst.TrueInst, out _) <= GetStartILOffset(ifInst.FalseInst, out _))
 				return;
 
 			context.Step("Swap then-branch with else-branch to match IL order", ifInst);
@@ -437,6 +435,19 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			ifInst.FalseInst = oldTrue;
 			oldTrue.ReleaseRef();
 			ifInst.Condition = Comp.LogicNot(ifInst.Condition);
+		}
+
+		public static int GetStartILOffset(ILInstruction inst, out bool isEmpty)
+		{
+			// some compilers merge the leave instructions for different arguments using stack variables
+			// these get split and inlined, but the ILRange of the value remains a better indicator of the actual location
+			if (inst is Leave leave && !leave.Value.MatchNop()) {
+				isEmpty = leave.Value.ILRangeIsEmpty;
+				return leave.Value.StartILOffset;
+			}
+
+			isEmpty = inst.ILRangeIsEmpty;
+			return inst.StartILOffset;
 		}
 
 		/// <summary>
@@ -488,7 +499,6 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 					// breaks have highest priority in a switch
 					if ((keyword1 == Keyword.Break) != (keyword2 == Keyword.Break))
 						return keyword1 == Keyword.Break ? 1 : -1;
-
 				} else {
 					// breaks have lowest priority
 					if ((keyword1 == Keyword.Break) != (keyword2 == Keyword.Break))
@@ -517,13 +527,13 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			
 			// prefer arranging stuff in IL order
 			if (exit1.MatchBranch(out var block1) && exit2.MatchBranch(out var block2))
-				return block1.ILRange.Start.CompareTo(block2.ILRange.Start);
+				return block1.StartILOffset.CompareTo(block2.StartILOffset);
 
 			// use the IL offsets of the arguments of leave instructions instead of the leaves themselves if possible
 			if (exit1.MatchLeave(out var _, out var arg1) && exit2.MatchLeave(out var _, out var arg2))
-				return arg1.ILRange.Start.CompareTo(arg2.ILRange.Start);
+				return arg1.StartILOffset.CompareTo(arg2.StartILOffset);
 				
-			return exit1.ILRange.Start.CompareTo(exit2.ILRange.Start);
+			return exit1.StartILOffset.CompareTo(exit2.StartILOffset);
 		}
 
 		/// <summary>
@@ -537,7 +547,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			keyword = Keyword.Other;
 			switch (exitInst) {
 				case Branch branch:
-					if (branch.TargetBlock == continueBlock) {
+					if (IsContinueBlock(branch.TargetContainer, branch.TargetBlock)) {
 						keyword = Keyword.Continue;
 						return true;
 					}
@@ -599,19 +609,19 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		/// Used to identify branches targetting this block as continue statements, for ordering priority.
 		/// </summary>
 		/// <returns></returns>
-		private Block GuessContinueBlock()
+		private static bool IsContinueBlock(BlockContainer container, Block block)
 		{
-			if (currentContainer.Kind != ContainerKind.Loop)
-				return null;
+			if (container.Kind != ContainerKind.Loop)
+				return false;
 
-			// continue blocks have exactly 2 incoming edges
-			if (currentContainer.EntryPoint.IncomingEdgeCount == 2) {
-				var forIncrement = HighLevelLoopTransform.GetIncrementBlock(currentContainer, currentContainer.EntryPoint);
+			// increment blocks have exactly 2 incoming edges
+			if (container.EntryPoint.IncomingEdgeCount == 2) {
+				var forIncrement = HighLevelLoopTransform.GetIncrementBlock(container, container.EntryPoint);
 				if (forIncrement != null)
-					return forIncrement;
+					return block == forIncrement;
 			}
 
-			return currentContainer.EntryPoint;
+			return block == container.EntryPoint;
 		}
 
 		/// <summary>
@@ -623,7 +633,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			for (int i = startIndex; i < endIndex; i++) {
 				var inst = block.Instructions[i];
 				extractedBlock.Instructions.Add(inst);
-				extractedBlock.AddILRange(inst.ILRange);
+				extractedBlock.AddILRange(inst);
 			}
 			block.Instructions.RemoveRange(startIndex, endIndex - startIndex);
 

@@ -45,6 +45,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 			Decimal();
 			Decimal(5m);
+
+#if CS72
+			NamedArgument(flag: true);
+			NamedArgument(flag: false);
+#endif
 		}
 
 		private void Conflicts()
@@ -90,6 +95,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				},
 				"Test2"
 			};
+		}
+
+		private static string GetStr(int unused)
+		{
+			return " ";
+		}
+
+		public static string Issue1567(string str1, string str2)
+		{
+			return string.Concat(str1.Replace('"', '\''), str2: str2.Replace('"', '\''), str1: GetStr(42));
 		}
 
 		private void CallerMemberName([CallerMemberName] string memberName = null)
@@ -144,6 +159,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 
 		private void OnlyDifferenceIsLastArgumentCastNecessary(int a, string b, OptionalArguments args = null)
+		{
+		}
+
+		private void NamedArgument(bool flag)
 		{
 		}
 

@@ -24,6 +24,7 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Xml;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.Documentation
 {
@@ -61,7 +62,7 @@ namespace ICSharpCode.Decompiler.Documentation
 			public XmlDocumentationCache(int size = 50)
 			{
 				if (size <= 0)
-					throw new ArgumentOutOfRangeException("size", size, "Value must be positive");
+					throw new ArgumentOutOfRangeException(nameof(size), size, "Value must be positive");
 				this.entries = new KeyValuePair<string, string>[size];
 			}
 			
@@ -128,7 +129,7 @@ namespace ICSharpCode.Decompiler.Documentation
 		public XmlDocumentationProvider(string fileName)
 		{
 			if (fileName == null)
-				throw new ArgumentNullException("fileName");
+				throw new ArgumentNullException(nameof(fileName));
 			
 			using (FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete)) {
 				using (XmlTextReader xmlReader = new XmlTextReader(fs)) {
@@ -265,10 +266,8 @@ namespace ICSharpCode.Decompiler.Documentation
 					int b = fs.ReadByte();
 					if (b < 0)
 						throw new EndOfStreamException();
-					int bytesUsed, charsUsed;
-					bool completed;
 					input[0] = (byte)b;
-					decoder.Convert(input, 0, 1, output, 0, 1, false, out bytesUsed, out charsUsed, out completed);
+					decoder.Convert(input, 0, 1, output, 0, 1, false, out int bytesUsed, out int charsUsed, out _);
 					Debug.Assert(bytesUsed == 1);
 					if (charsUsed == 1) {
 						if ((prevChar != '\r' && output[0] == '\n') || output[0] == '\r')
@@ -327,7 +326,7 @@ namespace ICSharpCode.Decompiler.Documentation
 		public string GetDocumentation(string key)
 		{
 			if (key == null)
-				throw new ArgumentNullException("key");
+				throw new ArgumentNullException(nameof(key));
 			return GetDocumentation(key, true);
 		}
 
@@ -356,8 +355,7 @@ namespace ICSharpCode.Decompiler.Documentation
 			
 			XmlDocumentationCache cache = this.cache;
 			lock (cache) {
-				string val;
-				if (!cache.TryGet(key, out val)) {
+				if (!cache.TryGet(key, out string val)) {
 					try {
 						// go through all items that have the correct hash
 						while (++m < index.Length && index[m].HashCode == hashcode) {
@@ -392,11 +390,11 @@ namespace ICSharpCode.Decompiler.Documentation
 				}
 			} catch (IOException) {
 				// Ignore errors on reload; IEntity.Documentation callers aren't prepared to handle exceptions
-				this.index = new IndexEntry[0]; // clear index to avoid future load attempts
+				this.index = Empty<IndexEntry>.Array; // clear index to avoid future load attempts
 				return null;
 			} catch (XmlException) {
-				this.index = new IndexEntry[0]; // clear index to avoid future load attempts
-				return null;				
+				this.index = Empty<IndexEntry>.Array; // clear index to avoid future load attempts
+				return null;
 			}
 			return GetDocumentation(key, allowReload: false); // prevent infinite reload loops
 		}

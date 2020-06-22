@@ -1,4 +1,3 @@
-
 // C:\Users\Siegfried\Documents\Visual Studio 2017\Projects\ConsoleApp13\ConsoleApplication1\bin\Debug\ConsoleApplication1.exe
 // ConsoleApplication1, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 // Global type: <Module>
@@ -15,14 +14,12 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Versioning;
 
 [assembly: FSharpInterfaceDataVersion(2, 0, 0)]
 [assembly: AssemblyTitle("ConsoleApplication1")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("ConsoleApplication1")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: TargetFramework(".NETFramework,Version=v4.6.1", FrameworkDisplayName = ".NET Framework 4.6.1")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCopyright("Copyright ©  2017")]
@@ -37,11 +34,6 @@ public static class Program
 	[CompilationMapping(SourceConstructFlags.Closure)]
 	internal sealed class disposable_00403 : IDisposable
 	{
-		public disposable_00403()
-		{
-			((object)this)._002Ector();
-		}
-
 		private void System_002DIDisposable_002DDispose()
 		{
 		}
@@ -170,10 +162,10 @@ public static class Program
 }
 namespace _003CStartupCode_0024ConsoleApplication1_003E
 {
-	internal static class _0024Program
+	internal static class _0024AssemblyInfo
 	{
 	}
-	internal static class _0024AssemblyInfo
+	internal static class _0024Program
 	{
 	}
 }

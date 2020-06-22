@@ -42,6 +42,11 @@ namespace ICSharpCode.Decompiler.Util
 		{
 			return new KeyComparer<TElement, TKey>(keySelector, Comparer<TKey>.Default, equalityComparer);
 		}
+
+		public static void SortBy<TElement, TKey>(this List<TElement> list, Func<TElement, TKey> keySelector)
+		{
+			list.Sort(Create(keySelector));
+		}
 	}
 	
 	public class KeyComparer<TElement, TKey> : IComparer<TElement>, IEqualityComparer<TElement>
@@ -53,11 +58,11 @@ namespace ICSharpCode.Decompiler.Util
 		public KeyComparer(Func<TElement, TKey> keySelector, IComparer<TKey> keyComparer, IEqualityComparer<TKey> keyEqualityComparer)
 		{
 			if (keySelector == null)
-				throw new ArgumentNullException("keySelector");
+				throw new ArgumentNullException(nameof(keySelector));
 			if (keyComparer == null)
-				throw new ArgumentNullException("keyComparer");
+				throw new ArgumentNullException(nameof(keyComparer));
 			if (keyEqualityComparer == null)
-				throw new ArgumentNullException("keyEqualityComparer");
+				throw new ArgumentNullException(nameof(keyEqualityComparer));
 			this.keySelector = keySelector;
 			this.keyComparer = keyComparer;
 			this.keyEqualityComparer = keyEqualityComparer;

@@ -30,6 +30,20 @@ using ICSharpCode.Decompiler.Util;
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
+	/// Form of a C# literal.
+	/// </summary>
+	public enum LiteralFormat : byte
+	{
+		None,
+		DecimalNumber,
+		HexadecimalNumber,
+		BinaryNumber,
+		StringLiteral,
+		VerbatimStringLiteral,
+		CharLiteral,
+	}
+
+	/// <summary>
 	/// Represents a literal value.
 	/// </summary>
 	public class PrimitiveExpression : Expression
@@ -37,11 +51,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public static readonly object AnyValue = new object();
 		
 		TextLocation startLocation;
-		public override TextLocation StartLocation {
-			get {
-				return startLocation;
-			}
-		}
+		TextLocation endLocation;
+		public override TextLocation StartLocation  => startLocation;
+		public override TextLocation EndLocation  => endLocation;
 		
 		internal void SetLocation(TextLocation startLocation, TextLocation endLocation)
 		{
@@ -50,65 +62,35 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.endLocation = endLocation;
 		}
 		
-		string literalValue;
-		TextLocation? endLocation;
-		public override TextLocation EndLocation {
-			get {
-				if (!endLocation.HasValue) {
-					endLocation = value is string ? AdvanceLocation (StartLocation, literalValue ?? "") :
-						new TextLocation (StartLocation.Line, StartLocation.Column + (literalValue ?? "").Length);
-				}
-				return endLocation.Value;
-			}
-		}
-		
 		object value;
-		
+		LiteralFormat format;
+
 		public object Value {
 			get { return this.value; }
 			set {
 				ThrowIfFrozen();
 				this.value = value;
-				literalValue = null;
 			}
 		}
 		
-		/// <remarks>Never returns null.</remarks>
-		public string LiteralValue {
-			get { return literalValue ?? ""; }
+
+		public LiteralFormat Format {
+			get {  return format;}
+			set {
+				ThrowIfFrozen();
+				format = value;
+			}
 		}
-		
-		/// <remarks>Can be null.</remarks>
-		public string UnsafeLiteralValue {
-			get { return literalValue; }
-		}
-		
-		public void SetValue(object value, string literalValue)
-		{
-			if (value == null)
-				throw new ArgumentNullException();
-			ThrowIfFrozen();
-			this.value = value;
-			this.literalValue = literalValue;
-		}
-		
+
 		public PrimitiveExpression (object value)
 		{
 			this.Value = value;
-			this.literalValue = null;
 		}
 		
-		public PrimitiveExpression (object value, string literalValue)
+		public PrimitiveExpression (object value, LiteralFormat format)
 		{
 			this.Value = value;
-			this.literalValue = literalValue;
-		}
-		
-		public PrimitiveExpression (object value, TextLocation startLocation, string literalValue)
-		{
-			this.Value = value;
-			this.startLocation = startLocation;
-			this.literalValue = literalValue;
+			this.format = format;
 		}
 		
 		public override void AcceptVisitor (IAstVisitor visitor)

@@ -110,7 +110,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 	}
 
-	public sealed class FullTypeNameSignatureDecoder : ISignatureTypeProvider<FullTypeName, Unit>
+	public sealed class FullTypeNameSignatureDecoder : ISignatureTypeProvider<FullTypeName, Unit>, ICustomAttributeTypeProvider<FullTypeName>
 	{
 		readonly MetadataReader metadata;
 
@@ -170,6 +170,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			return new TopLevelTypeName(ktr.Namespace, ktr.Name, ktr.TypeParameterCount);
 		}
 
+		public FullTypeName GetSystemType()
+		{
+			return new TopLevelTypeName("System", "Type");
+		}
+
 		public FullTypeName GetSZArrayType(FullTypeName elementType)
 		{
 			return elementType;
@@ -185,15 +190,30 @@ namespace ICSharpCode.Decompiler.Metadata
 			return handle.GetFullTypeName(reader);
 		}
 
+		public FullTypeName GetTypeFromSerializedName(string name)
+		{
+			return new FullTypeName(name);
+		}
+
 		public FullTypeName GetTypeFromSpecification(MetadataReader reader, Unit genericContext, TypeSpecificationHandle handle, byte rawTypeKind)
 		{
 			return reader.GetTypeSpecification(handle).DecodeSignature(new FullTypeNameSignatureDecoder(metadata), default);
+		}
+
+		public PrimitiveTypeCode GetUnderlyingEnumType(FullTypeName type)
+		{
+			throw new NotImplementedException();
+		}
+
+		public bool IsSystemType(FullTypeName type)
+		{
+			return type.IsKnownType(KnownTypeCode.Type);
 		}
 	}
 
 	public class GenericContext
 	{
-		readonly PEFile module;
+		readonly MetadataReader metadata;
 		readonly TypeDefinitionHandle declaringType;
 		readonly MethodDefinitionHandle method;
 
@@ -203,14 +223,27 @@ namespace ICSharpCode.Decompiler.Metadata
 
 		public GenericContext(MethodDefinitionHandle method, PEFile module)
 		{
-			this.module = module;
+			this.metadata = module.Metadata;
 			this.method = method;
 			this.declaringType = module.Metadata.GetMethodDefinition(method).GetDeclaringType();
 		}
 
+		public GenericContext(MethodDefinitionHandle method, MetadataReader metadata)
+		{
+			this.metadata = metadata;
+			this.method = method;
+			this.declaringType = metadata.GetMethodDefinition(method).GetDeclaringType();
+		}
+
 		public GenericContext(TypeDefinitionHandle declaringType, PEFile module)
 		{
-			this.module = module;
+			this.metadata = module.Metadata;
+			this.declaringType = declaringType;
+		}
+
+		public GenericContext(TypeDefinitionHandle declaringType, MetadataReader metadata)
+		{
+			this.metadata = metadata;
 			this.declaringType = declaringType;
 		}
 
@@ -219,7 +252,7 @@ namespace ICSharpCode.Decompiler.Metadata
 			GenericParameterHandle genericParameter = GetGenericTypeParameterHandleOrNull(index);
 			if (genericParameter.IsNil)
 				return index.ToString();
-			return module.Metadata.GetString(module.Metadata.GetGenericParameter(genericParameter).Name);
+			return metadata.GetString(metadata.GetGenericParameter(genericParameter).Name);
 		}
 
 		public string GetGenericMethodTypeParameterName(int index)
@@ -227,13 +260,13 @@ namespace ICSharpCode.Decompiler.Metadata
 			GenericParameterHandle genericParameter = GetGenericMethodTypeParameterHandleOrNull(index);
 			if (genericParameter.IsNil)
 				return index.ToString();
-			return module.Metadata.GetString(module.Metadata.GetGenericParameter(genericParameter).Name);
+			return metadata.GetString(metadata.GetGenericParameter(genericParameter).Name);
 		}
 
 		public GenericParameterHandle GetGenericTypeParameterHandleOrNull(int index)
 		{
 			GenericParameterHandleCollection genericParameters;
-			if (declaringType.IsNil || index < 0 || index >= (genericParameters = module.Metadata.GetTypeDefinition(declaringType).GetGenericParameters()).Count)
+			if (declaringType.IsNil || index < 0 || index >= (genericParameters = metadata.GetTypeDefinition(declaringType).GetGenericParameters()).Count)
 				return MetadataTokens.GenericParameterHandle(0);
 			return genericParameters[index];
 		}
@@ -241,7 +274,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		public GenericParameterHandle GetGenericMethodTypeParameterHandleOrNull(int index)
 		{
 			GenericParameterHandleCollection genericParameters;
-			if (method.IsNil || index < 0 || index >= (genericParameters = module.Metadata.GetMethodDefinition(method).GetGenericParameters()).Count)
+			if (method.IsNil || index < 0 || index >= (genericParameters = metadata.GetMethodDefinition(method).GetGenericParameters()).Count)
 				return MetadataTokens.GenericParameterHandle(0);
 			return genericParameters[index];
 		}

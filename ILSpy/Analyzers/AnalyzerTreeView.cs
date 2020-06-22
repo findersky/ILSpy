@@ -23,6 +23,8 @@ using System.Linq;
 using System.Windows;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.Analyzers.TreeNodes;
+using ICSharpCode.ILSpy.Docking;
+using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.TreeView;
 
 namespace ICSharpCode.ILSpy.Analyzers
@@ -30,23 +32,9 @@ namespace ICSharpCode.ILSpy.Analyzers
 	/// <summary>
 	/// Analyzer tree view.
 	/// </summary>
-	public class AnalyzerTreeView : SharpTreeView, IPane
+	public class AnalyzerTreeView : SharpTreeView
 	{
-		static AnalyzerTreeView instance;
-
-		public static AnalyzerTreeView Instance
-		{
-			get
-			{
-				if (instance == null) {
-					App.Current.VerifyAccess();
-					instance = new AnalyzerTreeView();
-				}
-				return instance;
-			}
-		}
-
-		private AnalyzerTreeView()
+		public AnalyzerTreeView()
 		{
 			this.ShowRoot = false;
 			this.Root = new AnalyzerRootNode { Language = MainWindow.Instance.CurrentLanguage };
@@ -72,8 +60,7 @@ namespace ICSharpCode.ILSpy.Analyzers
 
 		public void Show()
 		{
-			if (!IsVisible)
-				MainWindow.Instance.ShowInBottomPane("Analyzer", this);
+			DockWorkspace.Instance.ShowToolPane(AnalyzerPaneModel.PaneContentId);
 		}
 
 		public void Show(AnalyzerTreeNode node)
@@ -109,12 +96,18 @@ namespace ICSharpCode.ILSpy.Analyzers
 				throw new ArgumentNullException(nameof(entity));
 			}
 
+			if (entity.MetadataToken.IsNil) {
+				MessageBox.Show(Properties.Resources.CannotAnalyzeMissingRef, "ILSpy");
+				return;
+			}
+
 			switch (entity) {
 				case ITypeDefinition td:
 					ShowOrFocus(new AnalyzedTypeTreeNode(td));
 					break;
 				case IField fd:
-					ShowOrFocus(new AnalyzedFieldTreeNode(fd));
+					if (!fd.IsConst)
+						ShowOrFocus(new AnalyzedFieldTreeNode(fd));
 					break;
 				case IMethod md:
 					ShowOrFocus(new AnalyzedMethodTreeNode(md));
@@ -128,11 +121,6 @@ namespace ICSharpCode.ILSpy.Analyzers
 				default:
 					throw new ArgumentOutOfRangeException(nameof(entity), $"Entity {entity.GetType().FullName} is not supported.");
 			}
-		}
-
-		void IPane.Closed()
-		{
-			this.Root.Children.Clear();
 		}
 		
 		sealed class AnalyzerRootNode : AnalyzerTreeNode

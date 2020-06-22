@@ -22,10 +22,10 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using ICSharpCode.ILSpy.TextView;
-
+using ICSharpCode.ILSpy.Properties;
 namespace ICSharpCode.ILSpy
 {
-	[ExportMainMenuCommand(Menu = "_File", Header = "DEBUG -- Disassemble All", MenuCategory = "Open", MenuOrder = 2.5)]
+	[ExportMainMenuCommand(Menu = nameof(Resources._File),  Header = nameof(Resources.DEBUGDisassemble),  MenuCategory = nameof(Resources.Open),  MenuOrder = 2.5)]
 	sealed class DisassembleAllCommand : SimpleCommand
 	{
 		public override bool CanExecute(object parameter)
@@ -35,7 +35,7 @@ namespace ICSharpCode.ILSpy
 
 		public override void Execute(object parameter)
 		{
-			MainWindow.Instance.TextView.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
+			Docking.DockWorkspace.Instance.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
 				Parallel.ForEach(MainWindow.Instance.CurrentAssemblyList.GetAssemblies(), new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct }, delegate(LoadedAssembly asm) {
 					if (!asm.HasLoadError) {
@@ -61,7 +61,7 @@ namespace ICSharpCode.ILSpy
 					}
 				});
 				return output;
-			}, ct)).Then(output => MainWindow.Instance.TextView.ShowText(output)).HandleExceptions();
+			}, ct)).Then(output => Docking.DockWorkspace.Instance.ShowText(output)).HandleExceptions();
 		}
 	}
 }

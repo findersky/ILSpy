@@ -39,7 +39,7 @@ namespace ICSharpCode.ILSpy
 		/// <summary>Dirty flag, used to mark modifications so that the list is saved later</summary>
 		bool dirty;
 
-		internal readonly ConcurrentDictionary<(string assemblyName, bool isWinRT), LoadedAssembly> assemblyLookupCache = new ConcurrentDictionary<(string assemblyName, bool isWinRT), LoadedAssembly>();
+		internal readonly ConcurrentDictionary<(string assemblyName, bool isWinRT, string targetFrameworkIdentifier), LoadedAssembly> assemblyLookupCache = new ConcurrentDictionary<(string assemblyName, bool isWinRT, string targetFrameworkIdentifier), LoadedAssembly>();
 		internal readonly ConcurrentDictionary<string, LoadedAssembly> moduleLookupCache = new ConcurrentDictionary<string, LoadedAssembly>();
 
 		/// <summary>
@@ -69,6 +69,15 @@ namespace ICSharpCode.ILSpy
 				OpenAssembly((string)asm);
 			}
 			this.dirty = false; // OpenAssembly() sets dirty, so reset it afterwards
+		}
+
+		/// <summary>
+		/// Creates a copy of an assembly list.
+		/// </summary>
+		public AssemblyList(AssemblyList list, string newName)
+			: this(newName)
+		{
+			this.assemblies.AddRange(list.assemblies);
 		}
 		
 		/// <summary>
@@ -137,6 +146,7 @@ namespace ICSharpCode.ILSpy
 		internal void ClearCache()
 		{
 			assemblyLookupCache.Clear();
+			moduleLookupCache.Clear();
 		}
 
 		public LoadedAssembly Open(string assemblyUri, bool isAutoLoaded = false)
@@ -235,16 +245,22 @@ namespace ICSharpCode.ILSpy
 			if (target == null)
 				return null;
 
+			return ReloadAssembly(target);
+		}
+
+		public LoadedAssembly ReloadAssembly(LoadedAssembly target)
+		{
 			var index = this.assemblies.IndexOf(target);
-			var newAsm = new LoadedAssembly(this, file);
+			var newAsm = new LoadedAssembly(this, target.FileName);
 			newAsm.IsAutoLoaded = target.IsAutoLoaded;
+			newAsm.PdbFileOverride = target.PdbFileOverride;
 			lock (assemblies) {
 				this.assemblies.Remove(target);
 				this.assemblies.Insert(index, newAsm);
 			}
 			return newAsm;
 		}
-		
+
 		public void Unload(LoadedAssembly assembly)
 		{
 			App.Current.Dispatcher.VerifyAccess();

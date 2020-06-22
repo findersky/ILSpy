@@ -57,7 +57,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				&& !inst.IsVolatile)
 			{
 				context.Step($"stobj(ldloca {v.Name}, ...) => stloc {v.Name}(...)", inst);
-				inst.ReplaceWith(new StLoc(v, inst.Value) { ILRange = inst.ILRange });
+				inst.ReplaceWith(new StLoc(v, inst.Value).WithILRange(inst));
 				return true;
 			}
 			return false;
@@ -66,6 +66,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		protected internal override void VisitLdObj(LdObj inst)
 		{
 			base.VisitLdObj(inst);
+			AddressOfLdLocToLdLoca(inst, context);
 			LdObjToLdLoc(inst, context);
 		}
 
@@ -77,10 +78,31 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				&& !inst.IsVolatile)
 			{
 				context.Step($"ldobj(ldloca {v.Name}) => ldloc {v.Name}", inst);
-				inst.ReplaceWith(new LdLoc(v) { ILRange = inst.ILRange });
+				inst.ReplaceWith(new LdLoc(v).WithILRange(inst));
 				return true;
 			}
 			return false;
+		}
+
+		internal static void AddressOfLdLocToLdLoca(LdObj inst, ILTransformContext context)
+		{
+			// ldobj(...(addressof(ldloc V))) where ... can be zero or more ldflda instructions
+			// =>
+			// ldobj(...(ldloca V))
+			var temp = inst.Target;
+			var range = temp.ILRanges;
+			while (temp.MatchLdFlda(out var ldfldaTarget, out _)) {
+				temp = ldfldaTarget;
+				range = range.Concat(temp.ILRanges);
+			}
+			if (temp.MatchAddressOf(out var addressOfTarget, out _) && addressOfTarget.MatchLdLoc(out var v)) {
+				context.Step($"ldobj(...(addressof(ldloca {v.Name}))) => ldobj(...(ldloca {v.Name}))", inst);
+				var replacement = new LdLoca(v).WithILRange(addressOfTarget);
+				foreach (var r in range) {
+					replacement = replacement.WithILRange(r);
+				}
+				temp.ReplaceWith(replacement);
+			}
 		}
 
 		protected internal override void VisitCall(Call inst)
@@ -102,7 +124,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// call(ref, ...)
 				// => stobj(ref, newobj(...))
 				var newObj = new NewObj(inst.Method);
-				newObj.ILRange = inst.ILRange;
+				newObj.AddILRange(inst);
 				newObj.Arguments.AddRange(inst.Arguments.Skip(1));
 				newObj.ILStackWasEmpty = inst.ILStackWasEmpty;
 				var expr = new StObj(inst.Arguments[0], newObj, inst.Method.DeclaringType);

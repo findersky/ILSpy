@@ -183,12 +183,23 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						arguments: targetInvokeCall.Arguments.Skip(2).ToArray()
 					);
 				case BinderMethodKind.InvokeConstructor:
+					var arguments = targetInvokeCall.Arguments.Skip(2).ToArray();
+					// Extract type information from targetInvokeCall:
+					// Must either be an inlined type or
+					// a reference to a variable that is initialized with a type.
+					if (!TransformExpressionTrees.MatchGetTypeFromHandle(arguments[0], out var type)) {
+						if (!(arguments[0].MatchLdLoc(out var temp) && temp.IsSingleDefinition && temp.StoreInstructions.FirstOrDefault() is StLoc initStore))
+							return null;
+						if (!TransformExpressionTrees.MatchGetTypeFromHandle(initStore.Value, out type))
+							return null;
+					}
 					deadArguments.AddRange(targetInvokeCall.Arguments.Take(2));
 					return new DynamicInvokeConstructorInstruction(
 						binderFlags: callsite.Flags,
+						type: type ?? SpecialType.UnknownType,
 						context: callsite.Context,
 						argumentInfo: callsite.ArgumentInfos,
-						arguments: targetInvokeCall.Arguments.Skip(2).ToArray()
+						arguments: arguments
 					);
 				case BinderMethodKind.InvokeMember:
 					deadArguments.AddRange(targetInvokeCall.Arguments.Take(2));
@@ -322,11 +333,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					int numberOfTypeArguments = 0;
 					if (!value.MatchLdNull()) {
 						if (value is NewArr typeArgsNewArr && typeArgsNewArr.Type.IsKnownType(KnownTypeCode.Type) && typeArgsNewArr.Indices.Count == 1 && typeArgsNewArr.Indices[0].MatchLdcI4(out numberOfTypeArguments)) {
-							if (!TransformArrayInitializers.HandleSimpleArrayInitializer(callSiteInitBlock, 3, variableOrTemporary, typeArgsNewArr.Type, numberOfTypeArguments, out var typeArguments, out _))
+							if (!TransformArrayInitializers.HandleSimpleArrayInitializer(context.Function, callSiteInitBlock, 3, variableOrTemporary, typeArgsNewArr.Type, new[] { numberOfTypeArguments }, out var typeArguments, out _))
 								return false;
 							int i = 0;
 							callSiteInfo.TypeArguments = new IType[numberOfTypeArguments];
-							foreach (var typeArg in typeArguments) {
+							foreach (var (_, typeArg) in typeArguments) {
 								if (!TransformExpressionTrees.MatchGetTypeFromHandle(typeArg, out var type))
 									return false;
 								callSiteInfo.TypeArguments[i] = type;
@@ -496,20 +507,22 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			if (!(value is NewArr newArr2 && newArr2.Type.FullName == "Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo" && newArr2.Indices.Count == 1 && newArr2.Indices[0].MatchLdcI4(out var numberOfArguments)))
 				return false;
-			if (!TransformArrayInitializers.HandleSimpleArrayInitializer(callSiteInfo.InitBlock, instructionOffset, variable, newArr2.Type, numberOfArguments, out var arguments, out _))
+			if (!TransformArrayInitializers.HandleSimpleArrayInitializer(context.Function, callSiteInfo.InitBlock, instructionOffset, variable, newArr2.Type, new[] { numberOfArguments }, out var arguments, out _))
 				return false;
 			int i = 0;
 			callSiteInfo.ArgumentInfos = new CSharpArgumentInfo[numberOfArguments];
-			var compileTimeTypes = callSiteInfo.DelegateType.GetDelegateInvokeMethod().Parameters.SelectReadOnlyArray(p => p.Type);
-			foreach (var arg in arguments) {
+			IMethod invokeMethod = callSiteInfo.DelegateType.GetDelegateInvokeMethod();
+			if (invokeMethod == null)
+				return false;
+			var compileTimeTypes = invokeMethod.Parameters.SelectReadOnlyArray(p => p.Type);
+			foreach (var (_, arg) in arguments) {
 				if (!(arg is Call createCall))
 					return false;
 				if (!(createCall.Method.Name == "Create" && createCall.Method.DeclaringType.FullName == "Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo" && createCall.Arguments.Count == 2))
 					return false;
 				if (!createCall.Arguments[0].MatchLdcI4(out var argumentInfoFlags))
 					return false;
-				string argumentName = null;
-				if (!createCall.Arguments[1].MatchLdStr(out argumentName))
+				if (!createCall.Arguments[1].MatchLdStr(out string argumentName))
 					if (!createCall.Arguments[1].MatchLdNull())
 						return false;
 				callSiteInfo.ArgumentInfos[i] = new CSharpArgumentInfo { Flags = (CSharpArgumentInfoFlags)argumentInfoFlags, Name = argumentName, CompileTimeType = compileTimeTypes[i + 1] };

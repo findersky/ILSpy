@@ -17,10 +17,13 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 		public OpenReferenceCommand(ILSpyAddInPackage owner)
 			: base(owner, PkgCmdIDList.cmdidOpenReferenceInILSpy)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
 		}
 
 		protected override void OnBeforeQueryStatus(object sender, EventArgs e)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			if (sender is OleMenuCommand menuItem) {
 				menuItem.Visible = false;
 
@@ -43,6 +46,8 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 
 		protected override void OnExecute(object sender, EventArgs e)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			var itemObject = owner.GetSelectedItemsData<object>().FirstOrDefault();
 			if (itemObject == null)
 				return;
@@ -58,12 +63,14 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 					OpenAssembliesInILSpy(parameters);
 				else
 					owner.ShowMessage("Could not find reference '{0}', please ensure the project and all references were built correctly!", reference.Name);
+				return;
 			}
 
 			// Handle NuGet references
 			var nugetRefItem = NuGetReferenceForILSpy.Detect(itemObject);
 			if (nugetRefItem != null) {
 				OpenAssembliesInILSpy(nugetRefItem.GetILSpyParameters());
+				return;
 			}
 
 			// Handle project references
@@ -87,6 +94,8 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 
 		internal static void Register(ILSpyAddInPackage owner)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			instance = new OpenReferenceCommand(owner);
 		}
 	}

@@ -47,7 +47,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		{
 			switch (v.Kind) {
 				case VariableKind.Local:
-				case VariableKind.Exception:
 					foreach (var ldloca in v.AddressInstructions) {
 						if (DetermineAddressUse(ldloca, ldloca.Variable) == AddressUse.Unknown) {
 							// If we don't understand how the address is being used,
@@ -110,8 +109,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					// Address stored in local variable: also check all uses of that variable.
 					if (!(stloc.Variable.Kind == VariableKind.StackSlot || stloc.Variable.Kind == VariableKind.Local))
 						return AddressUse.Unknown;
-					if (stloc.Value.OpCode != OpCode.LdLoca) {
-						// GroupStores.HandleLoad() only detects ref-locals when they are directly initialized with ldloca
+					var value = stloc.Value;
+					while (value is LdFlda ldFlda) {
+						value = ldFlda.Target;
+					}
+					if (value.OpCode != OpCode.LdLoca) {
+						// GroupStores only handles ref-locals correctly when they are supported by GetAddressLoadForRefLocalUse(),
+						// which only works for ldflda*(ldloca)
 						return AddressUse.Unknown;
 					}
 					foreach (var load in stloc.Variable.LoadInstructions) {
@@ -129,14 +133,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Address is passed to method.
 			// We'll assume the method only uses the address locally,
 			// unless we can see an address being returned from the method:
-			if (call is NewObj) {
-				if (call.Method.DeclaringType.IsByRefLike) {
+			IType returnType = (call is NewObj) ? call.Method.DeclaringType : call.Method.ReturnType;
+			if (returnType.IsByRefLike) {
+				// If the address is returned from the method, it check whether it's consumed immediately.
+				// This can still be fine, as long as we also check the consumer's other arguments for 'stloc targetVar'.
+				if (DetermineAddressUse(call, targetVar) != AddressUse.Immediate)
 					return AddressUse.Unknown;
-				}
-			} else {
-				if (call.Method.ReturnType.IsByRefLike) {
-					return AddressUse.Unknown;
-				}
 			}
 			foreach (var p in call.Method.Parameters) {
 				// catch "out Span<int>" and similar
@@ -163,7 +165,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return null; // only single-definition variables can be supported ref locals
 			var store = ldloc.Variable.StoreInstructions.SingleOrDefault();
 			if (store is StLoc stloc) {
-				return stloc.Value as LdLoca;
+				var value = stloc.Value;
+				while (value is LdFlda ldFlda) {
+					value = ldFlda.Target;
+				}
+				return value as LdLoca;
 			}
 			return null;
 		}

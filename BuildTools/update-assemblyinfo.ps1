@@ -4,16 +4,16 @@ $baseCommit = "d779383cb85003d6dabeb976f0845631e07bf463";
 $baseCommitRev = 1;
 
 # make sure this list matches artifacts-only branches list in appveyor.yml!
-$masterBranches = @("master", "3.2.x");
+$masterBranches = @("master", "5.0.x");
 
 $globalAssemblyInfoTemplateFile = "ILSpy/Properties/AssemblyInfo.template.cs";
 
 function Test-File([string]$filename) {
-    return [System.IO.File]::Exists( (Join-Path (Get-Location) $filename) );
+    return [System.IO.File]::Exists((Join-Path (Get-Location) $filename));
 }
 
 function Test-Dir([string]$name) {
-    return [System.IO.Directory]::Exists( (Join-Path (Get-Location) $name) );
+    return [System.IO.Directory]::Exists((Join-Path (Get-Location) $name));
 }
 
 function Find-Git() {
@@ -38,27 +38,33 @@ function Find-Git() {
 	return $false;
 }
 
+function No-Git() {
+    return -not (((Test-Dir ".git") -or (Test-File ".git")) -and (Find-Git));
+}
+
 function gitVersion() {
-    if (-not ((Test-Dir ".git") -and (Find-Git))) {
+    if (No-Git) {
         return 0;
     }
     return [Int32]::Parse((git rev-list --count "$baseCommit..HEAD")) + $baseCommitRev;
 }
 
 function gitCommitHash() {
-    if (-not ((Test-Dir ".git") -and (Find-Git))) {
+    if (No-Git) {
         return "0000000000000000000000000000000000000000";
     }
     return (git rev-list "$baseCommit..HEAD") | Select -First 1;
 }
 
 function gitBranch() {
-    if (-not ((Test-Dir ".git") -and (Find-Git))) {
+    if (No-Git) {
         return "no-branch";
     }
 
-    if ($env:APPVEYOR_REPO_BRANCH -ne $null) {
+	if ($env:APPVEYOR_REPO_BRANCH -ne $null) {
         return $env:APPVEYOR_REPO_BRANCH;
+    } elseif ($env:BUILD_SOURCEBRANCHNAME -ne $null) {
+        return $env:BUILD_SOURCEBRANCHNAME;
     } else {
         return ((git branch --no-color).Split([System.Environment]::NewLine) | where { $_ -match "^\* " } | select -First 1).Substring(2);
     }
@@ -71,6 +77,12 @@ $templateFiles = (
     @{Input="ILSpy/Properties/app.config.template"; Output = "ILSpy/app.config"},
     @{Input="ILSpy.AddIn/source.extension.vsixmanifest.template"; Output = "ILSpy.AddIn/source.extension.vsixmanifest"}
 );
+
+$appxmanifestFiles = (	
+	@{Input="ILSpy.Package/Package.appxmanifest"; Output="ILSpy.Package/Package.appxmanifest"},
+	@{Input="ILSpy.Package/Package-CI.appxmanifest"; Output="ILSpy.Package/Package-CI.appxmanifest"}
+);
+
 [string]$mutexId = "ILSpyUpdateAssemblyInfo" + (Get-Location).ToString().GetHashCode();
 Write-Host $mutexId;
 [bool]$createdNew = $false;
@@ -142,6 +154,32 @@ try {
             $out | Out-File -Encoding utf8 $file.Output;
         }
     }
+
+	# Only update these on the Build Agent when ReleaseChannel is set
+	if($Env:ReleaseChannel -ne '' -and $Env:ReleaseChannel -ne $null) { 
+		foreach ($file in $appxmanifestFiles) {
+			[string]$in = (Get-Content $file.Input) -Join [System.Environment]::NewLine;
+
+			$out = $in.Replace('$INSERTVERSION$', $fullVersionNumber);
+			$out = $out.Replace('$INSERTMAJORVERSION$', $major);
+			$out = $out.Replace('$INSERTMINORVERSION$', $minor);
+			$out = $out.Replace('$INSERTREVISION$', $revision);
+			$out = $out.Replace('$INSERTCOMMITHASH$', $gitCommitHash);
+			$out = $out.Replace('$INSERTSHORTCOMMITHASH$', $gitCommitHash.Substring(0, 8));
+			$out = $out.Replace('$INSERTDATE$', [System.DateTime]::Now.ToString("MM/dd/yyyy"));
+			$out = $out.Replace('$INSERTYEAR$', [System.DateTime]::Now.Year.ToString());
+			$out = $out.Replace('$INSERTBRANCHNAME$', $branchName);
+			$out = $out.Replace('$INSERTBRANCHPOSTFIX$', $postfixBranchName);
+			$out = $out.Replace('$INSERTVERSIONNAME$', $versionName);
+			$out = $out.Replace('$INSERTVERSIONNAMEPOSTFIX$', $postfixVersionName);
+			$out = $out.Replace('$INSERTBUILDCONFIG$', $buildConfig);
+
+			if (((Get-Content $file.Input) -Join [System.Environment]::NewLine) -ne $out) {
+				$out | Out-File -Encoding utf8 $file.Output;
+			}
+		}
+	}
+	
 } finally {
     $mutex.ReleaseMutex();
     $mutex.Close();

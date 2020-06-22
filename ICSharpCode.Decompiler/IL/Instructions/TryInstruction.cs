@@ -19,6 +19,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -60,14 +61,14 @@ namespace ICSharpCode.Decompiler.IL
 		public override ILInstruction Clone()
 		{
 			var clone = new TryCatch(TryBlock.Clone());
-			clone.ILRange = this.ILRange;
+			clone.AddILRange(this);
 			clone.Handlers.AddRange(this.Handlers.Select(h => (TryCatchHandler)h.Clone()));
 			return clone;
 		}
 		
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(".try ");
 			TryBlock.WriteTo(output, options);
 			foreach (var handler in Handlers) {
@@ -162,7 +163,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write("catch ");
 			if (variable != null) {
 				output.WriteLocalReference(variable.Name, variable, isDefinition: true);
@@ -174,6 +175,18 @@ namespace ICSharpCode.Decompiler.IL
 			output.Write(')');
 			output.Write(' ');
 			body.WriteTo(output, options);
+		}
+
+		/// <summary>
+		/// Gets the ILRange of the instructions at the start of the catch-block,
+		/// that take the exception object and store it in the exception variable slot.
+		/// Note: This range is empty, if Filter is not empty, i.e., ldloc 1.
+		/// </summary>
+		public Interval ExceptionSpecifierILRange { get; private set; }
+
+		public void AddExceptionSpecifierILRange(Interval newRange)
+		{
+			ExceptionSpecifierILRange = CombineILRange(ExceptionSpecifierILRange, newRange);
 		}
 	}
 	
@@ -197,14 +210,12 @@ namespace ICSharpCode.Decompiler.IL
 		
 		public override ILInstruction Clone()
 		{
-			return new TryFinally(TryBlock.Clone(), finallyBlock.Clone()) {
-				ILRange = this.ILRange
-			};
+			return new TryFinally(TryBlock.Clone(), finallyBlock.Clone()).WithILRange(this);
 		}
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(".try ");
 			TryBlock.WriteTo(output, options);
 			output.Write(" finally ");
@@ -293,14 +304,12 @@ namespace ICSharpCode.Decompiler.IL
 		
 		public override ILInstruction Clone()
 		{
-			return new TryFault(TryBlock.Clone(), faultBlock.Clone()) {
-				ILRange = this.ILRange
-			};
+			return new TryFault(TryBlock.Clone(), faultBlock.Clone()).WithILRange(this);
 		}
 		
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write(".try ");
 			TryBlock.WriteTo(output, options);
 			output.Write(" fault ");
@@ -365,5 +374,10 @@ namespace ICSharpCode.Decompiler.IL
 					throw new IndexOutOfRangeException();
 			}
 		}
+	}
+
+	public partial class Throw
+	{
+		internal StackType resultType = StackType.Void;
 	}
 }

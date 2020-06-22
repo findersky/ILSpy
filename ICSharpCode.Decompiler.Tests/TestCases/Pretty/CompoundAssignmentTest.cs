@@ -60,6 +60,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				get;
 				set;
 			}
+
+			public bool BoolProperty {
+				get;
+				set;
+			}
 			
 			public uint this[string name] {
 				get {
@@ -420,8 +425,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			set;
 		}
 
+		private static CustomStruct2 GetStruct()
+		{
+			throw new NotImplementedException();
+		}
 #if CS70
-		private static ref CustomStruct2 GetStruct()
+		private static ref CustomStruct2 GetRefStruct()
 		{
 			throw new NotImplementedException();
 		}
@@ -798,6 +807,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return M().ByteProperty *= 2;
 		}
 
+		public void BitManipBoolProperty(bool b)
+		{
+			M().BoolProperty |= b;
+			M().BoolProperty &= b;
+			M().BoolProperty ^= b;
+		}
+
+		public bool BitOrBoolPropertyAndReturn(bool b)
+		{
+			return M().BoolProperty |= b;
+		}
+
+		public bool BitAndBoolPropertyAndReturn(bool b)
+		{
+			return M().BoolProperty &= b;
+		}
+
 		public int PreIncrementStaticField()
 		{
 			return ++StaticField;
@@ -910,8 +936,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField += 5;
 			GetClass().ByteProp += 5;
 #if CS70
-			GetStruct().ByteField += 5;
-			GetStruct().ByteProp += 5;
+			GetRefStruct().ByteField += 5;
+			GetRefStruct().ByteProp += 5;
 			GetRefByte() += 5;
 #endif
 		}
@@ -936,8 +962,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField -= 5;
 			GetClass().ByteProp -= 5;
 #if CS70
-			GetStruct().ByteField -= 5;
-			GetStruct().ByteProp -= 5;
+			GetRefStruct().ByteField -= 5;
+			GetRefStruct().ByteProp -= 5;
 			GetRefByte() -= 5;
 #endif
 		}
@@ -962,8 +988,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField *= 5;
 			GetClass().ByteProp *= 5;
 #if CS70
-			GetStruct().ByteField *= 5;
-			GetStruct().ByteProp *= 5;
+			GetRefStruct().ByteField *= 5;
+			GetRefStruct().ByteProp *= 5;
 			GetRefByte() *= 5;
 #endif
 		}
@@ -988,8 +1014,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField /= 5;
 			GetClass().ByteProp /= 5;
 #if CS70
-			GetStruct().ByteField /= 5;
-			GetStruct().ByteProp /= 5;
+			GetRefStruct().ByteField /= 5;
+			GetRefStruct().ByteProp /= 5;
 			GetRefByte() /= 5;
 #endif
 		}
@@ -1014,8 +1040,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField %= 5;
 			GetClass().ByteProp %= 5;
 #if CS70
-			GetStruct().ByteField %= 5;
-			GetStruct().ByteProp %= 5;
+			GetRefStruct().ByteField %= 5;
+			GetRefStruct().ByteProp %= 5;
 			GetRefByte() %= 5;
 #endif
 		}
@@ -1040,8 +1066,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField <<= 5;
 			GetClass().ByteProp <<= 5;
 #if CS70
-			GetStruct().ByteField <<= 5;
-			GetStruct().ByteProp <<= 5;
+			GetRefStruct().ByteField <<= 5;
+			GetRefStruct().ByteProp <<= 5;
 			GetRefByte() <<= 5;
 #endif
 		}
@@ -1066,8 +1092,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField >>= 5;
 			GetClass().ByteProp >>= 5;
 #if CS70
-			GetStruct().ByteField >>= 5;
-			GetStruct().ByteProp >>= 5;
+			GetRefStruct().ByteField >>= 5;
+			GetRefStruct().ByteProp >>= 5;
 			GetRefByte() >>= 5;
 #endif
 		}
@@ -1092,8 +1118,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField &= 5;
 			GetClass().ByteProp &= 5;
 #if CS70
-			GetStruct().ByteField &= 5;
-			GetStruct().ByteProp &= 5;
+			GetRefStruct().ByteField &= 5;
+			GetRefStruct().ByteProp &= 5;
 			GetRefByte() &= 5;
 #endif
 		}
@@ -1118,8 +1144,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField |= 5;
 			GetClass().ByteProp |= 5;
 #if CS70
-			GetStruct().ByteField |= 5;
-			GetStruct().ByteProp |= 5;
+			GetRefStruct().ByteField |= 5;
+			GetRefStruct().ByteProp |= 5;
 			GetRefByte() |= 5;
 #endif
 		}
@@ -1144,8 +1170,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ByteField ^= 5;
 			GetClass().ByteProp ^= 5;
 #if CS70
-			GetStruct().ByteField ^= 5;
-			GetStruct().ByteProp ^= 5;
+			GetRefStruct().ByteField ^= 5;
+			GetRefStruct().ByteProp ^= 5;
 			GetRefByte() ^= 5;
 #endif
 		}
@@ -1170,8 +1196,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().ByteField++);
 			X(GetClass().ByteProp++);
 #if CS70
-			X(GetStruct().ByteField++);
-			X(GetStruct().ByteProp++);
+			X(GetRefStruct().ByteField++);
+			X(GetRefStruct().ByteProp++);
 			X(GetRefByte()++);
 #endif
 		}
@@ -1196,8 +1222,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().ByteField);
 			X(++GetClass().ByteProp);
 #if CS70
-			X(++GetStruct().ByteField);
-			X(++GetStruct().ByteProp);
+			X(++GetRefStruct().ByteField);
+			X(++GetRefStruct().ByteProp);
 			X(++GetRefByte());
 #endif
 		}
@@ -1221,8 +1247,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().ByteField--);
 			X(GetClass().ByteProp--);
 #if CS70
-			X(GetStruct().ByteField--);
-			X(GetStruct().ByteProp--);
+			X(GetRefStruct().ByteField--);
+			X(GetRefStruct().ByteProp--);
 			X(GetRefByte()--);
 #endif
 		}
@@ -1247,8 +1273,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().ByteField);
 			X(--GetClass().ByteProp);
 #if CS70
-			X(--GetStruct().ByteField);
-			X(--GetStruct().ByteProp);
+			X(--GetRefStruct().ByteField);
+			X(--GetRefStruct().ByteProp);
 			X(--GetRefByte());
 #endif
 		}
@@ -1272,8 +1298,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField += 5;
 			GetClass().SbyteProp += 5;
 #if CS70
-			GetStruct().SbyteField += 5;
-			GetStruct().SbyteProp += 5;
+			GetRefStruct().SbyteField += 5;
+			GetRefStruct().SbyteProp += 5;
 			GetRefSbyte() += 5;
 #endif
 		}
@@ -1298,8 +1324,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField -= 5;
 			GetClass().SbyteProp -= 5;
 #if CS70
-			GetStruct().SbyteField -= 5;
-			GetStruct().SbyteProp -= 5;
+			GetRefStruct().SbyteField -= 5;
+			GetRefStruct().SbyteProp -= 5;
 			GetRefSbyte() -= 5;
 #endif
 		}
@@ -1324,8 +1350,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField *= 5;
 			GetClass().SbyteProp *= 5;
 #if CS70
-			GetStruct().SbyteField *= 5;
-			GetStruct().SbyteProp *= 5;
+			GetRefStruct().SbyteField *= 5;
+			GetRefStruct().SbyteProp *= 5;
 			GetRefSbyte() *= 5;
 #endif
 		}
@@ -1350,8 +1376,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField /= 5;
 			GetClass().SbyteProp /= 5;
 #if CS70
-			GetStruct().SbyteField /= 5;
-			GetStruct().SbyteProp /= 5;
+			GetRefStruct().SbyteField /= 5;
+			GetRefStruct().SbyteProp /= 5;
 			GetRefSbyte() /= 5;
 #endif
 		}
@@ -1376,8 +1402,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField %= 5;
 			GetClass().SbyteProp %= 5;
 #if CS70
-			GetStruct().SbyteField %= 5;
-			GetStruct().SbyteProp %= 5;
+			GetRefStruct().SbyteField %= 5;
+			GetRefStruct().SbyteProp %= 5;
 			GetRefSbyte() %= 5;
 #endif
 		}
@@ -1402,8 +1428,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField <<= 5;
 			GetClass().SbyteProp <<= 5;
 #if CS70
-			GetStruct().SbyteField <<= 5;
-			GetStruct().SbyteProp <<= 5;
+			GetRefStruct().SbyteField <<= 5;
+			GetRefStruct().SbyteProp <<= 5;
 			GetRefSbyte() <<= 5;
 #endif
 		}
@@ -1428,8 +1454,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField >>= 5;
 			GetClass().SbyteProp >>= 5;
 #if CS70
-			GetStruct().SbyteField >>= 5;
-			GetStruct().SbyteProp >>= 5;
+			GetRefStruct().SbyteField >>= 5;
+			GetRefStruct().SbyteProp >>= 5;
 			GetRefSbyte() >>= 5;
 #endif
 		}
@@ -1454,8 +1480,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField &= 5;
 			GetClass().SbyteProp &= 5;
 #if CS70
-			GetStruct().SbyteField &= 5;
-			GetStruct().SbyteProp &= 5;
+			GetRefStruct().SbyteField &= 5;
+			GetRefStruct().SbyteProp &= 5;
 			GetRefSbyte() &= 5;
 #endif
 		}
@@ -1480,8 +1506,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField |= 5;
 			GetClass().SbyteProp |= 5;
 #if CS70
-			GetStruct().SbyteField |= 5;
-			GetStruct().SbyteProp |= 5;
+			GetRefStruct().SbyteField |= 5;
+			GetRefStruct().SbyteProp |= 5;
 			GetRefSbyte() |= 5;
 #endif
 		}
@@ -1506,8 +1532,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().SbyteField ^= 5;
 			GetClass().SbyteProp ^= 5;
 #if CS70
-			GetStruct().SbyteField ^= 5;
-			GetStruct().SbyteProp ^= 5;
+			GetRefStruct().SbyteField ^= 5;
+			GetRefStruct().SbyteProp ^= 5;
 			GetRefSbyte() ^= 5;
 #endif
 		}
@@ -1532,8 +1558,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().SbyteField++);
 			X(GetClass().SbyteProp++);
 #if CS70
-			X(GetStruct().SbyteField++);
-			X(GetStruct().SbyteProp++);
+			X(GetRefStruct().SbyteField++);
+			X(GetRefStruct().SbyteProp++);
 			X(GetRefSbyte()++);
 #endif
 		}
@@ -1558,8 +1584,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().SbyteField);
 			X(++GetClass().SbyteProp);
 #if CS70
-			X(++GetStruct().SbyteField);
-			X(++GetStruct().SbyteProp);
+			X(++GetRefStruct().SbyteField);
+			X(++GetRefStruct().SbyteProp);
 			X(++GetRefSbyte());
 #endif
 		}
@@ -1583,8 +1609,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().SbyteField--);
 			X(GetClass().SbyteProp--);
 #if CS70
-			X(GetStruct().SbyteField--);
-			X(GetStruct().SbyteProp--);
+			X(GetRefStruct().SbyteField--);
+			X(GetRefStruct().SbyteProp--);
 			X(GetRefSbyte()--);
 #endif
 		}
@@ -1609,8 +1635,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().SbyteField);
 			X(--GetClass().SbyteProp);
 #if CS70
-			X(--GetStruct().SbyteField);
-			X(--GetStruct().SbyteProp);
+			X(--GetRefStruct().SbyteField);
+			X(--GetRefStruct().SbyteProp);
 			X(--GetRefSbyte());
 #endif
 		}
@@ -1634,8 +1660,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField += 5;
 			GetClass().ShortProp += 5;
 #if CS70
-			GetStruct().ShortField += 5;
-			GetStruct().ShortProp += 5;
+			GetRefStruct().ShortField += 5;
+			GetRefStruct().ShortProp += 5;
 			GetRefShort() += 5;
 #endif
 		}
@@ -1660,8 +1686,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField -= 5;
 			GetClass().ShortProp -= 5;
 #if CS70
-			GetStruct().ShortField -= 5;
-			GetStruct().ShortProp -= 5;
+			GetRefStruct().ShortField -= 5;
+			GetRefStruct().ShortProp -= 5;
 			GetRefShort() -= 5;
 #endif
 		}
@@ -1686,8 +1712,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField *= 5;
 			GetClass().ShortProp *= 5;
 #if CS70
-			GetStruct().ShortField *= 5;
-			GetStruct().ShortProp *= 5;
+			GetRefStruct().ShortField *= 5;
+			GetRefStruct().ShortProp *= 5;
 			GetRefShort() *= 5;
 #endif
 		}
@@ -1712,8 +1738,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField /= 5;
 			GetClass().ShortProp /= 5;
 #if CS70
-			GetStruct().ShortField /= 5;
-			GetStruct().ShortProp /= 5;
+			GetRefStruct().ShortField /= 5;
+			GetRefStruct().ShortProp /= 5;
 			GetRefShort() /= 5;
 #endif
 		}
@@ -1738,8 +1764,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField %= 5;
 			GetClass().ShortProp %= 5;
 #if CS70
-			GetStruct().ShortField %= 5;
-			GetStruct().ShortProp %= 5;
+			GetRefStruct().ShortField %= 5;
+			GetRefStruct().ShortProp %= 5;
 			GetRefShort() %= 5;
 #endif
 		}
@@ -1764,8 +1790,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField <<= 5;
 			GetClass().ShortProp <<= 5;
 #if CS70
-			GetStruct().ShortField <<= 5;
-			GetStruct().ShortProp <<= 5;
+			GetRefStruct().ShortField <<= 5;
+			GetRefStruct().ShortProp <<= 5;
 			GetRefShort() <<= 5;
 #endif
 		}
@@ -1790,8 +1816,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField >>= 5;
 			GetClass().ShortProp >>= 5;
 #if CS70
-			GetStruct().ShortField >>= 5;
-			GetStruct().ShortProp >>= 5;
+			GetRefStruct().ShortField >>= 5;
+			GetRefStruct().ShortProp >>= 5;
 			GetRefShort() >>= 5;
 #endif
 		}
@@ -1816,8 +1842,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField &= 5;
 			GetClass().ShortProp &= 5;
 #if CS70
-			GetStruct().ShortField &= 5;
-			GetStruct().ShortProp &= 5;
+			GetRefStruct().ShortField &= 5;
+			GetRefStruct().ShortProp &= 5;
 			GetRefShort() &= 5;
 #endif
 		}
@@ -1842,8 +1868,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField |= 5;
 			GetClass().ShortProp |= 5;
 #if CS70
-			GetStruct().ShortField |= 5;
-			GetStruct().ShortProp |= 5;
+			GetRefStruct().ShortField |= 5;
+			GetRefStruct().ShortProp |= 5;
 			GetRefShort() |= 5;
 #endif
 		}
@@ -1868,8 +1894,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().ShortField ^= 5;
 			GetClass().ShortProp ^= 5;
 #if CS70
-			GetStruct().ShortField ^= 5;
-			GetStruct().ShortProp ^= 5;
+			GetRefStruct().ShortField ^= 5;
+			GetRefStruct().ShortProp ^= 5;
 			GetRefShort() ^= 5;
 #endif
 		}
@@ -1894,8 +1920,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().ShortField++);
 			X(GetClass().ShortProp++);
 #if CS70
-			X(GetStruct().ShortField++);
-			X(GetStruct().ShortProp++);
+			X(GetRefStruct().ShortField++);
+			X(GetRefStruct().ShortProp++);
 			X(GetRefShort()++);
 #endif
 		}
@@ -1920,8 +1946,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().ShortField);
 			X(++GetClass().ShortProp);
 #if CS70
-			X(++GetStruct().ShortField);
-			X(++GetStruct().ShortProp);
+			X(++GetRefStruct().ShortField);
+			X(++GetRefStruct().ShortProp);
 			X(++GetRefShort());
 #endif
 		}
@@ -1945,8 +1971,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().ShortField--);
 			X(GetClass().ShortProp--);
 #if CS70
-			X(GetStruct().ShortField--);
-			X(GetStruct().ShortProp--);
+			X(GetRefStruct().ShortField--);
+			X(GetRefStruct().ShortProp--);
 			X(GetRefShort()--);
 #endif
 		}
@@ -1971,8 +1997,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().ShortField);
 			X(--GetClass().ShortProp);
 #if CS70
-			X(--GetStruct().ShortField);
-			X(--GetStruct().ShortProp);
+			X(--GetRefStruct().ShortField);
+			X(--GetRefStruct().ShortProp);
 			X(--GetRefShort());
 #endif
 		}
@@ -1996,8 +2022,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField += 5;
 			GetClass().UshortProp += 5;
 #if CS70
-			GetStruct().UshortField += 5;
-			GetStruct().UshortProp += 5;
+			GetRefStruct().UshortField += 5;
+			GetRefStruct().UshortProp += 5;
 			GetRefUshort() += 5;
 #endif
 		}
@@ -2022,8 +2048,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField -= 5;
 			GetClass().UshortProp -= 5;
 #if CS70
-			GetStruct().UshortField -= 5;
-			GetStruct().UshortProp -= 5;
+			GetRefStruct().UshortField -= 5;
+			GetRefStruct().UshortProp -= 5;
 			GetRefUshort() -= 5;
 #endif
 		}
@@ -2048,8 +2074,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField *= 5;
 			GetClass().UshortProp *= 5;
 #if CS70
-			GetStruct().UshortField *= 5;
-			GetStruct().UshortProp *= 5;
+			GetRefStruct().UshortField *= 5;
+			GetRefStruct().UshortProp *= 5;
 			GetRefUshort() *= 5;
 #endif
 		}
@@ -2074,8 +2100,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField /= 5;
 			GetClass().UshortProp /= 5;
 #if CS70
-			GetStruct().UshortField /= 5;
-			GetStruct().UshortProp /= 5;
+			GetRefStruct().UshortField /= 5;
+			GetRefStruct().UshortProp /= 5;
 			GetRefUshort() /= 5;
 #endif
 		}
@@ -2100,8 +2126,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField %= 5;
 			GetClass().UshortProp %= 5;
 #if CS70
-			GetStruct().UshortField %= 5;
-			GetStruct().UshortProp %= 5;
+			GetRefStruct().UshortField %= 5;
+			GetRefStruct().UshortProp %= 5;
 			GetRefUshort() %= 5;
 #endif
 		}
@@ -2126,8 +2152,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField <<= 5;
 			GetClass().UshortProp <<= 5;
 #if CS70
-			GetStruct().UshortField <<= 5;
-			GetStruct().UshortProp <<= 5;
+			GetRefStruct().UshortField <<= 5;
+			GetRefStruct().UshortProp <<= 5;
 			GetRefUshort() <<= 5;
 #endif
 		}
@@ -2152,8 +2178,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField >>= 5;
 			GetClass().UshortProp >>= 5;
 #if CS70
-			GetStruct().UshortField >>= 5;
-			GetStruct().UshortProp >>= 5;
+			GetRefStruct().UshortField >>= 5;
+			GetRefStruct().UshortProp >>= 5;
 			GetRefUshort() >>= 5;
 #endif
 		}
@@ -2178,8 +2204,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField &= 5;
 			GetClass().UshortProp &= 5;
 #if CS70
-			GetStruct().UshortField &= 5;
-			GetStruct().UshortProp &= 5;
+			GetRefStruct().UshortField &= 5;
+			GetRefStruct().UshortProp &= 5;
 			GetRefUshort() &= 5;
 #endif
 		}
@@ -2204,8 +2230,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField |= 5;
 			GetClass().UshortProp |= 5;
 #if CS70
-			GetStruct().UshortField |= 5;
-			GetStruct().UshortProp |= 5;
+			GetRefStruct().UshortField |= 5;
+			GetRefStruct().UshortProp |= 5;
 			GetRefUshort() |= 5;
 #endif
 		}
@@ -2230,8 +2256,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UshortField ^= 5;
 			GetClass().UshortProp ^= 5;
 #if CS70
-			GetStruct().UshortField ^= 5;
-			GetStruct().UshortProp ^= 5;
+			GetRefStruct().UshortField ^= 5;
+			GetRefStruct().UshortProp ^= 5;
 			GetRefUshort() ^= 5;
 #endif
 		}
@@ -2256,8 +2282,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UshortField++);
 			X(GetClass().UshortProp++);
 #if CS70
-			X(GetStruct().UshortField++);
-			X(GetStruct().UshortProp++);
+			X(GetRefStruct().UshortField++);
+			X(GetRefStruct().UshortProp++);
 			X(GetRefUshort()++);
 #endif
 		}
@@ -2282,8 +2308,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().UshortField);
 			X(++GetClass().UshortProp);
 #if CS70
-			X(++GetStruct().UshortField);
-			X(++GetStruct().UshortProp);
+			X(++GetRefStruct().UshortField);
+			X(++GetRefStruct().UshortProp);
 			X(++GetRefUshort());
 #endif
 		}
@@ -2307,8 +2333,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UshortField--);
 			X(GetClass().UshortProp--);
 #if CS70
-			X(GetStruct().UshortField--);
-			X(GetStruct().UshortProp--);
+			X(GetRefStruct().UshortField--);
+			X(GetRefStruct().UshortProp--);
 			X(GetRefUshort()--);
 #endif
 		}
@@ -2333,8 +2359,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().UshortField);
 			X(--GetClass().UshortProp);
 #if CS70
-			X(--GetStruct().UshortField);
-			X(--GetStruct().UshortProp);
+			X(--GetRefStruct().UshortField);
+			X(--GetRefStruct().UshortProp);
 			X(--GetRefUshort());
 #endif
 		}
@@ -2358,8 +2384,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField += 5;
 			GetClass().IntProp += 5;
 #if CS70
-			GetStruct().IntField += 5;
-			GetStruct().IntProp += 5;
+			GetRefStruct().IntField += 5;
+			GetRefStruct().IntProp += 5;
 			GetRefInt() += 5;
 #endif
 		}
@@ -2384,8 +2410,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField -= 5;
 			GetClass().IntProp -= 5;
 #if CS70
-			GetStruct().IntField -= 5;
-			GetStruct().IntProp -= 5;
+			GetRefStruct().IntField -= 5;
+			GetRefStruct().IntProp -= 5;
 			GetRefInt() -= 5;
 #endif
 		}
@@ -2410,8 +2436,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField *= 5;
 			GetClass().IntProp *= 5;
 #if CS70
-			GetStruct().IntField *= 5;
-			GetStruct().IntProp *= 5;
+			GetRefStruct().IntField *= 5;
+			GetRefStruct().IntProp *= 5;
 			GetRefInt() *= 5;
 #endif
 		}
@@ -2436,8 +2462,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField /= 5;
 			GetClass().IntProp /= 5;
 #if CS70
-			GetStruct().IntField /= 5;
-			GetStruct().IntProp /= 5;
+			GetRefStruct().IntField /= 5;
+			GetRefStruct().IntProp /= 5;
 			GetRefInt() /= 5;
 #endif
 		}
@@ -2462,8 +2488,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField %= 5;
 			GetClass().IntProp %= 5;
 #if CS70
-			GetStruct().IntField %= 5;
-			GetStruct().IntProp %= 5;
+			GetRefStruct().IntField %= 5;
+			GetRefStruct().IntProp %= 5;
 			GetRefInt() %= 5;
 #endif
 		}
@@ -2488,8 +2514,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField <<= 5;
 			GetClass().IntProp <<= 5;
 #if CS70
-			GetStruct().IntField <<= 5;
-			GetStruct().IntProp <<= 5;
+			GetRefStruct().IntField <<= 5;
+			GetRefStruct().IntProp <<= 5;
 			GetRefInt() <<= 5;
 #endif
 		}
@@ -2514,8 +2540,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField >>= 5;
 			GetClass().IntProp >>= 5;
 #if CS70
-			GetStruct().IntField >>= 5;
-			GetStruct().IntProp >>= 5;
+			GetRefStruct().IntField >>= 5;
+			GetRefStruct().IntProp >>= 5;
 			GetRefInt() >>= 5;
 #endif
 		}
@@ -2540,8 +2566,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField &= 5;
 			GetClass().IntProp &= 5;
 #if CS70
-			GetStruct().IntField &= 5;
-			GetStruct().IntProp &= 5;
+			GetRefStruct().IntField &= 5;
+			GetRefStruct().IntProp &= 5;
 			GetRefInt() &= 5;
 #endif
 		}
@@ -2566,8 +2592,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField |= 5;
 			GetClass().IntProp |= 5;
 #if CS70
-			GetStruct().IntField |= 5;
-			GetStruct().IntProp |= 5;
+			GetRefStruct().IntField |= 5;
+			GetRefStruct().IntProp |= 5;
 			GetRefInt() |= 5;
 #endif
 		}
@@ -2592,8 +2618,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().IntField ^= 5;
 			GetClass().IntProp ^= 5;
 #if CS70
-			GetStruct().IntField ^= 5;
-			GetStruct().IntProp ^= 5;
+			GetRefStruct().IntField ^= 5;
+			GetRefStruct().IntProp ^= 5;
 			GetRefInt() ^= 5;
 #endif
 		}
@@ -2618,8 +2644,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().IntField++);
 			X(GetClass().IntProp++);
 #if CS70
-			X(GetStruct().IntField++);
-			X(GetStruct().IntProp++);
+			X(GetRefStruct().IntField++);
+			X(GetRefStruct().IntProp++);
 			X(GetRefInt()++);
 #endif
 		}
@@ -2644,8 +2670,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().IntField);
 			X(++GetClass().IntProp);
 #if CS70
-			X(++GetStruct().IntField);
-			X(++GetStruct().IntProp);
+			X(++GetRefStruct().IntField);
+			X(++GetRefStruct().IntProp);
 			X(++GetRefInt());
 #endif
 		}
@@ -2669,8 +2695,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().IntField--);
 			X(GetClass().IntProp--);
 #if CS70
-			X(GetStruct().IntField--);
-			X(GetStruct().IntProp--);
+			X(GetRefStruct().IntField--);
+			X(GetRefStruct().IntProp--);
 			X(GetRefInt()--);
 #endif
 		}
@@ -2695,8 +2721,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().IntField);
 			X(--GetClass().IntProp);
 #if CS70
-			X(--GetStruct().IntField);
-			X(--GetStruct().IntProp);
+			X(--GetRefStruct().IntField);
+			X(--GetRefStruct().IntProp);
 			X(--GetRefInt());
 #endif
 		}
@@ -2720,8 +2746,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField += 5u;
 			GetClass().UintProp += 5u;
 #if CS70
-			GetStruct().UintField += 5u;
-			GetStruct().UintProp += 5u;
+			GetRefStruct().UintField += 5u;
+			GetRefStruct().UintProp += 5u;
 			GetRefUint() += 5u;
 #endif
 		}
@@ -2746,8 +2772,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField -= 5u;
 			GetClass().UintProp -= 5u;
 #if CS70
-			GetStruct().UintField -= 5u;
-			GetStruct().UintProp -= 5u;
+			GetRefStruct().UintField -= 5u;
+			GetRefStruct().UintProp -= 5u;
 			GetRefUint() -= 5u;
 #endif
 		}
@@ -2772,8 +2798,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField *= 5u;
 			GetClass().UintProp *= 5u;
 #if CS70
-			GetStruct().UintField *= 5u;
-			GetStruct().UintProp *= 5u;
+			GetRefStruct().UintField *= 5u;
+			GetRefStruct().UintProp *= 5u;
 			GetRefUint() *= 5u;
 #endif
 		}
@@ -2798,8 +2824,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField /= 5u;
 			GetClass().UintProp /= 5u;
 #if CS70
-			GetStruct().UintField /= 5u;
-			GetStruct().UintProp /= 5u;
+			GetRefStruct().UintField /= 5u;
+			GetRefStruct().UintProp /= 5u;
 			GetRefUint() /= 5u;
 #endif
 		}
@@ -2824,8 +2850,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField %= 5u;
 			GetClass().UintProp %= 5u;
 #if CS70
-			GetStruct().UintField %= 5u;
-			GetStruct().UintProp %= 5u;
+			GetRefStruct().UintField %= 5u;
+			GetRefStruct().UintProp %= 5u;
 			GetRefUint() %= 5u;
 #endif
 		}
@@ -2850,8 +2876,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField <<= 5;
 			GetClass().UintProp <<= 5;
 #if CS70
-			GetStruct().UintField <<= 5;
-			GetStruct().UintProp <<= 5;
+			GetRefStruct().UintField <<= 5;
+			GetRefStruct().UintProp <<= 5;
 			GetRefUint() <<= 5;
 #endif
 		}
@@ -2876,8 +2902,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField >>= 5;
 			GetClass().UintProp >>= 5;
 #if CS70
-			GetStruct().UintField >>= 5;
-			GetStruct().UintProp >>= 5;
+			GetRefStruct().UintField >>= 5;
+			GetRefStruct().UintProp >>= 5;
 			GetRefUint() >>= 5;
 #endif
 		}
@@ -2902,8 +2928,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField &= 5u;
 			GetClass().UintProp &= 5u;
 #if CS70
-			GetStruct().UintField &= 5u;
-			GetStruct().UintProp &= 5u;
+			GetRefStruct().UintField &= 5u;
+			GetRefStruct().UintProp &= 5u;
 			GetRefUint() &= 5u;
 #endif
 		}
@@ -2928,8 +2954,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField |= 5u;
 			GetClass().UintProp |= 5u;
 #if CS70
-			GetStruct().UintField |= 5u;
-			GetStruct().UintProp |= 5u;
+			GetRefStruct().UintField |= 5u;
+			GetRefStruct().UintProp |= 5u;
 			GetRefUint() |= 5u;
 #endif
 		}
@@ -2954,8 +2980,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UintField ^= 5u;
 			GetClass().UintProp ^= 5u;
 #if CS70
-			GetStruct().UintField ^= 5u;
-			GetStruct().UintProp ^= 5u;
+			GetRefStruct().UintField ^= 5u;
+			GetRefStruct().UintProp ^= 5u;
 			GetRefUint() ^= 5u;
 #endif
 		}
@@ -2980,8 +3006,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UintField++);
 			X(GetClass().UintProp++);
 #if CS70
-			X(GetStruct().UintField++);
-			X(GetStruct().UintProp++);
+			X(GetRefStruct().UintField++);
+			X(GetRefStruct().UintProp++);
 			X(GetRefUint()++);
 #endif
 		}
@@ -3006,8 +3032,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().UintField);
 			X(++GetClass().UintProp);
 #if CS70
-			X(++GetStruct().UintField);
-			X(++GetStruct().UintProp);
+			X(++GetRefStruct().UintField);
+			X(++GetRefStruct().UintProp);
 			X(++GetRefUint());
 #endif
 		}
@@ -3031,8 +3057,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UintField--);
 			X(GetClass().UintProp--);
 #if CS70
-			X(GetStruct().UintField--);
-			X(GetStruct().UintProp--);
+			X(GetRefStruct().UintField--);
+			X(GetRefStruct().UintProp--);
 			X(GetRefUint()--);
 #endif
 		}
@@ -3057,8 +3083,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().UintField);
 			X(--GetClass().UintProp);
 #if CS70
-			X(--GetStruct().UintField);
-			X(--GetStruct().UintProp);
+			X(--GetRefStruct().UintField);
+			X(--GetRefStruct().UintProp);
 			X(--GetRefUint());
 #endif
 		}
@@ -3082,8 +3108,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField += 5L;
 			GetClass().LongProp += 5L;
 #if CS70
-			GetStruct().LongField += 5L;
-			GetStruct().LongProp += 5L;
+			GetRefStruct().LongField += 5L;
+			GetRefStruct().LongProp += 5L;
 			GetRefLong() += 5L;
 #endif
 		}
@@ -3108,8 +3134,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField -= 5L;
 			GetClass().LongProp -= 5L;
 #if CS70
-			GetStruct().LongField -= 5L;
-			GetStruct().LongProp -= 5L;
+			GetRefStruct().LongField -= 5L;
+			GetRefStruct().LongProp -= 5L;
 			GetRefLong() -= 5L;
 #endif
 		}
@@ -3134,8 +3160,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField *= 5L;
 			GetClass().LongProp *= 5L;
 #if CS70
-			GetStruct().LongField *= 5L;
-			GetStruct().LongProp *= 5L;
+			GetRefStruct().LongField *= 5L;
+			GetRefStruct().LongProp *= 5L;
 			GetRefLong() *= 5L;
 #endif
 		}
@@ -3160,8 +3186,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField /= 5L;
 			GetClass().LongProp /= 5L;
 #if CS70
-			GetStruct().LongField /= 5L;
-			GetStruct().LongProp /= 5L;
+			GetRefStruct().LongField /= 5L;
+			GetRefStruct().LongProp /= 5L;
 			GetRefLong() /= 5L;
 #endif
 		}
@@ -3186,8 +3212,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField %= 5L;
 			GetClass().LongProp %= 5L;
 #if CS70
-			GetStruct().LongField %= 5L;
-			GetStruct().LongProp %= 5L;
+			GetRefStruct().LongField %= 5L;
+			GetRefStruct().LongProp %= 5L;
 			GetRefLong() %= 5L;
 #endif
 		}
@@ -3212,8 +3238,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField <<= 5;
 			GetClass().LongProp <<= 5;
 #if CS70
-			GetStruct().LongField <<= 5;
-			GetStruct().LongProp <<= 5;
+			GetRefStruct().LongField <<= 5;
+			GetRefStruct().LongProp <<= 5;
 			GetRefLong() <<= 5;
 #endif
 		}
@@ -3238,8 +3264,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField >>= 5;
 			GetClass().LongProp >>= 5;
 #if CS70
-			GetStruct().LongField >>= 5;
-			GetStruct().LongProp >>= 5;
+			GetRefStruct().LongField >>= 5;
+			GetRefStruct().LongProp >>= 5;
 			GetRefLong() >>= 5;
 #endif
 		}
@@ -3264,8 +3290,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField &= 5L;
 			GetClass().LongProp &= 5L;
 #if CS70
-			GetStruct().LongField &= 5L;
-			GetStruct().LongProp &= 5L;
+			GetRefStruct().LongField &= 5L;
+			GetRefStruct().LongProp &= 5L;
 			GetRefLong() &= 5L;
 #endif
 		}
@@ -3290,8 +3316,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField |= 5L;
 			GetClass().LongProp |= 5L;
 #if CS70
-			GetStruct().LongField |= 5L;
-			GetStruct().LongProp |= 5L;
+			GetRefStruct().LongField |= 5L;
+			GetRefStruct().LongProp |= 5L;
 			GetRefLong() |= 5L;
 #endif
 		}
@@ -3316,8 +3342,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().LongField ^= 5L;
 			GetClass().LongProp ^= 5L;
 #if CS70
-			GetStruct().LongField ^= 5L;
-			GetStruct().LongProp ^= 5L;
+			GetRefStruct().LongField ^= 5L;
+			GetRefStruct().LongProp ^= 5L;
 			GetRefLong() ^= 5L;
 #endif
 		}
@@ -3342,8 +3368,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().LongField++);
 			X(GetClass().LongProp++);
 #if CS70
-			X(GetStruct().LongField++);
-			X(GetStruct().LongProp++);
+			X(GetRefStruct().LongField++);
+			X(GetRefStruct().LongProp++);
 			X(GetRefLong()++);
 #endif
 		}
@@ -3368,8 +3394,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().LongField);
 			X(++GetClass().LongProp);
 #if CS70
-			X(++GetStruct().LongField);
-			X(++GetStruct().LongProp);
+			X(++GetRefStruct().LongField);
+			X(++GetRefStruct().LongProp);
 			X(++GetRefLong());
 #endif
 		}
@@ -3393,8 +3419,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().LongField--);
 			X(GetClass().LongProp--);
 #if CS70
-			X(GetStruct().LongField--);
-			X(GetStruct().LongProp--);
+			X(GetRefStruct().LongField--);
+			X(GetRefStruct().LongProp--);
 			X(GetRefLong()--);
 #endif
 		}
@@ -3419,8 +3445,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().LongField);
 			X(--GetClass().LongProp);
 #if CS70
-			X(--GetStruct().LongField);
-			X(--GetStruct().LongProp);
+			X(--GetRefStruct().LongField);
+			X(--GetRefStruct().LongProp);
 			X(--GetRefLong());
 #endif
 		}
@@ -3444,8 +3470,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField += 5uL;
 			GetClass().UlongProp += 5uL;
 #if CS70
-			GetStruct().UlongField += 5uL;
-			GetStruct().UlongProp += 5uL;
+			GetRefStruct().UlongField += 5uL;
+			GetRefStruct().UlongProp += 5uL;
 			GetRefUlong() += 5uL;
 #endif
 		}
@@ -3470,8 +3496,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField -= 5uL;
 			GetClass().UlongProp -= 5uL;
 #if CS70
-			GetStruct().UlongField -= 5uL;
-			GetStruct().UlongProp -= 5uL;
+			GetRefStruct().UlongField -= 5uL;
+			GetRefStruct().UlongProp -= 5uL;
 			GetRefUlong() -= 5uL;
 #endif
 		}
@@ -3496,8 +3522,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField *= 5uL;
 			GetClass().UlongProp *= 5uL;
 #if CS70
-			GetStruct().UlongField *= 5uL;
-			GetStruct().UlongProp *= 5uL;
+			GetRefStruct().UlongField *= 5uL;
+			GetRefStruct().UlongProp *= 5uL;
 			GetRefUlong() *= 5uL;
 #endif
 		}
@@ -3522,8 +3548,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField /= 5uL;
 			GetClass().UlongProp /= 5uL;
 #if CS70
-			GetStruct().UlongField /= 5uL;
-			GetStruct().UlongProp /= 5uL;
+			GetRefStruct().UlongField /= 5uL;
+			GetRefStruct().UlongProp /= 5uL;
 			GetRefUlong() /= 5uL;
 #endif
 		}
@@ -3548,8 +3574,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField %= 5uL;
 			GetClass().UlongProp %= 5uL;
 #if CS70
-			GetStruct().UlongField %= 5uL;
-			GetStruct().UlongProp %= 5uL;
+			GetRefStruct().UlongField %= 5uL;
+			GetRefStruct().UlongProp %= 5uL;
 			GetRefUlong() %= 5uL;
 #endif
 		}
@@ -3574,8 +3600,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField <<= 5;
 			GetClass().UlongProp <<= 5;
 #if CS70
-			GetStruct().UlongField <<= 5;
-			GetStruct().UlongProp <<= 5;
+			GetRefStruct().UlongField <<= 5;
+			GetRefStruct().UlongProp <<= 5;
 			GetRefUlong() <<= 5;
 #endif
 		}
@@ -3600,8 +3626,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField >>= 5;
 			GetClass().UlongProp >>= 5;
 #if CS70
-			GetStruct().UlongField >>= 5;
-			GetStruct().UlongProp >>= 5;
+			GetRefStruct().UlongField >>= 5;
+			GetRefStruct().UlongProp >>= 5;
 			GetRefUlong() >>= 5;
 #endif
 		}
@@ -3626,8 +3652,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField &= 5uL;
 			GetClass().UlongProp &= 5uL;
 #if CS70
-			GetStruct().UlongField &= 5uL;
-			GetStruct().UlongProp &= 5uL;
+			GetRefStruct().UlongField &= 5uL;
+			GetRefStruct().UlongProp &= 5uL;
 			GetRefUlong() &= 5uL;
 #endif
 		}
@@ -3652,8 +3678,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField |= 5uL;
 			GetClass().UlongProp |= 5uL;
 #if CS70
-			GetStruct().UlongField |= 5uL;
-			GetStruct().UlongProp |= 5uL;
+			GetRefStruct().UlongField |= 5uL;
+			GetRefStruct().UlongProp |= 5uL;
 			GetRefUlong() |= 5uL;
 #endif
 		}
@@ -3678,8 +3704,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().UlongField ^= 5uL;
 			GetClass().UlongProp ^= 5uL;
 #if CS70
-			GetStruct().UlongField ^= 5uL;
-			GetStruct().UlongProp ^= 5uL;
+			GetRefStruct().UlongField ^= 5uL;
+			GetRefStruct().UlongProp ^= 5uL;
 			GetRefUlong() ^= 5uL;
 #endif
 		}
@@ -3704,8 +3730,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UlongField++);
 			X(GetClass().UlongProp++);
 #if CS70
-			X(GetStruct().UlongField++);
-			X(GetStruct().UlongProp++);
+			X(GetRefStruct().UlongField++);
+			X(GetRefStruct().UlongProp++);
 			X(GetRefUlong()++);
 #endif
 		}
@@ -3730,8 +3756,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().UlongField);
 			X(++GetClass().UlongProp);
 #if CS70
-			X(++GetStruct().UlongField);
-			X(++GetStruct().UlongProp);
+			X(++GetRefStruct().UlongField);
+			X(++GetRefStruct().UlongProp);
 			X(++GetRefUlong());
 #endif
 		}
@@ -3755,8 +3781,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().UlongField--);
 			X(GetClass().UlongProp--);
 #if CS70
-			X(GetStruct().UlongField--);
-			X(GetStruct().UlongProp--);
+			X(GetRefStruct().UlongField--);
+			X(GetRefStruct().UlongProp--);
 			X(GetRefUlong()--);
 #endif
 		}
@@ -3781,8 +3807,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().UlongField);
 			X(--GetClass().UlongProp);
 #if CS70
-			X(--GetStruct().UlongField);
-			X(--GetStruct().UlongProp);
+			X(--GetRefStruct().UlongField);
+			X(--GetRefStruct().UlongProp);
 			X(--GetRefUlong());
 #endif
 		}
@@ -3806,8 +3832,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField += (CustomClass)null;
 			GetClass().CustomClassProp += (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField += (CustomClass)null;
-			GetStruct().CustomClassProp += (CustomClass)null;
+			GetRefStruct().CustomClassField += (CustomClass)null;
+			GetRefStruct().CustomClassProp += (CustomClass)null;
 			GetRefCustomClass() += (CustomClass)null;
 #endif
 		}
@@ -3832,8 +3858,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField -= (CustomClass)null;
 			GetClass().CustomClassProp -= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField -= (CustomClass)null;
-			GetStruct().CustomClassProp -= (CustomClass)null;
+			GetRefStruct().CustomClassField -= (CustomClass)null;
+			GetRefStruct().CustomClassProp -= (CustomClass)null;
 			GetRefCustomClass() -= (CustomClass)null;
 #endif
 		}
@@ -3858,8 +3884,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField *= (CustomClass)null;
 			GetClass().CustomClassProp *= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField *= (CustomClass)null;
-			GetStruct().CustomClassProp *= (CustomClass)null;
+			GetRefStruct().CustomClassField *= (CustomClass)null;
+			GetRefStruct().CustomClassProp *= (CustomClass)null;
 			GetRefCustomClass() *= (CustomClass)null;
 #endif
 		}
@@ -3884,8 +3910,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField /= (CustomClass)null;
 			GetClass().CustomClassProp /= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField /= (CustomClass)null;
-			GetStruct().CustomClassProp /= (CustomClass)null;
+			GetRefStruct().CustomClassField /= (CustomClass)null;
+			GetRefStruct().CustomClassProp /= (CustomClass)null;
 			GetRefCustomClass() /= (CustomClass)null;
 #endif
 		}
@@ -3910,8 +3936,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField %= (CustomClass)null;
 			GetClass().CustomClassProp %= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField %= (CustomClass)null;
-			GetStruct().CustomClassProp %= (CustomClass)null;
+			GetRefStruct().CustomClassField %= (CustomClass)null;
+			GetRefStruct().CustomClassProp %= (CustomClass)null;
 			GetRefCustomClass() %= (CustomClass)null;
 #endif
 		}
@@ -3936,8 +3962,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField <<= 5;
 			GetClass().CustomClassProp <<= 5;
 #if CS70
-			GetStruct().CustomClassField <<= 5;
-			GetStruct().CustomClassProp <<= 5;
+			GetRefStruct().CustomClassField <<= 5;
+			GetRefStruct().CustomClassProp <<= 5;
 			GetRefCustomClass() <<= 5;
 #endif
 		}
@@ -3962,8 +3988,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField >>= 5;
 			GetClass().CustomClassProp >>= 5;
 #if CS70
-			GetStruct().CustomClassField >>= 5;
-			GetStruct().CustomClassProp >>= 5;
+			GetRefStruct().CustomClassField >>= 5;
+			GetRefStruct().CustomClassProp >>= 5;
 			GetRefCustomClass() >>= 5;
 #endif
 		}
@@ -3988,8 +4014,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField &= (CustomClass)null;
 			GetClass().CustomClassProp &= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField &= (CustomClass)null;
-			GetStruct().CustomClassProp &= (CustomClass)null;
+			GetRefStruct().CustomClassField &= (CustomClass)null;
+			GetRefStruct().CustomClassProp &= (CustomClass)null;
 			GetRefCustomClass() &= (CustomClass)null;
 #endif
 		}
@@ -4014,8 +4040,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField |= (CustomClass)null;
 			GetClass().CustomClassProp |= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField |= (CustomClass)null;
-			GetStruct().CustomClassProp |= (CustomClass)null;
+			GetRefStruct().CustomClassField |= (CustomClass)null;
+			GetRefStruct().CustomClassProp |= (CustomClass)null;
 			GetRefCustomClass() |= (CustomClass)null;
 #endif
 		}
@@ -4040,8 +4066,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomClassField ^= (CustomClass)null;
 			GetClass().CustomClassProp ^= (CustomClass)null;
 #if CS70
-			GetStruct().CustomClassField ^= (CustomClass)null;
-			GetStruct().CustomClassProp ^= (CustomClass)null;
+			GetRefStruct().CustomClassField ^= (CustomClass)null;
+			GetRefStruct().CustomClassProp ^= (CustomClass)null;
 			GetRefCustomClass() ^= (CustomClass)null;
 #endif
 		}
@@ -4066,8 +4092,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().CustomClassField++);
 			X(GetClass().CustomClassProp++);
 #if CS70
-			X(GetStruct().CustomClassField++);
-			X(GetStruct().CustomClassProp++);
+			X(GetRefStruct().CustomClassField++);
+			X(GetRefStruct().CustomClassProp++);
 			X(GetRefCustomClass()++);
 #endif
 		}
@@ -4092,8 +4118,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().CustomClassField);
 			X(++GetClass().CustomClassProp);
 #if CS70
-			X(++GetStruct().CustomClassField);
-			X(++GetStruct().CustomClassProp);
+			X(++GetRefStruct().CustomClassField);
+			X(++GetRefStruct().CustomClassProp);
 			X(++GetRefCustomClass());
 #endif
 		}
@@ -4117,8 +4143,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().CustomClassField--);
 			X(GetClass().CustomClassProp--);
 #if CS70
-			X(GetStruct().CustomClassField--);
-			X(GetStruct().CustomClassProp--);
+			X(GetRefStruct().CustomClassField--);
+			X(GetRefStruct().CustomClassProp--);
 			X(GetRefCustomClass()--);
 #endif
 		}
@@ -4143,8 +4169,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().CustomClassField);
 			X(--GetClass().CustomClassProp);
 #if CS70
-			X(--GetStruct().CustomClassField);
-			X(--GetStruct().CustomClassProp);
+			X(--GetRefStruct().CustomClassField);
+			X(--GetRefStruct().CustomClassProp);
 			X(--GetRefCustomClass());
 #endif
 		}
@@ -4168,8 +4194,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField += default(CustomStruct);
 			GetClass().CustomStructProp += default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField += default(CustomStruct);
-			GetStruct().CustomStructProp += default(CustomStruct);
+			GetRefStruct().CustomStructField += default(CustomStruct);
+			GetRefStruct().CustomStructProp += default(CustomStruct);
 			GetRefCustomStruct() += default(CustomStruct);
 #endif
 		}
@@ -4194,8 +4220,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField -= default(CustomStruct);
 			GetClass().CustomStructProp -= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField -= default(CustomStruct);
-			GetStruct().CustomStructProp -= default(CustomStruct);
+			GetRefStruct().CustomStructField -= default(CustomStruct);
+			GetRefStruct().CustomStructProp -= default(CustomStruct);
 			GetRefCustomStruct() -= default(CustomStruct);
 #endif
 		}
@@ -4220,8 +4246,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField *= default(CustomStruct);
 			GetClass().CustomStructProp *= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField *= default(CustomStruct);
-			GetStruct().CustomStructProp *= default(CustomStruct);
+			GetRefStruct().CustomStructField *= default(CustomStruct);
+			GetRefStruct().CustomStructProp *= default(CustomStruct);
 			GetRefCustomStruct() *= default(CustomStruct);
 #endif
 		}
@@ -4246,8 +4272,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField /= default(CustomStruct);
 			GetClass().CustomStructProp /= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField /= default(CustomStruct);
-			GetStruct().CustomStructProp /= default(CustomStruct);
+			GetRefStruct().CustomStructField /= default(CustomStruct);
+			GetRefStruct().CustomStructProp /= default(CustomStruct);
 			GetRefCustomStruct() /= default(CustomStruct);
 #endif
 		}
@@ -4272,8 +4298,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField %= default(CustomStruct);
 			GetClass().CustomStructProp %= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField %= default(CustomStruct);
-			GetStruct().CustomStructProp %= default(CustomStruct);
+			GetRefStruct().CustomStructField %= default(CustomStruct);
+			GetRefStruct().CustomStructProp %= default(CustomStruct);
 			GetRefCustomStruct() %= default(CustomStruct);
 #endif
 		}
@@ -4298,8 +4324,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField <<= 5;
 			GetClass().CustomStructProp <<= 5;
 #if CS70
-			GetStruct().CustomStructField <<= 5;
-			GetStruct().CustomStructProp <<= 5;
+			GetRefStruct().CustomStructField <<= 5;
+			GetRefStruct().CustomStructProp <<= 5;
 			GetRefCustomStruct() <<= 5;
 #endif
 		}
@@ -4324,8 +4350,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField >>= 5;
 			GetClass().CustomStructProp >>= 5;
 #if CS70
-			GetStruct().CustomStructField >>= 5;
-			GetStruct().CustomStructProp >>= 5;
+			GetRefStruct().CustomStructField >>= 5;
+			GetRefStruct().CustomStructProp >>= 5;
 			GetRefCustomStruct() >>= 5;
 #endif
 		}
@@ -4350,8 +4376,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField &= default(CustomStruct);
 			GetClass().CustomStructProp &= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField &= default(CustomStruct);
-			GetStruct().CustomStructProp &= default(CustomStruct);
+			GetRefStruct().CustomStructField &= default(CustomStruct);
+			GetRefStruct().CustomStructProp &= default(CustomStruct);
 			GetRefCustomStruct() &= default(CustomStruct);
 #endif
 		}
@@ -4376,8 +4402,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField |= default(CustomStruct);
 			GetClass().CustomStructProp |= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField |= default(CustomStruct);
-			GetStruct().CustomStructProp |= default(CustomStruct);
+			GetRefStruct().CustomStructField |= default(CustomStruct);
+			GetRefStruct().CustomStructProp |= default(CustomStruct);
 			GetRefCustomStruct() |= default(CustomStruct);
 #endif
 		}
@@ -4402,8 +4428,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			GetClass().CustomStructField ^= default(CustomStruct);
 			GetClass().CustomStructProp ^= default(CustomStruct);
 #if CS70
-			GetStruct().CustomStructField ^= default(CustomStruct);
-			GetStruct().CustomStructProp ^= default(CustomStruct);
+			GetRefStruct().CustomStructField ^= default(CustomStruct);
+			GetRefStruct().CustomStructProp ^= default(CustomStruct);
 			GetRefCustomStruct() ^= default(CustomStruct);
 #endif
 		}
@@ -4428,8 +4454,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().CustomStructField++);
 			X(GetClass().CustomStructProp++);
 #if CS70
-			X(GetStruct().CustomStructField++);
-			X(GetStruct().CustomStructProp++);
+			X(GetRefStruct().CustomStructField++);
+			X(GetRefStruct().CustomStructProp++);
 			X(GetRefCustomStruct()++);
 #endif
 		}
@@ -4454,8 +4480,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(++GetClass().CustomStructField);
 			X(++GetClass().CustomStructProp);
 #if CS70
-			X(++GetStruct().CustomStructField);
-			X(++GetStruct().CustomStructProp);
+			X(++GetRefStruct().CustomStructField);
+			X(++GetRefStruct().CustomStructProp);
 			X(++GetRefCustomStruct());
 #endif
 		}
@@ -4479,8 +4505,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(GetClass().CustomStructField--);
 			X(GetClass().CustomStructProp--);
 #if CS70
-			X(GetStruct().CustomStructField--);
-			X(GetStruct().CustomStructProp--);
+			X(GetRefStruct().CustomStructField--);
+			X(GetRefStruct().CustomStructProp--);
 			X(GetRefCustomStruct()--);
 #endif
 		}
@@ -4505,8 +4531,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetClass().CustomStructField);
 			X(--GetClass().CustomStructProp);
 #if CS70
-			X(--GetStruct().CustomStructField);
-			X(--GetStruct().CustomStructProp);
+			X(--GetRefStruct().CustomStructField);
+			X(--GetRefStruct().CustomStructProp);
 			X(--GetRefCustomStruct());
 #endif
 		}
@@ -4562,9 +4588,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			// same temporary. In order to inline the generated value-type temporary, we
 			// need to split it, even though it has the address taken for the ToString() call.
 			if (flag) {
-				strings[1] += chars[i].ToString();
+				strings[1] += chars[i];
 			} else {
-				strings[0] += chars[i].ToString();
+				strings[0] += chars[i];
 			}
 		}
 #endif
@@ -4575,6 +4601,211 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			StaticStringProperty += 1;
 			new CustomClass().StringProp += "a";
 			new CustomClass().StringProp += 1;
+		}
+
+		public uint PreIncrementIndexer(string name)
+		{
+			return ++M()[name];
+		}
+
+		public int PreIncrementByRef(ref int i)
+		{
+			return ++i;
+		}
+
+		public unsafe int PreIncrementByPointer()
+		{
+			return ++(*GetPointer());
+		}
+
+		public unsafe int PreIncrementOfPointer(int* ptr)
+		{
+			return *(++ptr);
+		}
+
+		public int PreIncrement2DArray()
+		{
+			return ++Array()[1, 2];
+		}
+
+		public int CompoundAssignInstanceField()
+		{
+			return M().Field *= 10;
+		}
+
+		public int CompoundAssignInstanceProperty()
+		{
+			return M().Property *= 10;
+		}
+
+		public int CompoundAssignStaticField()
+		{
+			return StaticField ^= 100;
+		}
+
+		public int CompoundAssignStaticProperty()
+		{
+			return StaticProperty &= 10;
+		}
+
+		public int CompoundAssignArrayElement1(int[] array, int pos)
+		{
+			return array[pos] *= 10;
+		}
+
+		public int CompoundAssignArrayElement2(int[] array)
+		{
+			return array[Environment.TickCount] *= 10;
+		}
+
+		public uint CompoundAssignIndexer(string name)
+		{
+			return M()[name] -= 2u;
+		}
+
+		public uint CompoundAssignIndexerComplexIndex(string name)
+		{
+			return M()[ToString()] -= 2u;
+		}
+
+		public int CompoundAssignIncrement2DArray()
+		{
+			return Array()[1, 2] %= 10;
+		}
+
+		public int CompoundAssignByRef(ref int i)
+		{
+			return i <<= 2;
+		}
+
+		public unsafe int* CompoundAssignOfPointer(int* ptr)
+		{
+			return ptr += 10;
+		}
+
+		public unsafe double CompoundAssignByPointer(double* ptr)
+		{
+			return *ptr /= 1.5;
+		}
+
+		public void CompoundAssignEnum()
+		{
+			enumField |= MyEnum.Two;
+			enumField &= ~MyEnum.Four;
+		}
+
+		public int PostIncrementInAddition(int i, int j)
+		{
+			return i++ + j;
+		}
+
+		public void PostIncrementInlineLocalVariable(Func<int, int> f)
+		{
+			int num = 0;
+			f(num++);
+		}
+
+		public int PostDecrementArrayElement(int[] array, int pos)
+		{
+			return array[pos]--;
+		}
+
+		public uint PostIncrementIndexer(string name)
+		{
+			return M()[name]++;
+		}
+
+#if false
+		public unsafe int PostIncrementOfPointer(int* ptr)
+		{
+			return *(ptr++);
+		}
+#endif
+
+		public int PostDecrementInstanceField()
+		{
+			return M().Field--;
+		}
+
+		public int PostDecrementInstanceProperty()
+		{
+			return M().Property--;
+		}
+
+		public int PostIncrement2DArray()
+		{
+			return Array()[StaticField, StaticProperty]++;
+		}
+
+		public int PostIncrementByRef(ref int i)
+		{
+			return i++;
+		}
+
+		public unsafe int PostIncrementByPointer()
+		{
+			return (*GetPointer())++;
+		}
+
+		public float PostIncrementFloat(float f)
+		{
+			return f++;
+		}
+
+		public double PostIncrementDouble(double d)
+		{
+			return d++;
+		}
+
+		public void Issue1552Pre(CustomStruct a, CustomStruct b)
+		{
+			CustomStruct customStruct = a + b;
+			Console.WriteLine(++customStruct);
+		}
+
+		public void Issue1552Stmt(CustomStruct a, CustomStruct b)
+		{
+			CustomStruct customStruct = a + b;
+			++customStruct;
+		}
+
+		public void Issue1552StmtUseLater(CustomStruct a, CustomStruct b)
+		{
+			CustomStruct lhs = a + b;
+			++lhs;
+			Console.WriteLine();
+			Console.WriteLine(lhs * b);
+		}
+
+		public void Issue1552Decimal(decimal a)
+		{
+			// Legacy csc compiles this using op_Increment,
+			// ensure we don't misdetect this as an invalid pre-increment "++(a * 10m)"
+			Console.WriteLine(a * 10m + 1m);
+		}
+
+#if !(ROSLYN && OPT)
+		// Roslyn opt no longer has a detectable post-increment pattern
+		// due to optimizing out some of the stores.
+		// Our emitted code is valid but has some additional temporaries.
+		public void Issue1552Post(CustomStruct a, CustomStruct b)
+		{
+			CustomStruct customStruct = a + b;
+			Console.WriteLine(customStruct++);
+		}
+
+		public void Issue1552StmtTwice(CustomStruct a, CustomStruct b)
+		{
+			CustomStruct customStruct = a + b;
+			++customStruct;
+			++customStruct;
+		}
+#endif
+
+		public void Issue1779(int value)
+		{
+			CustomStruct2 @struct = GetStruct();
+			@struct.IntProp += value;
 		}
 	}
 }

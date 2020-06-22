@@ -48,14 +48,17 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write("string.to.int (");
 			Argument.WriteTo(output, options);
 			output.Write(", { ");
 			int i = 0;
 			foreach (var entry in Map) {
 				if (i > 0) output.Write(", ");
-				output.Write($"[\"{entry.Key}\"] = {entry.Value}");
+				if (entry.Key is null)
+					output.Write($"[null] = {entry.Value}");
+				else
+					output.Write($"[\"{entry.Key}\"] = {entry.Value}");
 				i++;
 			}
 			output.Write(" })");

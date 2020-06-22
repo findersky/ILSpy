@@ -115,10 +115,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		Task,
 		/// <summary><c>System.Threading.Tasks.Task{T}</c></summary>
 		TaskOfT,
+		/// <summary><c>System.Threading.Tasks.ValueTask</c></summary>
+		ValueTask,
+		/// <summary><c>System.Threading.Tasks.ValueTask{T}</c></summary>
+		ValueTaskOfT,
 		/// <summary><c>System.Nullable{T}</c></summary>
 		NullableOfT,
 		/// <summary><c>System.IDisposable</c></summary>
 		IDisposable,
+		/// <summary><c>System.IAsyncDisposable</c></summary>
+		IAsyncDisposable,
 		/// <summary><c>System.Runtime.CompilerServices.INotifyCompletion</c></summary>
 		INotifyCompletion,
 		/// <summary><c>System.Runtime.CompilerServices.ICriticalNotifyCompletion</c></summary>
@@ -135,15 +141,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		ReadOnlySpanOfT,
 		/// <summary><c>System.Memory{T}</c></summary>
 		MemoryOfT,
+		/// <summary><c>System.Runtime.CompilerServices.Unsafe</c></summary>
+		Unsafe,
+		/// <summary><c>System.Collections.Generic.IAsyncEnumerable{T}</c></summary>
+		IAsyncEnumerableOfT,
+		/// <summary><c>System.Collections.Generic.IAsyncEnumerator{T}</c></summary>
+		IAsyncEnumeratorOfT,
+		/// <summary><c>System.Index</c></summary>
+		Index,
+		/// <summary><c>System.Range</c></summary>
+		Range
 	}
-	
+
 	/// <summary>
 	/// Contains well-known type references.
 	/// </summary>
 	[Serializable]
 	public sealed class KnownTypeReference : ITypeReference
 	{
-		internal const int KnownTypeCodeCount = (int)KnownTypeCode.MemoryOfT + 1;
+		internal const int KnownTypeCodeCount = (int)KnownTypeCode.Range + 1;
 
 		static readonly KnownTypeReference[] knownTypeReferences = new KnownTypeReference[KnownTypeCodeCount] {
 			null, // None
@@ -187,10 +203,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 			new KnownTypeReference(KnownTypeCode.IReadOnlyCollectionOfT, TypeKind.Interface, "System.Collections.Generic", "IReadOnlyCollection", 1),
 			new KnownTypeReference(KnownTypeCode.IReadOnlyListOfT, TypeKind.Interface, "System.Collections.Generic", "IReadOnlyList", 1),
-			new KnownTypeReference(KnownTypeCode.Task,        TypeKind.Class, "System.Threading.Tasks", "Task"),
-			new KnownTypeReference(KnownTypeCode.TaskOfT,     TypeKind.Class, "System.Threading.Tasks", "Task", 1, baseType: KnownTypeCode.Task),
+			new KnownTypeReference(KnownTypeCode.Task,         TypeKind.Class, "System.Threading.Tasks", "Task"),
+			new KnownTypeReference(KnownTypeCode.TaskOfT,      TypeKind.Class, "System.Threading.Tasks", "Task", 1, baseType: KnownTypeCode.Task),
+			new KnownTypeReference(KnownTypeCode.ValueTask,    TypeKind.Struct, "System.Threading.Tasks", "ValueTask"),
+			new KnownTypeReference(KnownTypeCode.ValueTaskOfT, TypeKind.Struct, "System.Threading.Tasks", "ValueTask", 1),
 			new KnownTypeReference(KnownTypeCode.NullableOfT, TypeKind.Struct, "System", "Nullable", 1),
 			new KnownTypeReference(KnownTypeCode.IDisposable, TypeKind.Interface, "System", "IDisposable"),
+			new KnownTypeReference(KnownTypeCode.IAsyncDisposable, TypeKind.Interface, "System", "IAsyncDisposable"),
 			new KnownTypeReference(KnownTypeCode.INotifyCompletion, TypeKind.Interface, "System.Runtime.CompilerServices", "INotifyCompletion"),
 			new KnownTypeReference(KnownTypeCode.ICriticalNotifyCompletion, TypeKind.Interface, "System.Runtime.CompilerServices", "ICriticalNotifyCompletion"),
 
@@ -200,6 +219,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new KnownTypeReference(KnownTypeCode.SpanOfT, TypeKind.Struct, "System", "Span", 1),
 			new KnownTypeReference(KnownTypeCode.ReadOnlySpanOfT, TypeKind.Struct, "System", "ReadOnlySpan", 1),
 			new KnownTypeReference(KnownTypeCode.MemoryOfT, TypeKind.Struct, "System", "Memory", 1),
+			new KnownTypeReference(KnownTypeCode.Unsafe, TypeKind.Class, "System.Runtime.CompilerServices", "Unsafe", 0),
+			new KnownTypeReference(KnownTypeCode.IAsyncEnumerableOfT, TypeKind.Interface, "System.Collections.Generic", "IAsyncEnumerable", 1),
+			new KnownTypeReference(KnownTypeCode.IAsyncEnumeratorOfT, TypeKind.Interface, "System.Collections.Generic", "IAsyncEnumerator", 1),
+			new KnownTypeReference(KnownTypeCode.Index, TypeKind.Struct, "System", "Index", 0),
+			new KnownTypeReference(KnownTypeCode.Range, TypeKind.Struct, "System", "Range", 0),
 		};
 		
 		/// <summary>

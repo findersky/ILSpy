@@ -1,6 +1,7 @@
 bin/
 obj/
-
+AppPackages/
+BundleArtifacts/
 /ICSharpCode.Decompiler/Properties/AssemblyInfo.cs
 /ILSpy/Properties/AssemblyInfo.cs
 /ILSpy/app.config
@@ -12,6 +13,8 @@ _ReSharper*/
 .vs/
 /ILSpy.AddIn/Packages/*
 /ILSpy.AddIn/source.extension.vsixmanifest
+/ICSharpCode.Decompiler.Tests/TestCases/Disassembler/Pretty/*.dll
+/ICSharpCode.Decompiler.Tests/TestCases/Disassembler/Pretty/*.result.il
 /ICSharpCode.Decompiler.Tests/TestCases/Correctness/*.exe
 /ICSharpCode.Decompiler.Tests/TestCases/Correctness/*.exe.config
 /ICSharpCode.Decompiler/ICSharpCode.Decompiler.nuspec

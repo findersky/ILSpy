@@ -28,6 +28,7 @@ using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
 using Microsoft.Win32;
+using ICSharpCode.ILSpy.Properties;
 
 namespace ICSharpCode.ILSpy
 {
@@ -60,10 +61,11 @@ namespace ICSharpCode.ILSpy
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.FileName = DecompilerTextView.CleanUpName(assembly.ShortName) + ".pdb";
 			dlg.Filter = "Portable PDB|*.pdb|All files|*.*";
+			dlg.InitialDirectory = Path.GetDirectoryName(assembly.FileName);
 			if (dlg.ShowDialog() != true) return;
 			DecompilationOptions options = new DecompilationOptions();
 			string fileName = dlg.FileName;
-			MainWindow.Instance.TextView.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
+			Docking.DockWorkspace.Instance.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
 				Stopwatch stopwatch = Stopwatch.StartNew();
 				using (FileStream stream = new FileStream(fileName, FileMode.OpenOrCreate, FileAccess.Write)) {
@@ -82,11 +84,11 @@ namespace ICSharpCode.ILSpy
 				output.AddButton(null, "Open Explorer", delegate { Process.Start("explorer", "/select,\"" + fileName + "\""); });
 				output.WriteLine();
 				return output;
-			}, ct)).Then(output => MainWindow.Instance.TextView.ShowText(output)).HandleExceptions();
+			}, ct)).Then(output => Docking.DockWorkspace.Instance.ShowText(output)).HandleExceptions();
 		}
 	}
 
-	[ExportMainMenuCommand(Menu = "_File", Header = "Generate portable PDB", MenuCategory = "Save")]
+	[ExportMainMenuCommand(Menu = nameof(Resources._File),  Header = nameof(Resources.GeneratePortable),  MenuCategory = "Save")]
 	class GeneratePdbMainMenuEntry : SimpleCommand
 	{
 		public override bool CanExecute(object parameter)

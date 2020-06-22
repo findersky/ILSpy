@@ -28,7 +28,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public int X;
 			public double Y;
 		}
-		
+
+		public struct ResultStruct
+		{
+			public unsafe byte* ptr1;
+			public unsafe byte* ptr2;
+
+			public unsafe ResultStruct(byte* ptr1, byte* ptr2)
+			{
+				this.ptr1 = ptr1;
+				this.ptr2 = ptr2;
+			}
+		}
+
 		public struct StructWithFixedSizeMembers
 		{
 			public unsafe fixed int Integers[100];
@@ -52,6 +64,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				return 0;
 			}
 		}
+
+#if CS73
+		public class CustomPinnable
+		{
+			public ref int GetPinnableReference()
+			{
+				throw new NotImplementedException();
+			}
+		}
+#endif
 
 		public unsafe delegate void UnsafeDelegate(byte* ptr);
 
@@ -185,6 +207,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			fixed (char* ptr = text) {
 			}
 		}
+
+#if !(LEGACY_CSC && OPT)
+		// legacy csc manages to optimize out the pinned variable altogether in this case;
+		// leaving no pinned region we could detect.
+		public unsafe void FixedArrayNoPointerUse(int[] arr)
+		{
+			fixed (int* ptr = arr) {
+			}
+		}
+#endif
 
 		public unsafe void PutDoubleIntoLongArray1(long[] array, int index, double val)
 		{
@@ -342,6 +374,29 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return ptr->ToString();
 		}
 
+		public unsafe void FixedMultiDimArray(int[,] arr)
+		{
+			fixed (int* ptr = arr) {
+				UsePointer(ptr);
+			}
+		}
+
+#if CS73
+		public unsafe void FixedSpan(Span<int> span)
+		{
+			fixed (int* ptr = span) {
+				UsePointer(ptr);
+			}
+		}
+
+		//public unsafe void FixedCustomReferenceType(CustomPinnable mem)
+		//{
+		//	fixed (int* ptr = mem) {
+		//		UsePointer(ptr);
+		//	}
+		//}
+#endif
+
 		public unsafe string StackAlloc(int count)
 		{
 			char* ptr = stackalloc char[count];
@@ -386,6 +441,52 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			shortPtr += 2;
 			bytePtr -= 4;
 			shortPtr = (short*)((byte*)shortPtr - 3);
+		}
+
+		private static T Get<T>()
+		{
+			return default(T);
+		}
+
+		private unsafe static ResultStruct NestedFixedBlocks(byte[] array)
+		{
+			try {
+				fixed (byte* ptr = array) {
+					fixed (byte* ptr2 = Get<byte[]>()) {
+						return new ResultStruct(ptr, ptr2);
+					}
+				}
+			} finally {
+				Console.WriteLine("Finally");
+			}
+		}
+
+		private unsafe static object CreateBuffer(int length, byte* ptr)
+		{
+			throw new NotImplementedException();
+		}
+
+		private unsafe static object Issue1386(int arraySize, bool createFirstBuffer)
+		{
+			if (createFirstBuffer) {
+				byte[] array = new byte[arraySize];
+				Console.WriteLine("first fixed");
+				fixed (byte* ptr = array) {
+					return CreateBuffer(array.Length, ptr);
+				}
+			}
+
+			byte[] array2 = new byte[arraySize];
+			Console.WriteLine("second fixed");
+			fixed (byte* ptr2 = array2) {
+				return CreateBuffer(array2.Length, ptr2);
+			}
+		}
+
+		private unsafe static void Issue1499(StructWithFixedSizeMembers value, int index)
+		{
+			int num = value.Integers[index];
+			num.ToString();
 		}
 	}
 }

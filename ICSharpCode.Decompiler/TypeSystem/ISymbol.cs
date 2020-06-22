@@ -69,6 +69,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		Parameter,
 		/// <seealso cref="ITypeParameter"/>
 		TypeParameter,
+		/// <summary>
+		/// Constraint on a type parameter.
+		/// </summary>
+		Constraint,
+		/// <summary>
+		/// Return type. Not actually an ISymbol implementation; but can appear as attribut target.
+		/// </summary>
+		ReturnType,
 	}
 	
 	/// <summary>

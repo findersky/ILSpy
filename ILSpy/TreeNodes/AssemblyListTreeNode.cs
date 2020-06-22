@@ -82,7 +82,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool CanDrop(DragEventArgs e, int index)
 		{
-			e.Effects = DragDropEffects.Move;
+			e.Effects = DragDropEffects.Move | DragDropEffects.Copy | DragDropEffects.Link;
 			if (e.Data.GetDataPresent(AssemblyTreeNode.DataFormat))
 				return true;
 			else if (e.Data.GetDataPresent(DataFormats.FileDrop))
@@ -112,10 +112,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 							index--;
 						assemblyList.assemblies.RemoveAt(nodeIndex);
 					}
-					assemblies.Reverse();
+					Array.Reverse(assemblies);
 					foreach (LoadedAssembly asm in assemblies) {
 						assemblyList.assemblies.Insert(index, asm);
 					}
+					var nodes = assemblies.SelectArray(MainWindow.Instance.FindTreeNode);
+					MainWindow.Instance.SelectNodes(nodes);
 				}
 			}
 		}
@@ -155,7 +157,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		#region Find*Node
 		public ILSpyTreeNode FindResourceNode(Resource resource)
 		{
-			if (resource == null)
+			if (resource == null || resource.IsNil)
 				return null;
 			foreach (AssemblyTreeNode node in this.Children)
 			{
@@ -177,6 +179,16 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			return null;
 		}
 
+		public ILSpyTreeNode FindResourceNode(Resource resource, string name)
+		{
+			var resourceNode = FindResourceNode(resource);
+			if (resourceNode == null || name == null || name.Equals(resourceNode.Text))
+				return resourceNode;
+
+			resourceNode.EnsureLazyChildren();
+			return resourceNode.Children.OfType<ILSpyTreeNode>().Where(x => name.Equals(x.Text)).FirstOrDefault() ?? resourceNode;
+		}
+
 		public AssemblyTreeNode FindAssemblyNode(IModule module)
 		{
 			return FindAssemblyNode(module.PEFile);
@@ -188,7 +200,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				return null;
 			App.Current.Dispatcher.VerifyAccess();
 			foreach (AssemblyTreeNode node in this.Children) {
-				if (node.LoadedAssembly.IsLoaded && node.LoadedAssembly.GetPEFileOrNull() == module)
+				if (node.LoadedAssembly.IsLoaded && node.LoadedAssembly.GetPEFileOrNull()?.FileName == module.FileName)
 					return node;
 			}
 			return null;
@@ -307,6 +319,24 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				return null;
 			typeNode.EnsureLazyChildren();
 			return typeNode.Children.OfType<EventTreeNode>().FirstOrDefault(m => m.EventDefinition.MetadataToken == def.MetadataToken && !m.IsHidden);
+		}
+
+		/// <summary>
+		/// Looks up the event node corresponding to the namespace definition.
+		/// Returns null if no matching node is found.
+		/// </summary>
+		public NamespaceTreeNode FindNamespaceNode(INamespace def)
+		{
+			var module = def.ContributingModules.FirstOrDefault();
+			if (module == null)
+				return null;
+
+			AssemblyTreeNode assemblyNode = FindAssemblyNode(module);
+			if (assemblyNode == null)
+				return null;
+
+			assemblyNode.EnsureLazyChildren();
+			return assemblyNode.Children.OfType<NamespaceTreeNode>().FirstOrDefault(n => def.FullName.Length == 0 || def.FullName.Equals(n.Text));
 		}
 		#endregion
 	}

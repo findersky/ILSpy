@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using ICSharpCode.Decompiler.Util;
 
@@ -53,7 +54,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			: base(methodDefinition)
 		{
 			if (substitution == null)
-				throw new ArgumentNullException("substitution");
+				throw new ArgumentNullException(nameof(substitution));
 			this.methodDefinition = methodDefinition;
 			this.isParameterized = substitution.MethodTypeArguments != null;
 			if (methodDefinition.TypeParameters.Count > 0) {
@@ -94,17 +95,24 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		}
 
 		public IEnumerable<IAttribute> GetReturnTypeAttributes() => methodDefinition.GetReturnTypeAttributes();
-		
+		public bool ReturnTypeIsRefReadOnly => methodDefinition.ReturnTypeIsRefReadOnly;
+
+		bool IMethod.ThisIsRefReadOnly => methodDefinition.ThisIsRefReadOnly;
+
 		public IReadOnlyList<ITypeParameter> TypeParameters {
 			get {
 				return specializedTypeParameters ?? methodDefinition.TypeParameters;
 			}
 		}
-		
+
 		public bool IsExtensionMethod {
 			get { return methodDefinition.IsExtensionMethod; }
 		}
-		
+
+		public bool IsLocalFunction {
+			get { return methodDefinition.IsLocalFunction; }
+		}
+
 		public bool IsConstructor {
 			get { return methodDefinition.IsConstructor; }
 		}
@@ -124,6 +132,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public bool IsAccessor {
 			get { return methodDefinition.IsAccessor; }
 		}
+
+		public MethodSemanticsAttributes AccessorKind => methodDefinition.AccessorKind;
 
 		public IMethod ReducedFrom {
 			get { return null; }
@@ -195,7 +205,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				b.Append('[');
 				for (int i = 0; i < this.TypeArguments.Count; i++) {
 					if (i > 0) b.Append(", ");
-					b.Append(this.TypeArguments[i].ReflectionName);
+					b.Append(this.TypeArguments[i].ToString());
 				}
 				b.Append(']');
 			} else if (this.TypeParameters.Count > 0) {
@@ -208,7 +218,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				b.Append(this.Parameters[i].ToString());
 			}
 			b.Append("):");
-			b.Append(this.ReturnType.ReflectionName);
+			b.Append(this.ReturnType.ToString());
 			b.Append(']');
 			return b.ToString();
 		}
@@ -242,21 +252,23 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return o != null && baseTp.Equals(o.baseTp) && this.Owner.Equals(o.Owner);
 			}
 			
-			public override bool HasValueTypeConstraint {
-				get { return baseTp.HasValueTypeConstraint; }
-			}
-			
-			public override bool HasReferenceTypeConstraint {
-				get { return baseTp.HasReferenceTypeConstraint; }
-			}
-			
-			public override bool HasDefaultConstructorConstraint {
-				get { return baseTp.HasDefaultConstructorConstraint; }
-			}
-			
-			public override IEnumerable<IType> DirectBaseTypes {
+			public override bool HasValueTypeConstraint => baseTp.HasValueTypeConstraint;
+			public override bool HasReferenceTypeConstraint => baseTp.HasReferenceTypeConstraint;
+			public override bool HasDefaultConstructorConstraint => baseTp.HasDefaultConstructorConstraint;
+			public override bool HasUnmanagedConstraint => baseTp.HasUnmanagedConstraint;
+
+			public override Nullability NullabilityConstraint => baseTp.NullabilityConstraint;
+
+			IReadOnlyList<TypeConstraint> typeConstraints;
+
+			public override IReadOnlyList<TypeConstraint> TypeConstraints {
 				get {
-					return baseTp.DirectBaseTypes.Select(t => t.AcceptVisitor(substitution));
+					var typeConstraints = LazyInit.VolatileRead(ref this.typeConstraints);
+					if (typeConstraints == null) {
+						typeConstraints = baseTp.TypeConstraints.SelectReadOnlyArray(c => new TypeConstraint(c.Type.AcceptVisitor(substitution), c.Attributes));
+						typeConstraints = LazyInit.GetOrSet(ref this.typeConstraints, typeConstraints);
+					}
+					return typeConstraints;
 				}
 			}
 		}

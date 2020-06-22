@@ -84,7 +84,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		IType ITypeReference.Resolve(ITypeResolveContext context)
 		{
 			if (context == null)
-				throw new ArgumentNullException("context");
+				throw new ArgumentNullException(nameof(context));
 			return this;
 		}
 		
@@ -100,6 +100,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public override int GetHashCode()
 		{
 			return 81625621 ^ (int)kind;
+		}
+
+		public override IType ChangeNullability(Nullability nullability)
+		{
+			if (nullability == base.Nullability)
+				return this;
+			else
+				return new NullabilityAnnotatedType(this, nullability);
 		}
 	}
 }

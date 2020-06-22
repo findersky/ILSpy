@@ -12,10 +12,13 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 		public OpenProjectOutputCommand(ILSpyAddInPackage owner)
 			: base(owner, PkgCmdIDList.cmdidOpenProjectOutputInILSpy)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
 		}
 
 		protected override void OnBeforeQueryStatus(object sender, EventArgs e)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			if (sender is OleMenuCommand menuItem) {
 				menuItem.Visible = false;
 
@@ -26,6 +29,8 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 
 		protected override void OnExecute(object sender, EventArgs e)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			if (owner.DTE.SelectedItems.Count != 1)
 				return;
 			var projectItemWrapper = ProjectItemForILSpy.Detect(owner, owner.DTE.SelectedItems.Item(1));
@@ -36,6 +41,8 @@ namespace ICSharpCode.ILSpy.AddIn.Commands
 
 		internal static void Register(ILSpyAddInPackage owner)
 		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
 			instance = new OpenProjectOutputCommand(owner);
 		}
 	}

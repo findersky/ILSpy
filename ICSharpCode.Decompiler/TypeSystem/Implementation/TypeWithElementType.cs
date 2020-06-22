@@ -27,7 +27,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		protected TypeWithElementType(IType elementType)
 		{
 			if (elementType == null)
-				throw new ArgumentNullException("elementType");
+				throw new ArgumentNullException(nameof(elementType));
 			this.elementType = elementType;
 		}
 		
@@ -46,7 +46,12 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public override string ReflectionName {
 			get { return elementType.ReflectionName + NameSuffix; }
 		}
-		
+
+		public override string ToString()
+		{
+			return elementType.ToString() + NameSuffix;
+		}
+
 		public abstract string NameSuffix { get; }
 		
 		public IType ElementType {

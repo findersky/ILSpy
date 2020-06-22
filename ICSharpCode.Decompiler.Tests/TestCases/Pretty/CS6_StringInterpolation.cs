@@ -21,8 +21,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine($"\ta{$"a{args.Length}" == args[0]}");
 		}
 
+		public static void ArrayExpansionSpecialCases(object[] args)
+		{
+			Console.WriteLine($"args: {args}");
+			Console.WriteLine(string.Format("args: {0}", args));
+		}
+
 		public static void InvalidFormatString(string[] args)
 		{
+#pragma warning disable IDE0043
 			Console.WriteLine(string.Format("", args.Length));
 			Console.WriteLine(string.Format("a", args.Length));
 			Console.WriteLine(string.Format("}", args.Length));
@@ -47,6 +54,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(string.Format("{0:}", args.Length));
 			Console.WriteLine(string.Format("{0{a}0}", args.Length));
 			Console.WriteLine(string.Format("test: {0}", string.Join(",", args)));
+#pragma warning restore
 		}
 
 		public void FormattableStrings(FormattableString s, string[] args)
@@ -87,6 +95,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			RequiresCast((IFormattable)$"\ta{args ?? args}");
 			RequiresCast((IFormattable)$"\ta{args[0][0] == 'a'}");
 			RequiresCast((IFormattable)$"\ta{$"a{args.Length}" == args[0]}");
+		}
+
+		public void Issue1497(string[] args)
+		{
+			Console.WriteLine($"args[0]: {args[0].Trim(':').Trim('&').Trim(':').Trim('&')} asdf {args.Length:x} test");
 		}
 
 		public void RequiresCast(string value)

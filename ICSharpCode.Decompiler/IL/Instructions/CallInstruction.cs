@@ -132,10 +132,10 @@ namespace ICSharpCode.Decompiler.IL
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			if (ConstrainedTo != null) {
 				output.Write("constrained[");
-				ConstrainedTo.WriteTo(output, ILNameSyntax.ShortTypeName);
+				ConstrainedTo.WriteTo(output);
 				output.Write("].");
 			}
 			if (IsTail)

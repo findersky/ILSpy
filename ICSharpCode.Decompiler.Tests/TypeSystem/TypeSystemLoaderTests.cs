@@ -22,12 +22,10 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using NUnit.Framework;
@@ -142,7 +140,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 			Assert.IsFalse(method.IsVirtual);
 			Assert.IsFalse(method.IsStatic);
 			Assert.AreEqual(0, method.Parameters.Count);
-			Assert.AreEqual(0, method.GetAttributes().Count());
+			Assert.AreEqual(1, method.GetAttributes().Count());
 			Assert.IsTrue(method.HasBody);
 			Assert.IsNull(method.AccessorOwner);
 		}
@@ -490,32 +488,40 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		public void EnumFieldsTest()
 		{
 			var e = GetTypeDefinition(typeof(MyEnum));
-			IField[] fields = e.Fields.ToArray();
+			IField valueField = e.Fields.First();
+			IField[] fields = e.Fields.Skip(1).ToArray();
 			Assert.AreEqual(5, fields.Length);
+
+			Assert.AreEqual("value__", valueField.Name);
+			Assert.AreEqual(GetTypeDefinition(typeof(short)), valueField.Type);
+			Assert.AreEqual(Accessibility.Public, valueField.Accessibility);
+			Assert.AreEqual(null, valueField.GetConstantValue());
+			Assert.IsFalse(valueField.IsConst);
+			Assert.IsFalse(valueField.IsStatic);
 
 			foreach (IField f in fields) {
 				Assert.IsTrue(f.IsStatic);
 				Assert.IsTrue(f.IsConst);
 				Assert.AreEqual(Accessibility.Public, f.Accessibility);
 				Assert.AreSame(e, f.Type);
-				Assert.AreEqual(typeof(short), f.ConstantValue.GetType());
+				Assert.AreEqual(typeof(short), f.GetConstantValue().GetType());
 			}
 
 			Assert.AreEqual("First", fields[0].Name);
-			Assert.AreEqual(0, fields[0].ConstantValue);
+			Assert.AreEqual(0, fields[0].GetConstantValue());
 
 			Assert.AreEqual("Second", fields[1].Name);
 			Assert.AreSame(e, fields[1].Type);
-			Assert.AreEqual(1, fields[1].ConstantValue);
+			Assert.AreEqual(1, fields[1].GetConstantValue());
 
 			Assert.AreEqual("Flag1", fields[2].Name);
-			Assert.AreEqual(0x10, fields[2].ConstantValue);
+			Assert.AreEqual(0x10, fields[2].GetConstantValue());
 
 			Assert.AreEqual("Flag2", fields[3].Name);
-			Assert.AreEqual(0x20, fields[3].ConstantValue);
+			Assert.AreEqual(0x20, fields[3].GetConstantValue());
 
 			Assert.AreEqual("CombinedFlags", fields[4].Name);
-			Assert.AreEqual(0x30, fields[4].ConstantValue);
+			Assert.AreEqual(0x30, fields[4].GetConstantValue());
 		}
 
 		[Test]
@@ -678,11 +684,30 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		}
 
 		[Test]
+		public void DllImportAttributeWithPreserveSigFalse()
+		{
+			IMethod method = GetTypeDefinition(typeof(NonCustomAttributes)).Methods.Single(m => m.Name == "DoNotPreserveSig");
+			IAttribute dllImport = method.GetAttributes().Single();
+			Assert.AreEqual("System.Runtime.InteropServices.DllImportAttribute", dllImport.AttributeType.FullName);
+			Assert.AreEqual("unmanaged.dll", dllImport.FixedArguments[0].Value);
+			Assert.AreEqual(false, dllImport.NamedArguments.Single().Value);
+		}
+
+		[Test]
+		public void PreserveSigAttribute()
+		{
+			IMethod method = GetTypeDefinition(typeof(NonCustomAttributes)).Methods.Single(m => m.Name == "PreserveSigAsAttribute");
+			IAttribute preserveSig = method.GetAttributes().Single();
+			Assert.AreEqual("System.Runtime.InteropServices.PreserveSigAttribute", preserveSig.AttributeType.FullName);
+			Assert.IsTrue(preserveSig.FixedArguments.Length == 0);
+			Assert.IsTrue(preserveSig.NamedArguments.Length == 0);
+		}
+
+		[Test]
 		public void InOutParametersOnRefMethod()
 		{
 			IParameter p = GetTypeDefinition(typeof(NonCustomAttributes)).Methods.Single(m => m.Name == "DllMethod").Parameters.Single();
-			Assert.IsTrue(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.Ref, p.ReferenceKind);
 			var attr = p.GetAttributes().ToList();
 			Assert.AreEqual(2, attr.Count);
 			Assert.AreEqual("System.Runtime.InteropServices.InAttribute", attr[0].AttributeType.FullName);
@@ -702,9 +727,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOutParameter").Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsTrue(p.IsOut);
-			Assert.IsFalse(p.IsIn);
+			Assert.AreEqual(ReferenceKind.Out, p.ReferenceKind);
 			Assert.AreEqual(0, p.GetAttributes().Count());
 			Assert.IsTrue(p.Type.Kind == TypeKind.ByReference);
 		}
@@ -714,9 +737,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithRefParameter").Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsTrue(p.IsRef);
-			Assert.IsFalse(p.IsOut);
-			Assert.IsFalse(p.IsIn);
+			Assert.AreEqual(ReferenceKind.Ref, p.ReferenceKind);
 			Assert.AreEqual(0, p.GetAttributes().Count());
 			Assert.IsTrue(p.Type.Kind == TypeKind.ByReference);
 		}
@@ -726,9 +747,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithInParameter").Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
-			Assert.IsTrue(p.IsIn);
+			Assert.AreEqual(ReferenceKind.In, p.ReferenceKind);
 			Assert.AreEqual(0, p.GetAttributes().Count());
 			Assert.IsTrue(p.Type.Kind == TypeKind.ByReference);
 		}
@@ -738,8 +757,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithParamsArray").Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsTrue(p.IsParams);
 			Assert.AreEqual(0, p.GetAttributes().Count());
 			Assert.IsTrue(p.Type.Kind == TypeKind.Array);
@@ -750,12 +768,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOptionalParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
 			Assert.AreEqual(0, p.GetAttributes().Count());
-			Assert.AreEqual(4, p.ConstantValue);
+			Assert.AreEqual(4, p.GetConstantValue());
 		}
 
 		[Test]
@@ -763,8 +780,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithExplicitOptionalParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsFalse(p.HasConstantValueInSignature);
 			// explicit optional parameter appears in type system if it's read from C#, but not when read from IL
@@ -776,12 +792,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithEnumOptionalParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
 			Assert.AreEqual(0, p.GetAttributes().Count());
-			Assert.AreEqual((int)StringComparison.OrdinalIgnoreCase, p.ConstantValue);
+			Assert.AreEqual((int)StringComparison.OrdinalIgnoreCase, p.GetConstantValue());
 		}
 
 		[Test]
@@ -789,12 +804,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOptionalNullableParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
 			Assert.AreEqual(0, p.GetAttributes().Count());
-			Assert.IsNull(p.ConstantValue);
+			Assert.IsNull(p.GetConstantValue());
 		}
 
 		[Test]
@@ -802,12 +816,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOptionalLongParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
-			Assert.AreEqual(1L, p.ConstantValue);
-			Assert.AreEqual(typeof(long), p.ConstantValue.GetType());
+			Assert.AreEqual(1L, p.GetConstantValue());
+			Assert.AreEqual(typeof(long), p.GetConstantValue().GetType());
 		}
 
 		[Test]
@@ -815,12 +828,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOptionalNullableLongParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
-			Assert.AreEqual(1L, p.ConstantValue);
-			Assert.AreEqual(typeof(long), p.ConstantValue.GetType());
+			Assert.AreEqual(1L, p.GetConstantValue());
+			Assert.AreEqual(typeof(long), p.GetConstantValue().GetType());
 		}
 
 		[Test]
@@ -828,12 +840,11 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "MethodWithOptionalDecimalParameter").Parameters.Single();
 			Assert.IsTrue(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.IsTrue(p.HasConstantValueInSignature);
-			Assert.AreEqual(1M, p.ConstantValue);
-			Assert.AreEqual(typeof(decimal), p.ConstantValue.GetType());
+			Assert.AreEqual(1M, p.GetConstantValue());
+			Assert.AreEqual(typeof(decimal), p.GetConstantValue().GetType());
 		}
 
 		[Test]
@@ -841,8 +852,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(ParameterTests)).Methods.Single(m => m.Name == "VarArgsMethod").Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.AreEqual(TypeKind.ArgList, p.Type.Kind);
 			Assert.AreEqual("", p.Name);
@@ -853,8 +863,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			IParameter p = GetTypeDefinition(typeof(VarArgsCtor)).Methods.Single(m => m.IsConstructor).Parameters.Single();
 			Assert.IsFalse(p.IsOptional);
-			Assert.IsFalse(p.IsRef);
-			Assert.IsFalse(p.IsOut);
+			Assert.AreEqual(ReferenceKind.None, p.ReferenceKind);
 			Assert.IsFalse(p.IsParams);
 			Assert.AreEqual(TypeKind.ArgList, p.Type.Kind);
 			Assert.AreEqual("", p.Name);
@@ -1491,7 +1500,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			ITypeDefinition type = GetTypeDefinition(typeof(ClassWithMethodThatHasNullableDefaultParameter));
 			var method = type.GetMethods().Single(m => m.Name == "Foo");
-			Assert.AreEqual(42, method.Parameters.Single().ConstantValue);
+			Assert.AreEqual(42, method.Parameters.Single().GetConstantValue());
 		}
 
 		[Test]
@@ -1511,7 +1520,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 		{
 			var f = type.GetFields().Single(x => x.Name == name);
 			Assert.IsTrue(f.IsConst);
-			Assert.AreEqual(expected, f.ConstantValue);
+			Assert.AreEqual(expected, f.GetConstantValue());
 			Assert.AreEqual(0, f.GetAttributes().Count());
 		}
 
@@ -1559,7 +1568,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 			ITypeDefinition type = GetTypeDefinition(typeof(ConstantFieldTest));
 			IField field = type.Fields.Single(f => f.Name == "EnumFromThisAssembly");
 			Assert.IsTrue(field.IsConst);
-			Assert.AreEqual((short)MyEnum.Second, field.ConstantValue);
+			Assert.AreEqual((short)MyEnum.Second, field.GetConstantValue());
 		}
 
 		[Test]
@@ -1568,7 +1577,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 			ITypeDefinition type = GetTypeDefinition(typeof(ConstantFieldTest));
 			IField field = type.Fields.Single(f => f.Name == "EnumFromAnotherAssembly");
 			Assert.IsTrue(field.IsConst);
-			Assert.AreEqual((int)StringComparison.OrdinalIgnoreCase, field.ConstantValue);
+			Assert.AreEqual((int)StringComparison.OrdinalIgnoreCase, field.GetConstantValue());
 		}
 
 		[Test]
@@ -1577,7 +1586,7 @@ namespace ICSharpCode.Decompiler.Tests.TypeSystem
 			ITypeDefinition type = GetTypeDefinition(typeof(ConstantFieldTest));
 			IField field = type.Fields.Single(f => f.Name == "DefaultOfEnum");
 			Assert.IsTrue(field.IsConst);
-			Assert.AreEqual((short)default(MyEnum), field.ConstantValue);
+			Assert.AreEqual((short)default(MyEnum), field.GetConstantValue());
 		}
 
 		[Test]

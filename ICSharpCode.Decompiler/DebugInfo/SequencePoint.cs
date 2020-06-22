@@ -17,13 +17,15 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Diagnostics;
 
 namespace ICSharpCode.Decompiler.DebugInfo
 {
 	/// <summary>
 	/// A sequence point read from a PDB file or produced by the decompiler.
 	/// </summary>
-	public struct SequencePoint
+	[DebuggerDisplay("SequencePoint IL_{Offset,h}-IL_{EndOffset,h}, {StartLine}:{StartColumn}-{EndLine}:{EndColumn}, IsHidden={IsHidden}")]
+	public class SequencePoint
 	{
 		/// <summary>
 		/// IL start offset.

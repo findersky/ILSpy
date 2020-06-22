@@ -35,7 +35,9 @@ namespace ICSharpCode.Decompiler
 		
 		int line = 1;
 		int column = 1;
-		
+
+		public string IndentationString { get; set; } = "\t";
+
 		public PlainTextOutput(TextWriter writer)
 		{
 			if (writer == null)
@@ -74,7 +76,7 @@ namespace ICSharpCode.Decompiler
 			if (needsIndent) {
 				needsIndent = false;
 				for (int i = 0; i < indent; i++) {
-					writer.Write('\t');
+					writer.Write(IndentationString);
 				}
 				column += indent;
 			}
@@ -102,12 +104,19 @@ namespace ICSharpCode.Decompiler
 			column = 1;
 		}
 
-		public void WriteReference(Disassembler.OpCodeInfo opCode)
+		public void WriteReference(Disassembler.OpCodeInfo opCode, bool omitSuffix = false)
 		{
-			Write(opCode.Name);
+			if (omitSuffix) {
+				int lastDot = opCode.Name.LastIndexOf('.');
+				if (lastDot > 0) {
+					Write(opCode.Name.Remove(lastDot + 1));
+				}
+			} else {
+				Write(opCode.Name);
+			}
 		}
 
-		public void WriteReference(PEFile module, EntityHandle handle, string text, bool isDefinition = false)
+		public void WriteReference(PEFile module, Handle handle, string text, string protocol = "decompile", bool isDefinition = false)
 		{
 			Write(text);
 		}
@@ -145,6 +154,15 @@ namespace ICSharpCode.Decompiler
 		{
 			this.target = target;
 			this.actions = new List<Action<ITextOutput>>();
+		}
+
+		string ITextOutput.IndentationString {
+			get {
+				return target.IndentationString;
+			}
+			set {
+				target.IndentationString = value;
+			}
 		}
 
 		public void Commit()
@@ -194,14 +212,14 @@ namespace ICSharpCode.Decompiler
 			actions.Add(target => target.WriteLocalReference(text, reference, isDefinition));
 		}
 
-		public void WriteReference(OpCodeInfo opCode)
+		public void WriteReference(OpCodeInfo opCode, bool omitSuffix = false)
 		{
 			actions.Add(target => target.WriteReference(opCode));
 		}
 
-		public void WriteReference(PEFile module, EntityHandle handle, string text, bool isDefinition = false)
+		public void WriteReference(PEFile module, Handle handle, string text, string protocol = "decompile", bool isDefinition = false)
 		{
-			actions.Add(target => target.WriteReference(module, handle, text, isDefinition));
+			actions.Add(target => target.WriteReference(module, handle, text, protocol, isDefinition));
 		}
 
 		public void WriteReference(IType type, string text, bool isDefinition = false)

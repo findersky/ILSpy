@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using ICSharpCode.Decompiler.IL.Transforms;
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -43,11 +44,11 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public static readonly SlotInfo InstructionSlot = new SlotInfo("Instruction", isCollection: true);
 		public static readonly SlotInfo FinalInstructionSlot = new SlotInfo("FinalInstruction");
-		
+
 		public readonly BlockKind Kind;
 		public readonly InstructionCollection<ILInstruction> Instructions;
 		ILInstruction finalInstruction;
-		
+
 		/// <summary>
 		/// For blocks in a block container, this field holds
 		/// the number of incoming control flow edges to this block.
@@ -77,30 +78,30 @@ namespace ICSharpCode.Decompiler.IL
 				SetChildInstruction(ref finalInstruction, value, Instructions.Count);
 			}
 		}
-		
+
 		protected internal override void InstructionCollectionUpdateComplete()
 		{
 			base.InstructionCollectionUpdateComplete();
 			if (finalInstruction.Parent == this)
 				finalInstruction.ChildIndex = Instructions.Count;
 		}
-		
+
 		public Block(BlockKind kind = BlockKind.ControlFlow) : base(OpCode.Block)
 		{
 			this.Kind = kind;
 			this.Instructions = new InstructionCollection<ILInstruction>(this, 0);
 			this.FinalInstruction = new Nop();
 		}
-		
+
 		public override ILInstruction Clone()
 		{
 			Block clone = new Block(Kind);
-			clone.ILRange = this.ILRange;
+			clone.AddILRange(this);
 			clone.Instructions.AddRange(this.Instructions.Select(inst => inst.Clone()));
 			clone.FinalInstruction = this.FinalInstruction.Clone();
 			return clone;
 		}
-		
+
 		internal override void CheckInvariant(ILPhase phase)
 		{
 			base.CheckInvariant(phase);
@@ -131,26 +132,64 @@ namespace ICSharpCode.Decompiler.IL
 						Debug.Assert(call.Arguments[0].MatchLdLoc(v));
 					}
 					break;
+				case BlockKind.ArrayInitializer:
+					var final = finalInstruction as LdLoc;
+					Debug.Assert(final != null && final.Variable.IsSingleDefinition && final.Variable.Kind == VariableKind.InitializerTarget);
+					IType type = null;
+					Debug.Assert(Instructions[0].MatchStLoc(final.Variable, out var init) && init.MatchNewArr(out type));
+					for (int i = 1; i < Instructions.Count; i++) {
+						Debug.Assert(Instructions[i].MatchStObj(out ILInstruction target, out _, out var t) && type != null && type.Equals(t));
+						Debug.Assert(target.MatchLdElema(out t, out ILInstruction array) && type.Equals(t));
+						Debug.Assert(array.MatchLdLoc(out ILVariable v) && v == final.Variable);
+					}
+					break;
+				case BlockKind.CollectionInitializer:
+				case BlockKind.ObjectInitializer:
+					var final2 = finalInstruction as LdLoc;
+					Debug.Assert(final2 != null);
+					var initVar2 = final2.Variable;
+					Debug.Assert(initVar2.StoreCount == 1 && initVar2.Kind == VariableKind.InitializerTarget);
+					IType type2 = null;
+					bool condition = Instructions[0].MatchStLoc(final2.Variable, out var init2);
+					Debug.Assert(condition);
+					Debug.Assert(init2 is NewObj || init2 is DefaultValue || (init2 is Block named && named.Kind == BlockKind.CallWithNamedArgs));
+					switch (init2) {
+						case NewObj newObj:
+							type2 = newObj.Method.DeclaringType;
+							break;
+						case DefaultValue defaultValue:
+							type2 = defaultValue.Type;
+							break;
+						case Block callWithNamedArgs when callWithNamedArgs.Kind == BlockKind.CallWithNamedArgs:
+							type2 = ((CallInstruction)callWithNamedArgs.FinalInstruction).Method.ReturnType;
+							break;
+						default:
+							Debug.Assert(false);
+							break;
+					}
+					for (int i = 1; i < Instructions.Count; i++) {
+						Debug.Assert(Instructions[i] is StLoc || AccessPathElement.GetAccessPath(Instructions[i], type2).Kind != IL.Transforms.AccessPathKind.Invalid);
+					}
+					break;
 			}
 		}
-		
+
 		public override StackType ResultType {
 			get {
 				return finalInstruction.ResultType;
 			}
 		}
-		
+
 		/// <summary>
 		/// Gets the name of this block.
 		/// </summary>
-		public string Label
-		{
-			get { return Disassembler.DisassemblerHelpers.OffsetToString(this.ILRange.Start); }
+		public string Label {
+			get { return Disassembler.DisassemblerHelpers.OffsetToString(this.StartILOffset); }
 		}
 
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			ILRange.WriteTo(output, options);
+			WriteILRange(output, options);
 			output.Write("Block ");
 			output.WriteLocalReference(Label, this, isDefinition: true);
 			if (Kind != BlockKind.ControlFlow)
@@ -179,19 +218,19 @@ namespace ICSharpCode.Decompiler.IL
 			output.Write("}");
 			output.MarkFoldEnd();
 		}
-		
+
 		protected override int GetChildCount()
 		{
 			return Instructions.Count + 1;
 		}
-		
+
 		protected override ILInstruction GetChild(int index)
 		{
 			if (index == Instructions.Count)
 				return finalInstruction;
 			return Instructions[index];
 		}
-		
+
 		protected override void SetChild(int index, ILInstruction value)
 		{
 			if (index == Instructions.Count)
@@ -199,7 +238,7 @@ namespace ICSharpCode.Decompiler.IL
 			else
 				Instructions[index] = value;
 		}
-		
+
 		protected override SlotInfo GetChildSlot(int index)
 		{
 			if (index == Instructions.Count)
@@ -207,7 +246,7 @@ namespace ICSharpCode.Decompiler.IL
 			else
 				return InstructionSlot;
 		}
-		
+
 		protected override InstructionFlags ComputeFlags()
 		{
 			var flags = InstructionFlags.None;
@@ -217,7 +256,7 @@ namespace ICSharpCode.Decompiler.IL
 			flags |= FinalInstruction.Flags;
 			return flags;
 		}
-		
+
 		public override InstructionFlags DirectFlags {
 			get {
 				return InstructionFlags.None;
@@ -280,6 +319,21 @@ namespace ICSharpCode.Decompiler.IL
 			return inst;
 		}
 
+		/// <summary>
+		/// Gets the closest parent Block.
+		/// Returns null, if the instruction is not a descendant of a Block.
+		/// </summary>
+		public static Block FindClosestBlock(ILInstruction inst)
+		{
+			var curr = inst;
+			while (curr != null) {
+				if (curr is Block)
+					return (Block)curr;
+				curr = curr.Parent;
+			}
+			return null;
+		}
+
 		public bool MatchInlineAssignBlock(out CallInstruction call, out ILInstruction value)
 		{
 			call = null;
@@ -297,6 +351,27 @@ namespace ICSharpCode.Decompiler.IL
 				return false;
 			return this.FinalInstruction.MatchLdLoc(tmp);
 		}
+
+		public bool MatchIfAtEndOfBlock(out ILInstruction condition, out ILInstruction trueInst, out ILInstruction falseInst)
+		{
+			condition = null;
+			trueInst = null;
+			falseInst = null;
+			if (Instructions.Count < 2)
+				return false;
+			if (Instructions[Instructions.Count - 2].MatchIfInstruction(out condition, out trueInst)) {
+				// Swap trueInst<>falseInst for every logic.not in the condition.
+				falseInst = Instructions.Last();
+				while (condition.MatchLogicNot(out var arg)) {
+					condition = arg;
+					ILInstruction tmp = trueInst;
+					trueInst = falseInst;
+					falseInst = tmp;
+				}
+				return true;
+			}
+			return false;
+		}
 	}
 	
 	public enum BlockKind
@@ -313,13 +388,7 @@ namespace ICSharpCode.Decompiler.IL
 		ArrayInitializer,
 		CollectionInitializer,
 		ObjectInitializer,
-		/// <summary>
-		/// Block is used for postfix operator on local variable.
-		/// </summary>
-		/// <remarks>
-		/// Postfix operators on non-locals use CompoundAssignmentInstruction with CompoundAssignmentType.EvaluatesToOldValue.
-		/// </remarks>
-		PostfixOperator,
+		StackAllocInitializer,
 		/// <summary>
 		/// Block is used for using the result of a property setter inline.
 		/// Example: <code>Use(this.Property = value);</code>

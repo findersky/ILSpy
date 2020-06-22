@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using ICSharpCode.Decompiler.IL.Patterns;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
@@ -124,31 +125,34 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(a == b);
 			return a;
 		}
-		
+
+#if DEBUG
 		/// <summary>
 		/// Gets whether this node (or any subnode) was modified since the last <c>ResetDirty()</c> call.
 		/// </summary>
 		/// <remarks>
-		/// IsDirty is used by the LoopingTransform, and must not be used by individual transforms within the loop.
+		/// IsDirty is used by the StatementTransform, and must not be used by individual transforms within the loop.
 		/// </remarks>
-		public bool IsDirty { get; private set; }
-		
-		protected void MakeDirty()
-		{
-			for (ILInstruction inst = this; inst != null && !inst.IsDirty; inst = inst.parent)
-				inst.IsDirty = true;
-		}
-		
+		internal bool IsDirty { get; private set; }
+
 		/// <summary>
 		/// Marks this node (and all subnodes) as <c>IsDirty=false</c>.
 		/// </summary>
-		/// <remarks>
-		/// IsDirty is used by the LoopingTransform, and must not be used by individual transforms within the loop.
-		/// </remarks>
-		public void ResetDirty()
+		internal void ResetDirty()
 		{
 			foreach (ILInstruction inst in Descendants)
 				inst.IsDirty = false;
+		}
+#endif
+
+		[Conditional("DEBUG")]
+		protected private void MakeDirty()
+		{
+#if DEBUG
+			for (ILInstruction inst = this; inst != null && !inst.IsDirty; inst = inst.parent) {
+				inst.IsDirty = true;
+			}
+#endif
 		}
 		
 		const InstructionFlags invalidFlags = (InstructionFlags)(-1);
@@ -206,28 +210,61 @@ namespace ICSharpCode.Decompiler.IL
 		/// <summary>
 		/// Gets the ILRange for this instruction alone, ignoring the operands.
 		/// </summary>
-		public Interval ILRange;
+		private Interval ILRange;
 
 		public void AddILRange(Interval newRange)
 		{
+			this.ILRange = CombineILRange(this.ILRange, newRange);
+		}
+
+		protected static Interval CombineILRange(Interval oldRange, Interval newRange)
+		{
+			if (oldRange.IsEmpty) {
+				return newRange;
+			}
 			if (newRange.IsEmpty) {
-				return;
+				return oldRange;
 			}
-			if (this.ILRange.IsEmpty) {
-				this.ILRange = newRange;
-				return;
-			}
-			if (newRange.Start <= this.ILRange.Start) {
-				if (newRange.End < this.ILRange.Start) {
-					this.ILRange = newRange; // use the earlier range
+			if (newRange.Start <= oldRange.Start) {
+				if (newRange.End < oldRange.Start) {
+					return newRange; // use the earlier range
 				} else {
 					// join overlapping ranges
-					this.ILRange = new Interval(newRange.Start, Math.Max(newRange.End, this.ILRange.End));
+					return new Interval(newRange.Start, Math.Max(newRange.End, oldRange.End));
 				}
-			} else if (newRange.Start <= this.ILRange.End) {
+			} else if (newRange.Start <= oldRange.End) {
 				// join overlapping ranges
-				this.ILRange = new Interval(this.ILRange.Start, Math.Max(newRange.End, this.ILRange.End));
+				return new Interval(oldRange.Start, Math.Max(newRange.End, oldRange.End));
 			}
+			return oldRange;
+		}
+
+		public void AddILRange(ILInstruction sourceInstruction)
+		{
+			AddILRange(sourceInstruction.ILRange);
+		}
+
+		public void SetILRange(ILInstruction sourceInstruction)
+		{
+			ILRange = sourceInstruction.ILRange;
+		}
+
+		public void SetILRange(Interval range)
+		{
+			ILRange = range;
+		}
+
+		public int StartILOffset => ILRange.Start;
+
+		public int EndILOffset => ILRange.End;
+
+		public bool ILRangeIsEmpty => ILRange.IsEmpty;
+
+		public IEnumerable<Interval> ILRanges => new[] { ILRange };
+
+		public void WriteILRange(ITextOutput output, ILAstWritingOptions options)
+		{
+			ILRange.WriteTo(output, options);
 		}
 
 		/// <summary>
@@ -279,7 +316,7 @@ namespace ICSharpCode.Decompiler.IL
 		protected abstract SlotInfo GetChildSlot(int index);
 		
 		#region ChildrenCollection + ChildrenEnumerator
-		public struct ChildrenCollection : IReadOnlyList<ILInstruction>
+		public readonly struct ChildrenCollection : IReadOnlyList<ILInstruction>
 		{
 			readonly ILInstruction inst;
 			
@@ -582,6 +619,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// </remarks>
 		public SlotInfo SlotInfo {
 			get {
+				if (parent == null)
+					return null;
 				Debug.Assert(parent.GetChild(this.ChildIndex) == this);
 				return parent.GetChildSlot(this.ChildIndex);
 			}
@@ -597,7 +636,7 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			ILInstruction oldValue = childPointer;
 			Debug.Assert(oldValue == GetChild(index));
-			if (oldValue == newValue)
+			if (oldValue == newValue && newValue?.parent == this && newValue.ChildIndex == index)
 				return;
 			childPointer = newValue;
 			if (newValue != null) {
@@ -727,6 +766,41 @@ namespace ICSharpCode.Decompiler.IL
 				}
 			}
 			return false;
+		}
+
+		/// <summary>
+		/// Extracts the this instruction.
+		///   The instruction is replaced with a load of a new temporary variable;
+		///   and the instruction is moved to a store to said variable at block-level.
+		///   Returns the new variable.
+		/// 
+		/// If extraction is not possible, the ILAst is left unmodified and the function returns null.
+		/// May return null if extraction is not possible.
+		/// </summary>
+		public ILVariable Extract()
+		{
+			return Transforms.ExtractionContext.Extract(this);
+		}
+
+		/// <summary>
+		/// Prepares "extracting" a descendant instruction out of this instruction.
+		/// This is the opposite of ILInlining. It may involve re-compiling high-level constructs into lower-level constructs.
+		/// </summary>
+		/// <returns>True if extraction is possible; false otherwise.</returns>
+		internal virtual bool PrepareExtract(int childIndex, Transforms.ExtractionContext ctx)
+		{
+			if (!GetChildSlot(childIndex).CanInlineInto) {
+				return false;
+			}
+			// Check whether re-ordering with predecessors is valid:
+			for (int i = childIndex - 1; i >= 0; --i) {
+				ILInstruction predecessor = GetChild(i);
+				if (!GetChildSlot(i).CanInlineInto) {
+					return false;
+				}
+				ctx.RegisterMoveIfNecessary(predecessor);
+			}
+			return true;
 		}
 	}
 	

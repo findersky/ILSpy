@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Xml;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
@@ -318,51 +320,61 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ToCode(null, () => ((IEnumerable<object>)null).Aggregate((object)null, (Func<object, object, object>)((object o1, object o2) => null), (Func<object, object>)((object o) => null)))
 		};
 
+		public static void TestCall(object a)
+		{
+
+		}
+
+		public static void TestCall(ref object a)
+		{
+
+		}
+
 		private void Issue1249(int ID)
 		{
 			if (ID == 0) {
 				ViewBag.data = "''";
-			} else {
-				var model = (from a in db.Contracts
-							 where a.ID == ID
-							 select new {
-								 ID = a.ID,
-								 ContractNo = a.ContractNo,
-								 HouseAddress = a.HouseAddress,
-								 AdminID = (from b in db.Administrator
-											where b.ID == a.AdminID
-											select b.TrueName).FirstOrDefault(),
-								 StoreID = (from b in db.Store
-											where b.ID == a.StoreID
-											select b.Name).FirstOrDefault(),
-								 SigningTime = a.SigningTime,
-								 YeWuPhone = (from b in db.Administrator
-											  where b.ID == a.AdminID
-											  select b.Phone).FirstOrDefault(),
-								 BuyerName = a.BuyerName,
-								 BuyerTelephone = a.BuyerTelephone,
-								 Customer = a.Customer,
-								 CustTelephone = a.CustTelephone,
-								 Credit = (from b in db.Loan
-										   where b.ContractNo == a.ContractNo
-										   select b.Credit).FirstOrDefault(),
-								 LoanBank = (from b in db.Loan
-											 where b.ContractNo == a.ContractNo
-											 select b.LoanBank).FirstOrDefault(),
-								 Remarks = (from b in db.Loan
-											where b.ContractNo == a.ContractNo
-											select b.Remarks).FirstOrDefault()
-							 }).FirstOrDefault();
-				ViewBag.data = model.ToJson();
-				DateTime? dateTime = (from b in db.Loan
-									  where b.ContractNo == model.ContractNo
-									  select b.ShenDate).FirstOrDefault();
-				DateTime? dateTime2 = (from b in db.Loan
-									   where b.ContractNo == model.ContractNo
-									   select b.LoanDate).FirstOrDefault();
-				ViewBag.ShenDate = ((!dateTime.HasValue) ? "" : dateTime.ParseDateTime().ToString("yyyy-MM-dd"));
-				ViewBag.LoanDate = ((!dateTime2.HasValue) ? "" : dateTime2.ParseDateTime().ToString("yyyy-MM-dd"));
+				return;
 			}
+			var model = (from a in db.Contracts
+						 where a.ID == ID
+						 select new {
+							 ID = a.ID,
+							 ContractNo = a.ContractNo,
+							 HouseAddress = a.HouseAddress,
+							 AdminID = (from b in db.Administrator
+										where b.ID == a.AdminID
+										select b.TrueName).FirstOrDefault(),
+							 StoreID = (from b in db.Store
+										where b.ID == a.StoreID
+										select b.Name).FirstOrDefault(),
+							 SigningTime = a.SigningTime,
+							 YeWuPhone = (from b in db.Administrator
+										  where b.ID == a.AdminID
+										  select b.Phone).FirstOrDefault(),
+							 BuyerName = a.BuyerName,
+							 BuyerTelephone = a.BuyerTelephone,
+							 Customer = a.Customer,
+							 CustTelephone = a.CustTelephone,
+							 Credit = (from b in db.Loan
+									   where b.ContractNo == a.ContractNo
+									   select b.Credit).FirstOrDefault(),
+							 LoanBank = (from b in db.Loan
+										 where b.ContractNo == a.ContractNo
+										 select b.LoanBank).FirstOrDefault(),
+							 Remarks = (from b in db.Loan
+										where b.ContractNo == a.ContractNo
+										select b.Remarks).FirstOrDefault()
+						 }).FirstOrDefault();
+			ViewBag.data = model.ToJson();
+			DateTime? dateTime = (from b in db.Loan
+								  where b.ContractNo == model.ContractNo
+								  select b.ShenDate).FirstOrDefault();
+			DateTime? dateTime2 = (from b in db.Loan
+								   where b.ContractNo == model.ContractNo
+								   select b.LoanDate).FirstOrDefault();
+			ViewBag.ShenDate = ((!dateTime.HasValue) ? "" : dateTime.ParseDateTime().ToString("yyyy-MM-dd"));
+			ViewBag.LoanDate = ((!dateTime2.HasValue) ? "" : dateTime2.ParseDateTime().ToString("yyyy-MM-dd"));
 		}
 
 		private static object ToCode<R>(object x, Expression<Action<R>> expr)
@@ -533,7 +545,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void MembersBuiltin()
 		{
 			ToCode(X(), () => 1.23m.ToString());
-			ToCode(X(), () => AttributeTargets.All.HasFlag((Enum)AttributeTargets.Assembly));
+			ToCode(X(), () => AttributeTargets.All.HasFlag(AttributeTargets.Assembly));
 			ToCode(X(), () => "abc".Length == 3);
 			ToCode(X(), () => 'a'.CompareTo('b') < 0);
 		}
@@ -573,7 +585,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			2004,
 			2008,
 			2012
-		}).Any<int>));
+		}).Any));
 		}
 
 		public void MethodGroupConstant()
@@ -613,16 +625,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			//no params
 			ToCode(X(), () => call(() => 42));
 			//one param
-			ToCode(X(), () => from x in new int[2] {
+			ToCode(X(), () => new int[2] {
 				37,
 				42
-			}
-			select x * 2);
+			}.Select((int x) => x * 2));
 			//two params
 			ToCode(X(), () => new int[2] {
-			37,
-			42
-		}.Select((int x, int i) => x * 2));
+				37,
+				42
+			}.Select((int x, int i) => x * 2));
 		}
 
 		public void CurriedLambda()
@@ -719,13 +730,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void QuotedWithAnonymous()
 		{
-			ToCode(X(), () => (from o in new[] {
+			ToCode(X(), () => new[] {
 				new {
 					X = "a",
 					Y = "b"
 				}
-			}
-			select o.X + o.Y).Single());
+			}.Select(o => o.X + o.Y).Single());
 		}
 
 		public void StaticCall()
@@ -825,12 +835,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static void AsTypeExpr()
 		{
 			Test<Func<object, MyClass>>((object obj) => obj as MyClass, (object obj) => obj as MyClass);
+			Test<Func<object, int?>>((object obj) => obj as int?, (object obj) => obj as int?);
 			Test<Func<object, GenericClass<object>>>((object obj) => obj as GenericClass<object>, (object obj) => obj as GenericClass<object>);
 		}
 
 		public static void IsTypeExpr()
 		{
 			Test<Func<object, bool>>((object obj) => obj is MyClass, (object obj) => obj is MyClass);
+			Test<Func<object, bool>>((object obj) => obj is int?, (object obj) => obj is int?);
 		}
 
 		public static void UnaryLogicalOperators()
@@ -844,7 +856,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ToCode(null, (object a) => a ?? new MyClass());
 		}
 
-		public static void BinaryLogicalOperators()
+		public static void ComparisonOperators()
 		{
 			ToCode(null, (int a, int b) => a == b);
 			ToCode(null, (int a, int b) => a != b);
@@ -863,6 +875,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ToCode(null, (short a, long b) => (long)a >= b);
 			ToCode(null, (int a, int b) => a == 1 && b == 2);
 			ToCode(null, (int a, int b) => a == 1 || b == 2);
+		}
+
+		public static void LiftedComparisonOperators()
+		{
+			ToCode(X(), (int? a, int? b) => a == b);
+			ToCode(X(), (int? a, int? b) => a != b);
+			ToCode(X(), (int? a, int? b) => a < b);
+			ToCode(X(), (int? a, int? b) => a <= b);
+			ToCode(X(), (int? a, int? b) => a > b);
+			ToCode(X(), (int? a, int? b) => a >= b);
 		}
 
 		public static void UnaryArithmeticOperators()
@@ -938,6 +960,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Test<Func<int, string>>((int a) => a.ToString(), (int a) => a.ToString());
 			Test<Func<string, char[]>>((string a) => a.ToArray(), (string a) => a.ToArray());
 			Test<Func<bool>>(() => 'a'.CompareTo('b') < 0, () => 'a'.CompareTo('b') < 0);
+			Test<Action<object, bool>>(delegate(object lockObj, bool lockTaken) {
+				Monitor.Enter(lockObj, ref lockTaken);
+			}, (object lockObj, bool lockTaken) => Monitor.Enter(lockObj, ref lockTaken));
+			Test<Func<string, int, bool>>((string str, int num) => int.TryParse(str, out num), (string str, int num) => int.TryParse(str, out num));
+			Test<Func<string, SimpleType, bool>>((string str, SimpleType t) => int.TryParse(str, out t.Field), (string str, SimpleType t) => int.TryParse(str, out t.Field));
+			Test<Action<object>>(delegate(object o) {
+				TestCall(o);
+			}, (object o) => TestCall(o));
+			Test<Action<object>>(delegate(object o) {
+				TestCall(ref o);
+			}, (object o) => TestCall(ref o));
 		}
 
 		public static void Quote()
@@ -991,6 +1024,35 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				Property = 4,
 				Field = 3
 			});
+		}
+
+		public static void StringConcat()
+		{
+			Test<Func<string, object, string>>(null, (string a, object b) => a + b);
+			Test<Func<string, object, string>>(null, (string a, object b) => a + b.ToString());
+			Test<Func<string, int, string>>(null, (string a, int b) => a + b);
+			Test<Func<string, int, string>>(null, (string a, int b) => a + b.ToString());
+		}
+
+		public async Task Issue1524(string str)
+		{
+			await Task.Delay(100);
+#if CS70
+			if (string.IsNullOrEmpty(str) && int.TryParse(str, out int id)) {
+#else
+			int id;
+			if (string.IsNullOrEmpty(str) && int.TryParse(str, out id)) {
+#endif
+				(from a in new List<int>().AsQueryable()
+				 where a == id
+				 select a).FirstOrDefault();
+			}
+		}
+
+		public void NullCoalescing()
+		{
+			Test<Func<string, string, string>>((string a, string b) => a ?? b, (string a, string b) => a ?? b);
+			Test<Func<int?, int>>((int? a) => a ?? 1, (int? a) => a ?? 1);
 		}
 	}
 

@@ -84,7 +84,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		KeepModifiers = 0x40,
 		/// <summary>
-		/// If this option is active, [IsReadOnlyAttribute] is removed and parameters are marked as in, structs as readonly.
+		/// If this option is active, [IsReadOnlyAttribute] on parameters+structs is removed
+		/// and parameters are marked as in, structs as readonly.
 		/// Otherwise, the attribute is preserved but the parameters and structs are not marked.
 		/// </summary>
 		ReadOnlyStructsAndParameters = 0x80,
@@ -94,9 +95,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		RefStructs = 0x100,
 		/// <summary>
+		/// If this option is active, [IsUnmanagedAttribute] is removed from type parameters,
+		/// and HasUnmanagedConstraint is set instead.
+		/// </summary>
+		UnmanagedConstraints = 0x200,
+		/// <summary>
+		/// If this option is active, [NullableAttribute] is removed and reference types with
+		/// nullability annotations are used instead.
+		/// </summary>
+		NullabilityAnnotations = 0x400,
+		/// <summary>
+		/// If this option is active, [IsReadOnlyAttribute] on methods is removed
+		/// and the method marked as ThisIsRefReadOnly.
+		/// </summary>
+		ReadOnlyMethods = 0x800,
+		/// <summary>
 		/// Default settings: typical options for the decompiler, with all C# languages features enabled.
 		/// </summary>
-		Default = Dynamic | Tuple | ExtensionMethods | DecimalConstants | ReadOnlyStructsAndParameters | RefStructs
+		Default = Dynamic | Tuple | ExtensionMethods | DecimalConstants | ReadOnlyStructsAndParameters
+			| RefStructs | UnmanagedConstraints | NullabilityAnnotations | ReadOnlyMethods
 	}
 
 	/// <summary>
@@ -122,6 +139,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				typeSystemOptions |= TypeSystemOptions.RefStructs;
 			if (settings.IntroduceReadonlyAndInModifiers)
 				typeSystemOptions |= TypeSystemOptions.ReadOnlyStructsAndParameters;
+			if (settings.IntroduceUnmanagedConstraint)
+				typeSystemOptions |= TypeSystemOptions.UnmanagedConstraints;
+			if (settings.NullableReferenceTypes)
+				typeSystemOptions |= TypeSystemOptions.NullabilityAnnotations;
+			if (settings.ReadOnlyMethods)
+				typeSystemOptions |= TypeSystemOptions.ReadOnlyMethods;
 			return typeSystemOptions;
 		}
 
@@ -205,10 +228,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			bool HasType(KnownTypeCode code)
 			{
 				TopLevelTypeName name = KnownTypeReference.Get(code).TypeName;
-				if (mainModule.GetTypeDefinition(name) != null)
+				if (!mainModule.GetTypeDefinition(name).IsNil)
 					return true;
 				foreach (var file in referencedAssemblies) {
-					if (file.GetTypeDefinition(name) != null)
+					if (!file.GetTypeDefinition(name).IsNil)
 						return true;
 				}
 				return false;

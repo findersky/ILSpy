@@ -54,7 +54,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			var t = typeSystem.MainModule.ResolveEntity(handle) as ITypeDefinition;
 			if (t != null) {
 				showExpander = t.DirectBaseTypes.Any();
-				var other = t.ParentModule.PEFile.GetTypeSystemOrNull();
+				var other = t.ParentModule.PEFile.GetTypeSystemWithCurrentOptionsOrNull();
 				Debug.Assert(other != null);
 				t = other.FindType(t.FullTypeName).GetDefinition();
 			} else {
@@ -69,7 +69,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override object Text => this.Language.TypeToString(type, includeNamespace: true) + handle.ToSuffixString();
 
-		public override object Icon => isInterface ? Images.Interface : Images.Class;
+		public override object Icon => 
+			isInterface ? Images.Interface : Images.Class;
 
 		protected override void LoadChildren()
 		{

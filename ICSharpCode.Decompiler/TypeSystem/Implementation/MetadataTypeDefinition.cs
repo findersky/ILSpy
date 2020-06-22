@@ -51,6 +51,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public KnownTypeCode KnownTypeCode { get; }
 		public IType EnumUnderlyingType { get; }
 		public bool HasExtensionMethods { get; }
+		public Nullability NullableContext { get; }
 
 		// lazy-loaded:
 		IMember[] members;
@@ -77,9 +78,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				
 				// Create type parameters:
 				this.TypeParameters = MetadataTypeParameter.Create(module, this.DeclaringTypeDefinition, this, td.GetGenericParameters());
+
+				this.NullableContext = td.GetCustomAttributes().GetNullableContext(metadata) ?? this.DeclaringTypeDefinition.NullableContext;
 			} else {
 				// Create type parameters:
 				this.TypeParameters = MetadataTypeParameter.Create(module, this, td.GetGenericParameters());
+
+				this.NullableContext = td.GetCustomAttributes().GetNullableContext(metadata) ?? module.NullableContext;
 
 				var topLevelTypeName = fullTypeName.TopLevelTypeName;
 				for (int i = 0; i < KnownTypeReference.KnownTypeCodeCount; i++) {
@@ -101,8 +106,10 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					this.Kind = TypeKind.Void;
 				} else {
 					this.Kind = TypeKind.Struct;
-					this.IsByRefLike = td.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.IsByRefLike);
-					this.IsReadOnly = td.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.IsReadOnly);
+					this.IsByRefLike = (module.TypeSystemOptions & TypeSystemOptions.RefStructs) == TypeSystemOptions.RefStructs
+						&& td.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.IsByRefLike);
+					this.IsReadOnly = (module.TypeSystemOptions & TypeSystemOptions.ReadOnlyStructsAndParameters) == TypeSystemOptions.ReadOnlyStructsAndParameters
+						&& td.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.IsReadOnly);
 				}
 			} else if (td.IsDelegate(metadata)) {
 				this.Kind = TypeKind.Delegate;
@@ -162,7 +169,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				foreach (FieldDefinitionHandle h in fieldCollection) {
 					var field = metadata.GetFieldDefinition(h);
 					var attr = field.Attributes;
-					if (module.IsVisible(attr) && (attr & FieldAttributes.SpecialName) == 0) {
+					if (module.IsVisible(attr)) {
 						fieldList.Add(module.GetDefinition(h));
 					}
 				}
@@ -263,6 +270,16 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		IReadOnlyList<IType> IType.TypeArguments => TypeParameters;
 
+		Nullability IType.Nullability => Nullability.Oblivious;
+
+		public IType ChangeNullability(Nullability nullability)
+		{
+			if (nullability == Nullability.Oblivious)
+				return this;
+			else
+				return new NullabilityAnnotatedType(this, nullability);
+		}
+
 		public IEnumerable<IType> DirectBaseTypes {
 			get {
 				var baseTypes = LazyInit.VolatileRead(ref this.directBaseTypes);
@@ -291,7 +308,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				}
 				foreach (var h in interfaceImplCollection) {
 					var iface = metadata.GetInterfaceImplementation(h);
-					baseTypes.Add(module.ResolveType(iface.Interface, context, iface.GetCustomAttributes()));
+					baseTypes.Add(module.ResolveType(iface.Interface, context, iface.GetCustomAttributes(), Nullability.Oblivious));
 				}
 				return LazyInit.GetOrSet(ref this.directBaseTypes, baseTypes);
 			}
@@ -362,7 +379,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			}
 			#endregion
 
-			b.Add(typeDefinition.GetCustomAttributes());
+			b.Add(typeDefinition.GetCustomAttributes(), SymbolKind.TypeDefinition);
 			b.AddSecurityAttributes(typeDefinition.GetDeclarativeSecurityAttributes());
 
 			return b.Build();
