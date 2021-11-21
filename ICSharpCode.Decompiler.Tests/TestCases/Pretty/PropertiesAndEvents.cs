@@ -25,18 +25,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		private interface IBase
 		{
-			int GetterOnly {
-				get;
-			}
+			int GetterOnly { get; }
 
-			int SetterOnly {
-				set;
-			}
+			int SetterOnly { set; }
 
-			int Test {
-				get;
-				set;
-			}
+			int Test { get; set; }
 
 			event Action Event;
 		}
@@ -109,10 +102,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private interface IChange
 		{
-			int Property {
-				get;
-				set;
-			}
+			int Property { get; set; }
 
 			event EventHandler Changed;
 		}
@@ -121,10 +111,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			private EventHandler Changed;
 
-			int IChange.Property {
-				get;
-				set;
-			}
+			int IChange.Property { get; set; }
 
 			event EventHandler IChange.Changed {
 				add {
@@ -141,15 +128,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private object issue1221;
 
-		public int Value {
-			get;
-			private set;
-		}
+		public int Value { get; private set; }
 
-		public int AutomaticProperty {
-			get;
-			set;
-		}
+		public int AutomaticProperty { get; set; }
 
 		public int CustomProperty {
 			get {
@@ -194,6 +175,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if ROSLYN
 		// Legacy csc has a bug where EventHandler<dynamic> is only used for the backing field
 		public event EventHandler<dynamic> DynamicAutoEvent;
+#endif
+#if CS73
 		public event EventHandler<(int A, string B)> AutoEventWithTuple;
 #endif
 #if CS80

@@ -24,21 +24,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		public interface IA
 		{
-			int Property1 {
-				get;
-			}
-			int Property2 {
-				set;
-			}
-			int Property3 {
-				get;
-				set;
-			}
+			int Property1 { get; }
+			int Property2 { set; }
+			int Property3 { get; set; }
 
 			event EventHandler MyEvent;
 			void Method();
 
 #if CS80
+			static IA()
+			{
+
+			}
+			
 			void DefaultMethod()
 			{
 				Method();
@@ -69,7 +67,33 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public interface IA2 : IA
 		{
 #if CS80
+			int IA.Property3 {
+				get {
+					return 0;
+				}
+				set {
+				}
+			}
+
+			event EventHandler IA.MyEvent {
+				add {
+				}
+				remove {
+				}
+			}
+
+			new event EventHandler MyEvent {
+				add {
+				}
+				remove {
+				}
+			}
+
 			void IA.InternalMethod()
+			{
+			}
+
+			new void Method()
 			{
 			}
 #endif
@@ -104,10 +128,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				remove {
 				}
 			}
+			public int Finalize()
+			{
+				return 0;
+			}
 			void IA.Method()
 			{
 				throw new NotImplementedException();
 			}
+		}
+
+		internal interface IInterfacesCannotDeclareDtors
+		{
+			int Finalize();
 		}
 	}
 }

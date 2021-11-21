@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 [assembly: AssemblyFileVersion("4.0.0.0")]
 [assembly: AssemblyInformationalVersion("4.0.0.0")]
@@ -11,6 +12,136 @@ using System.Reflection;
 [assembly: AssemblyCompany("Microsoft Corporation")]
 [assembly: AssemblyProduct("Microsoft® .NET Framework")]
 [assembly: CLSCompliant(false)]
+
+internal sealed class ExtraUnsafeTests
+{
+	public unsafe static void PinWithTypeMismatch(ref uint managedPtr)
+	{
+		fixed (ushort* ptr = &Unsafe.As<uint, ushort>(ref managedPtr))
+		{
+		}
+	}
+
+	public unsafe static uint* RefToPointerWithoutPinning(ref uint managedPtr)
+	{
+		return (uint*)Unsafe.AsPointer(ref managedPtr);
+	}
+
+	public static ref ulong RefAssignTypeMismatch(ref uint a, ref uint b)
+	{
+		ref ushort reference = ref Unsafe.As<uint, ushort>(ref a);
+		if (a != 0)
+		{
+			reference = ref Unsafe.As<uint, ushort>(ref b);
+		}
+		Console.WriteLine(reference);
+		return ref Unsafe.As<ushort, ulong>(ref reference);
+	}
+
+	public unsafe static byte[] Issue1292(int val, byte[] arr)
+	{
+		fixed (byte* ptr = arr)
+		{
+			*(int*)ptr = val;
+		}
+		return arr;
+	}
+
+	public unsafe void pin_ptr_test(int[] a, int[] b)
+	{
+		//The blocks IL_0016 are reachable both inside and outside the pinned region starting at IL_0007. ILSpy has duplicated these blocks in order to place them both within and outside the `fixed` statement.
+		ref int reference;
+		fixed (int* ptr = &a[0])
+		{
+			if (*ptr <= 0)
+			{
+				Unsafe.AddByteOffset(ref *ptr, 4 * 0) = 1;
+				return;
+			}
+			reference = ref *ptr;
+		}
+		fixed (int* ptr = &b[reference])
+		{
+			Unsafe.AddByteOffset(ref *ptr, 4 * 0) = 1;
+		}
+	}
+
+	private static void Issue2148(string[] args)
+	{
+		for (int/*pinned*/ i = 0; i < 100; i++)
+		{
+			Console.WriteLine("Hello World!");
+		}
+	}
+
+	private unsafe static void Issue2189()
+	{
+		fixed (int* ptr = &Unsafe.AsRef<int>((int*)Unsafe.AsPointer(ref SomeStruct.instance.mtfhist)))
+		{
+			int num = *ptr;
+		}
+	}
+	private unsafe static void PinUnmanagedPtr(int* A_0)
+	{
+		fixed (int* ptr = &Unsafe.AsRef<int>(A_0))
+		{
+			int num = *ptr;
+		}
+	}
+	private static ref float AddressTypeMismatch(ref int A_0)
+	{
+		return ref Unsafe.As<int, float>(ref A_0);
+	}
+	private unsafe static ref float AddressTypeMismatch(int* A_0)
+	{
+		return ref *(float*)A_0;
+	}
+	private static float LoadWithTypeMismatch(ref int A_0)
+	{
+		return Unsafe.As<int, float>(ref A_0);
+	}
+	private unsafe static float LoadWithTypeMismatch(int* A_0)
+	{
+		return *(float*)A_0;
+	}
+	private static void StoreWithTypeMismatch(ref int A_0)
+	{
+		Unsafe.As<int, float>(ref A_0) = 1f;
+	}
+	private unsafe static void StoreWithTypeMismatch(int* A_0)
+	{
+		*(float*)A_0 = 1f;
+	}
+	private static ref float AddressOfFieldTypeMismatch(ref int A_0)
+	{
+		return ref Unsafe.As<int, SomeStruct>(ref A_0).float_field;
+	}
+	private unsafe static ref float AddressOfFieldTypeMismatch(int* A_0)
+	{
+		return ref ((SomeStruct*)A_0)->float_field;
+	}
+	private static float LoadOfFieldTypeMismatch(ref int A_0)
+	{
+		return Unsafe.As<int, SomeStruct>(ref A_0).float_field;
+	}
+	private unsafe static float LoadOfFieldTypeMismatch(int* A_0)
+	{
+		return ((SomeStruct*)A_0)->float_field;
+	}
+	private static void StoreOfFieldTypeMismatch(ref int A_0)
+	{
+		Unsafe.As<int, SomeStruct>(ref A_0).float_field = 1f;
+	}
+	private unsafe static void StoreOfFieldTypeMismatch(int* A_0)
+	{
+		((SomeStruct*)A_0)->float_field = 1f;
+	}
+}
+internal struct SomeStruct
+{
+	public int int_field;
+	public float float_field;
+}
 
 namespace System.Runtime.CompilerServices
 {
@@ -25,13 +156,13 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe static T ReadUnaligned<T>(void* source)
 		{
-			return *(T*)source;
+			return Unsafe.ReadUnaligned<T>(source);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe static T ReadUnaligned<T>(ref byte source)
+		public static T ReadUnaligned<T>(ref byte source)
 		{
-			return *(T*)(&source);
+			return Unsafe.ReadUnaligned<T>(ref source);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -43,13 +174,13 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe static void WriteUnaligned<T>(void* destination, T value)
 		{
-			*(T*)destination = value;
+			Unsafe.WriteUnaligned(destination, value);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe static void WriteUnaligned<T>(ref byte destination, T value)
+		public static void WriteUnaligned<T>(ref byte destination, T value)
 		{
-			*(T*)(&destination) = value;
+			Unsafe.WriteUnaligned(ref destination, value);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -67,7 +198,12 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe static void* AsPointer<T>(ref T value)
 		{
-			return &value;
+			return Unsafe.AsPointer(ref value);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void SkipInit<T>(out T value)
+		{
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -151,9 +287,9 @@ namespace System.Runtime.CompilerServices
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe static ref TTo As<TFrom, TTo>(ref TFrom source)
+		public static ref TTo As<TFrom, TTo>(ref TFrom source)
 		{
-			return ref *(TTo*)(&source);
+			return ref Unsafe.As<TFrom, TTo>(ref source);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -171,7 +307,7 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe static void* Add<T>(void* source, int elementOffset)
 		{
-			return (byte*)source + (long)elementOffset * (long)sizeof(T);
+			return (byte*)source + (nint)elementOffset * (nint)sizeof(T);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -181,7 +317,19 @@ namespace System.Runtime.CompilerServices
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static ref T Add<T>(ref T source, UIntPtr elementOffset)
+		{
+			return ref Unsafe.Add(ref source, elementOffset);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static ref T AddByteOffset<T>(ref T source, IntPtr byteOffset)
+		{
+			return ref Unsafe.AddByteOffset(ref source, byteOffset);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static ref T AddByteOffset<T>(ref T source, UIntPtr byteOffset)
 		{
 			return ref Unsafe.AddByteOffset(ref source, byteOffset);
 		}
@@ -195,11 +343,17 @@ namespace System.Runtime.CompilerServices
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe static void* Subtract<T>(void* source, int elementOffset)
 		{
-			return (byte*)source - (long)elementOffset * (long)sizeof(T);
+			return (byte*)source - (nint)elementOffset * (nint)sizeof(T);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static ref T Subtract<T>(ref T source, IntPtr elementOffset)
+		{
+			return ref Unsafe.Subtract(ref source, elementOffset);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static ref T Subtract<T>(ref T source, UIntPtr elementOffset)
 		{
 			return ref Unsafe.Subtract(ref source, elementOffset);
 		}
@@ -211,27 +365,45 @@ namespace System.Runtime.CompilerServices
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static ref T SubtractByteOffset<T>(ref T source, UIntPtr byteOffset)
+		{
+			return ref Unsafe.SubtractByteOffset(ref source, byteOffset);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static IntPtr ByteOffset<T>(ref T origin, ref T target)
 		{
-			return Unsafe.ByteOffset(ref target, ref origin);
+			return Unsafe.ByteOffset(target: ref target, origin: ref origin);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool AreSame<T>(ref T left, ref T right)
 		{
-			return (ref left) == (ref right);
+			return Unsafe.AreSame(ref left, ref right);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool IsAddressGreaterThan<T>(ref T left, ref T right)
 		{
-			return (ref left) > (ref right);
+			return Unsafe.IsAddressGreaterThan(ref left, ref right);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool IsAddressLessThan<T>(ref T left, ref T right)
 		{
-			return (ref left) < (ref right);
+			return Unsafe.IsAddressLessThan(ref left, ref right);
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public unsafe static bool IsNullRef<T>(ref T source)
+		{
+			return Unsafe.AsPointer(ref source) == null;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public unsafe static ref T NullRef<T>()
+		{
+			return ref *(T*)null;
 		}
 	}
 }

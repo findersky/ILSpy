@@ -16,18 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Diagnostics;
-using ICSharpCode.Decompiler.IL;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
+
 using ICSharpCode.Decompiler.CSharp.Syntax;
+using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+using ICSharpCode.Decompiler.CSharp.Transforms;
+using ICSharpCode.Decompiler.CSharp.TypeSystem;
+using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
-using System;
-using System.Threading;
-using ICSharpCode.Decompiler.IL.Transforms;
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
 
 namespace ICSharpCode.Decompiler.CSharp
 {
@@ -36,6 +39,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		internal readonly ExpressionBuilder exprBuilder;
 		readonly ILFunction currentFunction;
 		readonly IDecompilerTypeSystem typeSystem;
+		internal readonly DecompileRun decompileRun;
 		readonly DecompilerSettings settings;
 		readonly CancellationToken cancellationToken;
 
@@ -43,16 +47,28 @@ namespace ICSharpCode.Decompiler.CSharp
 		internal IType currentResultType;
 		internal bool currentIsIterator;
 
-		public StatementBuilder(IDecompilerTypeSystem typeSystem, ITypeResolveContext decompilationContext, ILFunction currentFunction, DecompilerSettings settings, CancellationToken cancellationToken)
+		public StatementBuilder(IDecompilerTypeSystem typeSystem, ITypeResolveContext decompilationContext,
+			ILFunction currentFunction, DecompilerSettings settings, DecompileRun decompileRun,
+			CancellationToken cancellationToken)
 		{
 			Debug.Assert(typeSystem != null && decompilationContext != null);
-			this.exprBuilder = new ExpressionBuilder(this, typeSystem, decompilationContext, currentFunction, settings, cancellationToken);
+			this.exprBuilder = new ExpressionBuilder(
+				this,
+				typeSystem,
+				decompilationContext,
+				currentFunction,
+				settings,
+				cancellationToken
+			);
 			this.currentFunction = currentFunction;
 			this.currentReturnContainer = (BlockContainer)currentFunction.Body;
 			this.currentIsIterator = currentFunction.IsIterator;
-			this.currentResultType = currentFunction.IsAsync ? currentFunction.AsyncReturnType : currentFunction.ReturnType;
+			this.currentResultType = currentFunction.IsAsync
+				? currentFunction.AsyncReturnType
+				: currentFunction.ReturnType;
 			this.typeSystem = typeSystem;
 			this.settings = settings;
+			this.decompileRun = decompileRun;
 			this.cancellationToken = cancellationToken;
 		}
 
@@ -97,7 +113,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			var expr = exprBuilder.Translate(inst);
 			// strip top-level ref on ref re-assignment
-			if (expr.Expression is DirectionExpression dirExpr) {
+			if (expr.Expression is DirectionExpression dirExpr)
+			{
 				expr = expr.UnwrapChild(dirExpr.Expression);
 			}
 			return new ExpressionStatement(expr).WithILInstruction(inst);
@@ -106,7 +123,8 @@ namespace ICSharpCode.Decompiler.CSharp
 		protected internal override TranslatedStatement VisitNop(Nop inst)
 		{
 			var stmt = new EmptyStatement();
-			if (inst.Comment != null) {
+			if (inst.Comment != null)
+			{
 				stmt.AddChild(new Comment(inst.Comment), Roles.Comment);
 			}
 			return stmt.WithILInstruction(inst);
@@ -120,32 +138,47 @@ namespace ICSharpCode.Decompiler.CSharp
 			return new IfElseStatement(condition, trueStatement, falseStatement).WithILInstruction(inst);
 		}
 
-		IEnumerable<ConstantResolveResult> CreateTypedCaseLabel(long i, IType type, List<(string Key, int Value)> map = null)
+		internal IEnumerable<ConstantResolveResult> CreateTypedCaseLabel(long i, IType type, List<(string Key, int Value)> map = null)
 		{
 			object value;
 			// unpack nullable type, if necessary:
 			// we need to do this in all cases, because there are nullable bools and enum types as well.
 			type = NullableType.GetUnderlyingType(type);
-			if (type.IsKnownType(KnownTypeCode.Boolean)) {
+
+			if (type.IsKnownType(KnownTypeCode.Boolean))
+			{
 				value = i != 0;
-			} else if (type.IsKnownType(KnownTypeCode.String) && map != null) {
+			}
+			else if (map != null)
+			{
+				Debug.Assert(type.IsKnownType(KnownTypeCode.String));
 				var keys = map.Where(entry => entry.Value == i).Select(entry => entry.Key);
 				foreach (var key in keys)
 					yield return new ConstantResolveResult(type, key);
 				yield break;
-			} else if (type.Kind == TypeKind.Enum) {
+			}
+			else if (type.Kind == TypeKind.Enum)
+			{
 				var enumType = type.GetDefinition().EnumUnderlyingType;
 				TypeCode typeCode = ReflectionHelper.GetTypeCode(enumType);
-				if (typeCode != TypeCode.Empty) {
+				if (typeCode != TypeCode.Empty)
+				{
 					value = CSharpPrimitiveCast.Cast(typeCode, i, false);
-				} else {
+				}
+				else
+				{
 					value = i;
 				}
-			} else {
+			}
+			else
+			{
 				TypeCode typeCode = ReflectionHelper.GetTypeCode(type);
-				if (typeCode != TypeCode.Empty) {
+				if (typeCode != TypeCode.Empty)
+				{
 					value = CSharpPrimitiveCast.Cast(typeCode, i, false);
-				} else {
+				}
+				else
+				{
 					value = i;
 				}
 			}
@@ -165,44 +198,59 @@ namespace ICSharpCode.Decompiler.CSharp
 			caseLabelMapping = new Dictionary<Block, ConstantResolveResult>();
 
 			TranslatedExpression value;
-			var strToInt = inst.Value as StringToInt;
-			if (strToInt != null) {
-				value = exprBuilder.Translate(strToInt.Argument);
-			} else {
+			IType type;
+			if (inst.Value is StringToInt strToInt)
+			{
+				value = exprBuilder.Translate(strToInt.Argument)
+					.ConvertTo(
+						typeSystem.FindType(KnownTypeCode.String),
+						exprBuilder,
+						// switch statement does support implicit conversions in general, however, the rules are
+						// not very intuitive and in order to prevent bugs, we emit an explicit cast.
+						allowImplicitConversion: false
+					);
+				type = exprBuilder.compilation.FindType(KnownTypeCode.String);
+			}
+			else
+			{
+				strToInt = null;
 				value = exprBuilder.Translate(inst.Value);
+				type = value.Type;
 			}
 
-			// Pick the section with the most labels as default section.
-			IL.SwitchSection defaultSection = inst.Sections.First();
-			foreach (var section in inst.Sections) {
-				if (section.Labels.Count() > defaultSection.Labels.Count()) {
-					defaultSection = section;
-				}
-			}
+			IL.SwitchSection defaultSection = inst.GetDefaultSection();
 
 			var stmt = new SwitchStatement() { Expression = value };
 			Dictionary<IL.SwitchSection, Syntax.SwitchSection> translationDictionary = new Dictionary<IL.SwitchSection, Syntax.SwitchSection>();
 			// initialize C# switch sections.
-			foreach (var section in inst.Sections) {
+			foreach (var section in inst.Sections)
+			{
 				// This is used in the block-label mapping.
 				ConstantResolveResult firstValueResolveResult;
 				var astSection = new Syntax.SwitchSection();
 				// Create case labels:
-				if (section == defaultSection) {
+				if (section == defaultSection)
+				{
 					astSection.CaseLabels.Add(new CaseLabel());
 					firstValueResolveResult = null;
-				} else {
-					var values = section.Labels.Values.SelectMany(i => CreateTypedCaseLabel(i, value.Type, strToInt?.Map)).ToArray();
-					if (section.HasNullLabel) {
+				}
+				else
+				{
+					var values = section.Labels.Values.SelectMany(i => CreateTypedCaseLabel(i, type, strToInt?.Map)).ToArray();
+					if (section.HasNullLabel)
+					{
 						astSection.CaseLabels.Add(new CaseLabel(new NullReferenceExpression()));
 						firstValueResolveResult = new ConstantResolveResult(SpecialType.NullType, null);
-					} else {
+					}
+					else
+					{
 						Debug.Assert(values.Length > 0);
 						firstValueResolveResult = values[0];
 					}
 					astSection.CaseLabels.AddRange(values.Select(label => new CaseLabel(exprBuilder.ConvertConstantValue(label, allowImplicitConversion: true))));
 				}
-				switch (section.Body) {
+				switch (section.Body)
+				{
 					case Branch br:
 						// we can only inline the block, if all branches are in the switchContainer.
 						if (br.TargetContainer == switchContainer && switchContainer.Descendants.OfType<Branch>().Where(b => b.TargetBlock == br.TargetBlock).All(b => BlockContainer.FindClosestSwitchContainer(b) == switchContainer))
@@ -214,9 +262,11 @@ namespace ICSharpCode.Decompiler.CSharp
 				translationDictionary.Add(section, astSection);
 				stmt.SwitchSections.Add(astSection);
 			}
-			foreach (var section in inst.Sections) {
+			foreach (var section in inst.Sections)
+			{
 				var astSection = translationDictionary[section];
-				switch (section.Body) {
+				switch (section.Body)
+				{
 					case Branch br:
 						// we can only inline the block, if all branches are in the switchContainer.
 						if (br.TargetContainer == switchContainer && switchContainer.Descendants.OfType<Branch>().Where(b => b.TargetBlock == br.TargetBlock).All(b => BlockContainer.FindClosestSwitchContainer(b) == switchContainer))
@@ -225,7 +275,8 @@ namespace ICSharpCode.Decompiler.CSharp
 							ConvertSwitchSectionBody(astSection, section.Body);
 						break;
 					case Leave leave:
-						if (astSection.CaseLabels.Count == 1 && astSection.CaseLabels.First().Expression.IsNull && leave.TargetContainer == switchContainer) {
+						if (astSection.CaseLabels.Count == 1 && astSection.CaseLabels.First().Expression.IsNull && leave.TargetContainer == switchContainer)
+						{
 							stmt.SwitchSections.Remove(astSection);
 							break;
 						}
@@ -235,24 +286,32 @@ namespace ICSharpCode.Decompiler.CSharp
 						break;
 				}
 			}
-			if (switchContainer != null && stmt.SwitchSections.Count > 0) {
+			if (switchContainer != null && stmt.SwitchSections.Count > 0)
+			{
 				// Translate any remaining blocks:
 				var lastSectionStatements = stmt.SwitchSections.Last().Statements;
-				foreach (var block in switchContainer.Blocks.Skip(1)) {
-					if (caseLabelMapping.ContainsKey(block)) continue;
-					lastSectionStatements.Add(new LabelStatement { Label = block.Label });
-					foreach (var nestedInst in block.Instructions) {
+				foreach (var block in switchContainer.Blocks.Skip(1))
+				{
+					if (caseLabelMapping.ContainsKey(block))
+						continue;
+					lastSectionStatements.Add(new LabelStatement { Label = EnsureUniqueLabel(block) });
+					foreach (var nestedInst in block.Instructions)
+					{
 						var nestedStmt = Convert(nestedInst);
-						if (nestedStmt is BlockStatement b) {
+						if (nestedStmt is BlockStatement b)
+						{
 							foreach (var nested in b.Statements)
 								lastSectionStatements.Add(nested.Detach());
-						} else {
+						}
+						else
+						{
 							lastSectionStatements.Add(nestedStmt);
 						}
 					}
 					Debug.Assert(block.FinalInstruction.OpCode == OpCode.Nop);
 				}
-				if (endContainerLabels.TryGetValue(switchContainer, out string label)) {
+				if (endContainerLabels.TryGetValue(switchContainer, out string label))
+				{
 					lastSectionStatements.Add(new LabelStatement { Label = label });
 					lastSectionStatements.Add(new BreakStatement());
 				}
@@ -267,12 +326,16 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			var body = Convert(bodyInst);
 			astSection.Statements.Add(body);
-			if (!bodyInst.HasFlag(InstructionFlags.EndPointUnreachable)) {
+			if (!bodyInst.HasFlag(InstructionFlags.EndPointUnreachable))
+			{
 				// we need to insert 'break;'
 				BlockStatement block = body as BlockStatement;
-				if (block != null) {
+				if (block != null)
+				{
 					block.Add(new BreakStatement());
-				} else {
+				}
+				else
+				{
 					astSection.Statements.Add(new BreakStatement());
 				}
 			}
@@ -287,17 +350,19 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedStatement VisitBranch(Branch inst)
 		{
-			if (inst.TargetBlock == continueTarget) {
+			if (inst.TargetBlock == continueTarget)
+			{
 				continueCount++;
 				return new ContinueStatement().WithILInstruction(inst);
 			}
-			if (caseLabelMapping != null && caseLabelMapping.TryGetValue(inst.TargetBlock, out var label)) {
+			if (caseLabelMapping != null && caseLabelMapping.TryGetValue(inst.TargetBlock, out var label))
+			{
 				if (label == null)
 					return new GotoDefaultStatement().WithILInstruction(inst);
 				return new GotoCaseStatement() { LabelExpression = exprBuilder.ConvertConstantValue(label, allowImplicitConversion: true) }
 					.WithILInstruction(inst);
 			}
-			return new GotoStatement(inst.TargetLabel).WithILInstruction(inst);
+			return new GotoStatement(EnsureUniqueLabel(inst.TargetBlock)).WithILInstruction(inst);
 		}
 
 		/// <summary>Target container that a 'break;' statement would break out of</summary>
@@ -309,18 +374,31 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			if (inst.TargetContainer == breakTarget)
 				return new BreakStatement().WithILInstruction(inst);
-			if (inst.TargetContainer == currentReturnContainer) {
+			if (inst.TargetContainer == currentReturnContainer)
+			{
 				if (currentIsIterator)
 					return new YieldBreakStatement().WithILInstruction(inst);
-				else if (!inst.Value.MatchNop()) {
+				else if (!inst.Value.MatchNop())
+				{
 					var expr = exprBuilder.Translate(inst.Value, typeHint: currentResultType)
 						.ConvertTo(currentResultType, exprBuilder, allowImplicitConversion: true);
 					return new ReturnStatement(expr).WithILInstruction(inst);
-				} else
+				}
+				else
 					return new ReturnStatement().WithILInstruction(inst);
 			}
-			if (!endContainerLabels.TryGetValue(inst.TargetContainer, out string label)) {
+			if (!endContainerLabels.TryGetValue(inst.TargetContainer, out string label))
+			{
 				label = "end_" + inst.TargetLabel;
+				if (!duplicateLabels.TryGetValue(label, out int count))
+				{
+					duplicateLabels.Add(label, 1);
+				}
+				else
+				{
+					duplicateLabels[label]++;
+					label += "_" + (count + 1);
+				}
 				endContainerLabels.Add(inst.TargetContainer, label);
 			}
 			return new GotoStatement(label).WithILInstruction(inst);
@@ -361,16 +439,21 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			var tryCatch = new TryCatchStatement();
 			tryCatch.TryBlock = ConvertAsBlock(inst.TryBlock);
-			foreach (var handler in inst.Handlers) {
+			foreach (var handler in inst.Handlers)
+			{
 				var catchClause = new CatchClause();
 				catchClause.AddAnnotation(handler);
 				var v = handler.Variable;
-				if (v != null) {
+				if (v != null)
+				{
 					catchClause.AddAnnotation(new ILVariableResolveResult(v, v.Type));
-					if (v.StoreCount > 1 || v.LoadCount > 0 || v.AddressCount > 0) {
+					if (v.StoreCount > 1 || v.LoadCount > 0 || v.AddressCount > 0)
+					{
 						catchClause.VariableName = v.Name;
 						catchClause.Type = exprBuilder.ConvertType(v.Type);
-					} else if (!v.Type.IsKnownType(KnownTypeCode.Object)) {
+					}
+					else if (!v.Type.IsKnownType(KnownTypeCode.Object))
+					{
 						catchClause.Type = exprBuilder.ConvertType(v.Type);
 					}
 				}
@@ -409,8 +492,23 @@ namespace ICSharpCode.Decompiler.CSharp
 		}
 
 		#region foreach construction
-		static readonly InvocationExpression getEnumeratorPattern = new InvocationExpression(new MemberReferenceExpression(new AnyNode("collection").ToExpression(), "GetEnumerator"));
-		static readonly InvocationExpression moveNextConditionPattern = new InvocationExpression(new MemberReferenceExpression(new NamedNode("enumerator", new IdentifierExpression(Pattern.AnyString)), "MoveNext"));
+		static readonly InvocationExpression getEnumeratorPattern = new InvocationExpression(
+			new Choice {
+				new MemberReferenceExpression(new AnyNode("collection").ToExpression(), "GetEnumerator"),
+				new MemberReferenceExpression(new AnyNode("collection").ToExpression(), "GetAsyncEnumerator")
+			}
+		);
+		static readonly InvocationExpression extensionGetEnumeratorPattern = new InvocationExpression(
+			new Choice {
+				new MemberReferenceExpression(new AnyNode("type").ToExpression(), "GetEnumerator"),
+				new MemberReferenceExpression(new AnyNode("type").ToExpression(), "GetAsyncEnumerator")
+			},
+			new AnyNode("collection")
+		);
+		static readonly Expression moveNextConditionPattern = new Choice {
+			new InvocationExpression(new MemberReferenceExpression(new NamedNode("enumerator", new IdentifierExpression(Pattern.AnyString)), "MoveNext")),
+			new UnaryOperatorExpression(UnaryOperatorType.Await, new InvocationExpression(new MemberReferenceExpression(new NamedNode("enumerator", new IdentifierExpression(Pattern.AnyString)), "MoveNextAsync")))
+		};
 
 		protected internal override TranslatedStatement VisitUsingInstruction(UsingInstruction inst)
 		{
@@ -423,16 +521,20 @@ namespace ICSharpCode.Decompiler.CSharp
 			KnownTypeCode knownTypeCode;
 			IType disposeType;
 			string disposeTypeMethodName;
-			if (inst.IsAsync) {
+			if (inst.IsAsync)
+			{
 				knownTypeCode = KnownTypeCode.IAsyncDisposable;
 				disposeType = exprBuilder.compilation.FindType(KnownTypeCode.IAsyncDisposable);
 				disposeTypeMethodName = "DisposeAsync";
-			} else {
+			}
+			else
+			{
 				knownTypeCode = KnownTypeCode.IDisposable;
 				disposeType = exprBuilder.compilation.FindType(KnownTypeCode.IDisposable);
 				disposeTypeMethodName = "Dispose";
 			}
-			if (!inst.ResourceExpression.MatchLdNull() && !NullableType.GetUnderlyingType(var.Type).GetAllBaseTypes().Any(b => b.IsKnownType(knownTypeCode))) {
+			if (!IsValidInCSharp(inst, knownTypeCode))
+			{
 				Debug.Assert(var.Kind == VariableKind.UsingLocal);
 				var.Kind = VariableKind.Local;
 				var disposeVariable = currentFunction.RegisterVariable(
@@ -440,7 +542,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					AssignVariableNames.GenerateVariableName(currentFunction, disposeType)
 				);
 				Expression disposeInvocation = new InvocationExpression(new MemberReferenceExpression(exprBuilder.ConvertVariable(disposeVariable).Expression, disposeTypeMethodName));
-				if (inst.IsAsync) {
+				if (inst.IsAsync)
+				{
 					disposeInvocation = new UnaryOperatorExpression { Expression = disposeInvocation, Operator = UnaryOperatorType.Await };
 				}
 				return new BlockStatement {
@@ -456,8 +559,11 @@ namespace ICSharpCode.Decompiler.CSharp
 						}
 					},
 				}.WithILInstruction(inst);
-			} else {
-				if (var.LoadCount > 0 || var.AddressCount > 0) {
+			}
+			else
+			{
+				if (var.LoadCount > 0 || var.AddressCount > 0)
+				{
 					var type = settings.AnonymousTypes && var.Type.ContainsAnonymousType() ? new SimpleType("var") : exprBuilder.ConvertType(var.Type);
 					var vds = new VariableDeclarationStatement(type, var.Name, resource);
 					vds.Variables.Single().AddAnnotation(new ILVariableResolveResult(var, var.Type));
@@ -469,23 +575,64 @@ namespace ICSharpCode.Decompiler.CSharp
 					EmbeddedStatement = ConvertAsBlock(inst.Body)
 				}.WithILInstruction(inst);
 			}
+
+			bool IsValidInCSharp(UsingInstruction inst, KnownTypeCode code)
+			{
+				if (inst.ResourceExpression.MatchLdNull())
+					return true;
+				if (inst.IsRefStruct)
+					return true;
+				return NullableType.GetUnderlyingType(var.Type).GetAllBaseTypes().Any(b => b.IsKnownType(code));
+			}
 		}
 
 		Statement TransformToForeach(UsingInstruction inst, Expression resource)
 		{
-			if (!settings.ForEachStatement) {
+			if (!settings.ForEachStatement)
+			{
 				return null;
 			}
-			// Check if the using resource matches the GetEnumerator pattern.
-			var m = getEnumeratorPattern.Match(resource);
+			Match m;
+			if (settings.ExtensionMethods && settings.ForEachWithGetEnumeratorExtension)
+			{
+				// Check if the using resource matches the GetEnumerator pattern ...
+				m = getEnumeratorPattern.Match(resource);
+				if (!m.Success)
+				{
+					// ... or the extension GetEnumeratorPattern.
+					m = extensionGetEnumeratorPattern.Match(resource);
+					if (!m.Success)
+						return null;
+					// Validate that the invocation is an extension method invocation.
+					var context = new CSharpTypeResolveContext(
+						typeSystem.MainModule,
+						decompileRun.UsingScope.Resolve(typeSystem)
+					);
+					if (!IntroduceExtensionMethods.CanTransformToExtensionMethodCall(context,
+						(InvocationExpression)resource))
+					{
+						return null;
+					}
+				}
+			}
+			else
+			{
+				// Check if the using resource matches the GetEnumerator pattern.
+				m = getEnumeratorPattern.Match(resource);
+				if (!m.Success)
+					return null;
+			}
 			// The using body must be a BlockContainer.
-			if (!(inst.Body is BlockContainer container) || !m.Success)
+			if (!(inst.Body is BlockContainer container))
+				return null;
+			bool isAsync = ((MemberReferenceExpression)((InvocationExpression)resource).Target).MemberName == "GetAsyncEnumerator";
+			if (isAsync != inst.IsAsync)
 				return null;
 			// The using-variable is the enumerator.
 			var enumeratorVar = inst.Variable;
 			// If there's another BlockContainer nested in this container and it only has one child block, unwrap it.
 			// If there's an extra leave inside the block, extract it into optionalReturnAfterLoop.
-			var loopContainer = UnwrapNestedContainerIfPossible(container, out var optionalReturnAfterLoop);
+			var loopContainer = UnwrapNestedContainerIfPossible(container, out var optionalLeaveAfterLoop);
 			// Detect whether we're dealing with a while loop with multiple embedded statements.
 			if (loopContainer.Kind != ContainerKind.While)
 				return null;
@@ -496,24 +643,26 @@ namespace ICSharpCode.Decompiler.CSharp
 			var m2 = moveNextConditionPattern.Match(condition.Expression);
 			if (!m2.Success)
 				return null;
+			if (condition.Expression is UnaryOperatorExpression { Operator: UnaryOperatorType.Await } != isAsync)
+				return null;
 			// Check enumerator variable references.
 			var enumeratorVar2 = m2.Get<IdentifierExpression>("enumerator").Single().GetILVariable();
 			if (enumeratorVar2 != enumeratorVar)
 				return null;
 			// Detect which foreach-variable transformation is necessary/possible.
-			var transformation = DetectGetCurrentTransformation(container, body, enumeratorVar, conditionInst, out var singleGetter, out var foreachVariable);
+			var transformation = DetectGetCurrentTransformation(container, body, loopContainer, enumeratorVar, conditionInst, out var singleGetter, out var foreachVariable);
 			if (transformation == RequiredGetCurrentTransformation.NoForeach)
-				return null;
-			// The existing foreach variable, if found, can only be used in the loop container.
-			if (foreachVariable != null && !(foreachVariable.CaptureScope == null || foreachVariable.CaptureScope == loopContainer))
 				return null;
 			// Extract in-expression
 			var collectionExpr = m.Get<Expression>("collection").Single();
 			// Special case: foreach (var item in this) is decompiled as foreach (var item in base)
 			// but a base reference is not valid in this context.
-			if (collectionExpr is BaseReferenceExpression) {
+			if (collectionExpr is BaseReferenceExpression)
+			{
 				collectionExpr = new ThisReferenceExpression().CopyAnnotationsFrom(collectionExpr);
-			} else if (IsDynamicCastToIEnumerable(collectionExpr, out var dynamicExpr)) {
+			}
+			else if (IsDynamicCastToIEnumerable(collectionExpr, out var dynamicExpr))
+			{
 				collectionExpr = dynamicExpr.Detach();
 			}
 			// Handle explicit casts:
@@ -522,7 +671,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			var type = singleGetter.Method.ReturnType;
 			ILInstruction instToReplace = singleGetter;
 			bool useVar = false;
-			switch (instToReplace.Parent) {
+			switch (instToReplace.Parent)
+			{
 				case CastClass cc:
 					type = cc.Type;
 					instToReplace = cc;
@@ -532,10 +682,12 @@ namespace ICSharpCode.Decompiler.CSharp
 					instToReplace = ua;
 					break;
 				default:
-					if (TupleType.IsTupleCompatible(type, out _)) {
+					if (TupleType.IsTupleCompatible(type, out _))
+					{
 						// foreach with get_Current returning a tuple type, let's check which type "var" would infer:
 						var foreachRR = exprBuilder.resolver.ResolveForeach(collectionExpr.GetResolveResult());
-						if (EqualErasedType(type, foreachRR.ElementType)) {
+						if (EqualErasedType(type, foreachRR.ElementType))
+						{
 							type = foreachRR.ElementType;
 							useVar = true;
 						}
@@ -543,8 +695,11 @@ namespace ICSharpCode.Decompiler.CSharp
 					break;
 			}
 
+			VariableDesignation designation = null;
+
 			// Handle the required foreach-variable transformation:
-			switch (transformation) {
+			switch (transformation)
+			{
 				case RequiredGetCurrentTransformation.UseExistingVariable:
 					if (foreachVariable.Type.Kind != TypeKind.Dynamic)
 						foreachVariable.Type = type;
@@ -572,14 +727,28 @@ namespace ICSharpCode.Decompiler.CSharp
 					body.Instructions.Insert(0, new StLoc(localCopyVariable, new LdLoc(foreachVariable)));
 					body.Instructions.Insert(0, new StLoc(foreachVariable, instToReplace));
 					break;
+				case RequiredGetCurrentTransformation.Deconstruction:
+					useVar = true;
+					designation = TranslateDeconstructionDesignation((DeconstructInstruction)body.Instructions[0], isForeach: true);
+					break;
 			}
+
+			if (designation == null)
+			{
+				designation = new SingleVariableDesignation { Identifier = foreachVariable.Name };
+				// Add the variable annotation for highlighting
+				designation.AddAnnotation(new ILVariableResolveResult(foreachVariable, foreachVariable.Type));
+			}
+
 			// Convert the modified body to C# AST:
-			var whileLoop = (WhileStatement)ConvertAsBlock(container).First();
-			BlockStatement foreachBody = (BlockStatement)whileLoop.EmbeddedStatement.Detach();
+			var whileLoopBlock = ConvertAsBlock(container);
+			var whileLoop = (WhileStatement)whileLoopBlock.First();
+			var foreachBody = (BlockStatement)whileLoop.EmbeddedStatement.Detach();
 
 			// Remove the first statement, as it is the foreachVariable = enumerator.Current; statement.
 			Statement firstStatement = foreachBody.Statements.First();
-			if (firstStatement is LabelStatement) {
+			if (firstStatement is LabelStatement)
+			{
 				// skip the entry-point label, if any
 				firstStatement = firstStatement.GetNextStatement();
 			}
@@ -591,25 +760,77 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			// Construct the foreach loop.
 			var foreachStmt = new ForeachStatement {
+				IsAsync = isAsync,
 				VariableType = useVar ? new SimpleType("var") : exprBuilder.ConvertType(foreachVariable.Type),
-				VariableName = foreachVariable.Name,
+				VariableDesignation = designation,
 				InExpression = collectionExpr.Detach(),
 				EmbeddedStatement = foreachBody
 			};
-			// Add the variable annotation for highlighting (TokenTextWriter expects it directly on the ForeachStatement).
-			foreachStmt.AddAnnotation(new ILVariableResolveResult(foreachVariable, foreachVariable.Type));
 			foreachStmt.AddAnnotation(new ForeachAnnotation(inst.ResourceExpression, conditionInst, singleGetter));
 			foreachStmt.CopyAnnotationsFrom(whileLoop);
 			// If there was an optional return statement, return it as well.
-			if (optionalReturnAfterLoop != null) {
-				return new BlockStatement {
+			// If there were labels or any other statements in the whileLoopBlock, move them after the foreach
+			// loop.
+			if (optionalLeaveAfterLoop != null || whileLoopBlock.Statements.Count > 1)
+			{
+				var block = new BlockStatement {
 					Statements = {
-						foreachStmt,
-						optionalReturnAfterLoop.AcceptVisitor(this)
+						foreachStmt
 					}
 				};
+				if (optionalLeaveAfterLoop != null)
+				{
+					block.Statements.Add(optionalLeaveAfterLoop.AcceptVisitor(this));
+				}
+				if (whileLoopBlock.Statements.Count > 1)
+				{
+					block.Statements.AddRange(whileLoopBlock.Statements
+						.Skip(1)
+						.SkipWhile(s => s.Annotations.Any(a => a == optionalLeaveAfterLoop))
+						.Select(SyntaxExtensions.Detach));
+				}
+				return block;
 			}
 			return foreachStmt;
+		}
+
+		internal static VariableDesignation TranslateDeconstructionDesignation(DeconstructInstruction inst, bool isForeach)
+		{
+			var assignments = inst.Assignments.Instructions;
+			int assignmentPos = 0;
+
+			return ConstructDesignation(inst.Pattern);
+
+			VariableDesignation ConstructDesignation(MatchInstruction matchInstruction)
+			{
+				var designations = new ParenthesizedVariableDesignation();
+				foreach (var subPattern in matchInstruction.SubPatterns.Cast<MatchInstruction>())
+				{
+					if (subPattern.IsVar)
+					{
+						var designation = new SingleVariableDesignation();
+						if (subPattern.HasDesignator)
+						{
+							ILVariable v = ((StLoc)assignments[assignmentPos]).Variable;
+							if (isForeach)
+								v.Kind = VariableKind.ForeachLocal;
+							designation.Identifier = v.Name;
+							designation.AddAnnotation(new ILVariableResolveResult(v));
+							assignmentPos++;
+						}
+						else
+						{
+							designation.Identifier = "_";
+						}
+						designations.VariableDesignations.Add(designation);
+					}
+					else
+					{
+						designations.VariableDesignations.Add(ConstructDesignation(subPattern));
+					}
+				}
+				return designations;
+			}
 		}
 
 		static bool EqualErasedType(IType a, IType b)
@@ -619,7 +840,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		private bool IsDynamicCastToIEnumerable(Expression expr, out Expression dynamicExpr)
 		{
-			if (!(expr is CastExpression cast)) {
+			if (!(expr is CastExpression cast))
+			{
 				dynamicExpr = null;
 				return false;
 			}
@@ -638,10 +860,10 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// if the value has no side-effects.
 		/// Otherwise returns the unmodified container.
 		/// </summary>
-		/// <param name="optionalReturnInst">If the leave is a return and has no side-effects, we can move the return out of the using-block and put it after the loop, otherwise returns null.</param>
-		BlockContainer UnwrapNestedContainerIfPossible(BlockContainer container, out Leave optionalReturnInst)
+		/// <param name="optionalLeaveInst">If the leave is a return/break and has no side-effects, we can move the return out of the using-block and put it after the loop, otherwise returns null.</param>
+		BlockContainer UnwrapNestedContainerIfPossible(BlockContainer container, out Leave optionalLeaveInst)
 		{
-			optionalReturnInst = null;
+			optionalLeaveInst = null;
 			// Check block structure:
 			if (container.Blocks.Count != 1)
 				return container;
@@ -653,10 +875,11 @@ namespace ICSharpCode.Decompiler.CSharp
 			// If the leave has no value, just unwrap the BlockContainer.
 			if (leave.MatchLeave(container))
 				return nestedContainer;
-			// If the leave is a return, we can move the return out of the using-block and put it after the loop
+			// If the leave is a return/break, we can move it out of the using-block and put it after the loop
 			// (but only if the value doesn't have side-effects)
-			if (leave.IsLeavingFunction && SemanticHelper.IsPure(leave.Value.Flags)) {
-				optionalReturnInst = leave;
+			if (SemanticHelper.IsPure(leave.Value.Flags))
+			{
+				optionalLeaveInst = leave;
 				return nestedContainer;
 			}
 			return container;
@@ -700,7 +923,12 @@ namespace ICSharpCode.Decompiler.CSharp
 			///	... (ldloca copy) ...
 			/// </code>
 			/// </summary>
-			IntroduceNewVariableAndLocalCopy
+			IntroduceNewVariableAndLocalCopy,
+			/// <summary>
+			/// call get_Current() is the tested operand of a deconstruct instruction.
+			/// and the deconstruct instruction is the first statement in the loop body.
+			/// </summary>
+			Deconstruction,
 		}
 
 		/// <summary>
@@ -713,11 +941,14 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// <param name="singleGetter">Returns the call instruction invoking Current's getter.</param>
 		/// <param name="foreachVariable">Returns the the foreach variable, if a suitable was found. This variable is only assigned once and its assignment is the first statement in <paramref name="loopBody"/>.</param>
 		/// <returns><see cref="RequiredGetCurrentTransformation"/> for details.</returns>
-		RequiredGetCurrentTransformation DetectGetCurrentTransformation(BlockContainer usingContainer, Block loopBody, ILVariable enumerator, ILInstruction moveNextUsage, out CallInstruction singleGetter, out ILVariable foreachVariable)
+		RequiredGetCurrentTransformation DetectGetCurrentTransformation(BlockContainer usingContainer, Block loopBody, BlockContainer loopContainer, ILVariable enumerator, ILInstruction moveNextUsage, out CallInstruction singleGetter, out ILVariable foreachVariable)
 		{
 			singleGetter = null;
 			foreachVariable = null;
-			var loads = (enumerator.LoadInstructions.OfType<ILInstruction>().Concat(enumerator.AddressInstructions.OfType<ILInstruction>())).Where(ld => !ld.IsDescendantOf(moveNextUsage)).ToArray();
+			var loads = enumerator.LoadInstructions.OfType<ILInstruction>()
+				.Concat(enumerator.AddressInstructions.OfType<ILInstruction>())
+				.Where(ld => !ld.IsDescendantOf(moveNextUsage))
+				.ToArray();
 			// enumerator is used in multiple locations or not in conjunction with get_Current
 			// => no foreach
 			if (loads.Length != 1 || !ParentIsCurrentGetter(loads[0]))
@@ -725,28 +956,70 @@ namespace ICSharpCode.Decompiler.CSharp
 			singleGetter = (CallInstruction)loads[0].Parent;
 			// singleGetter is not part of the first instruction in body or cannot be uninlined
 			// => no foreach
-			if (!(singleGetter.IsDescendantOf(loopBody.Instructions[0]) && ILInlining.CanUninline(singleGetter, loopBody.Instructions[0])))
+			if (!(singleGetter.IsDescendantOf(loopBody.Instructions[0])
+				&& ILInlining.CanUninline(singleGetter, loopBody.Instructions[0])))
+			{
 				return RequiredGetCurrentTransformation.NoForeach;
+			}
+			if (loopBody.Instructions[0] is DeconstructInstruction deconstruction
+				&& singleGetter == deconstruction.Pattern.TestedOperand
+				&& CanBeDeconstructedInForeach(deconstruction, usingContainer, loopContainer))
+			{
+				return RequiredGetCurrentTransformation.Deconstruction;
+			}
 			ILInstruction inst = singleGetter;
 			// in some cases, i.e. foreach variable with explicit type different from the collection-item-type,
 			// the result of call get_Current is casted.
 			while (inst.Parent is UnboxAny || inst.Parent is CastClass)
 				inst = inst.Parent;
 			// One variable was found.
-			if (inst.Parent is StLoc stloc && (stloc.Variable.Kind == VariableKind.Local || stloc.Variable.Kind == VariableKind.StackSlot)) {
+			if (inst.Parent is StLoc stloc && (stloc.Variable.Kind == VariableKind.Local || stloc.Variable.Kind == VariableKind.StackSlot))
+			{
 				// Must be a plain assignment expression and variable must only be used in 'body' + only assigned once.
-				if (stloc.Parent == loopBody && VariableIsOnlyUsedInBlock(stloc, usingContainer)) {
+				if (stloc.Parent == loopBody && VariableIsOnlyUsedInBlock(stloc, usingContainer, loopContainer))
+				{
 					foreachVariable = stloc.Variable;
 					return RequiredGetCurrentTransformation.UseExistingVariable;
 				}
 			}
 			// In optimized Roslyn code it can happen that the foreach variable is referenced via addressof
 			// We only do this unwrapping if where dealing with a custom struct type.
-			if (CurrentIsStructSetterTarget(inst, singleGetter)) {
+			if (CurrentIsStructSetterTarget(inst, singleGetter))
+			{
 				return RequiredGetCurrentTransformation.IntroduceNewVariableAndLocalCopy;
 			}
 			// No suitable variable was found: we need a new one.
 			return RequiredGetCurrentTransformation.IntroduceNewVariable;
+		}
+
+		bool CanBeDeconstructedInForeach(DeconstructInstruction deconstruction, BlockContainer usingContainer, BlockContainer loopContainer)
+		{
+			if (deconstruction.Init.Count > 0)
+				return false;
+			if (deconstruction.Conversions.Instructions.Count > 0)
+				return false;
+			var operandType = deconstruction.Pattern.TestedOperand.InferType(this.typeSystem);
+			var expectedType = deconstruction.Pattern.Variable.Type;
+			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(operandType, expectedType))
+				return false;
+			var usedVariables = new HashSet<ILVariable>(ILVariableEqualityComparer.Instance);
+			foreach (var item in deconstruction.Assignments.Instructions)
+			{
+				if (!item.MatchStLoc(out var v, out var value))
+					return false;
+				expectedType = ((LdLoc)value).Variable.Type;
+				if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(v.Type, expectedType))
+					return false;
+				if (!(v.Kind == VariableKind.StackSlot || v.Kind == VariableKind.Local))
+					return false;
+				if (!VariableIsOnlyUsedInBlock((StLoc)item, usingContainer, loopContainer))
+					return false;
+				if (!(v.CaptureScope == null || v.CaptureScope == usingContainer))
+					return false;
+				if (!usedVariables.Add(v))
+					return false;
+			}
+			return true;
 		}
 
 		/// <summary>
@@ -755,13 +1028,15 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// or as target of ldobj.
 		/// (This only applies to value types.)
 		/// </summary>
-		bool VariableIsOnlyUsedInBlock(StLoc storeInst, BlockContainer usingContainer)
+		bool VariableIsOnlyUsedInBlock(StLoc storeInst, BlockContainer usingContainer, BlockContainer loopContainer)
 		{
 			if (storeInst.Variable.LoadInstructions.Any(ld => !ld.IsDescendantOf(usingContainer)))
 				return false;
 			if (storeInst.Variable.AddressInstructions.Any(inst => !AddressUseAllowed(inst)))
 				return false;
 			if (storeInst.Variable.StoreInstructions.OfType<ILInstruction>().Any(st => st != storeInst))
+				return false;
+			if (!(storeInst.Variable.CaptureScope == null || storeInst.Variable.CaptureScope == loopContainer))
 				return false;
 			return true;
 
@@ -772,7 +1047,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				if (ILInlining.IsUsedAsThisPointerInCall(la) && !IsTargetOfSetterCall(la, la.Variable.Type))
 					return true;
 				var current = la.Parent;
-				while (current is LdFlda next) {
+				while (current is LdFlda next)
+				{
 					current = next.Parent;
 				}
 				return current is LdObj;
@@ -795,13 +1071,15 @@ namespace ICSharpCode.Decompiler.CSharp
 				return false;
 			if (targetType.IsReferenceType ?? false)
 				return false;
-			switch (inst.Parent.OpCode) {
+			switch (inst.Parent.OpCode)
+			{
 				case OpCode.Call:
 				case OpCode.CallVirt:
 					var targetMethod = ((CallInstruction)inst.Parent).Method;
 					if (!targetMethod.IsAccessor || targetMethod.IsStatic)
 						return false;
-					switch (targetMethod.AccessorOwner) {
+					switch (targetMethod.AccessorOwner)
+					{
 						case IProperty p:
 							return targetMethod.AccessorKind == System.Reflection.MethodSemanticsAttributes.Setter;
 						default:
@@ -824,19 +1102,78 @@ namespace ICSharpCode.Decompiler.CSharp
 			var fixedStmt = new FixedStatement();
 			fixedStmt.Type = exprBuilder.ConvertType(inst.Variable.Type);
 			Expression initExpr;
-			if (inst.Init is GetPinnableReference gpr) {
-				if (gpr.Method != null) {
+			if (inst.Init is GetPinnableReference gpr)
+			{
+				if (gpr.Method != null)
+				{
 					IType expectedType = gpr.Method.IsStatic ? gpr.Method.Parameters[0].Type : gpr.Method.DeclaringType;
 					initExpr = exprBuilder.Translate(gpr.Argument, typeHint: expectedType).ConvertTo(expectedType, exprBuilder);
-				} else {
+				}
+				else
+				{
 					initExpr = exprBuilder.Translate(gpr.Argument);
 				}
-			} else {
-				initExpr = exprBuilder.Translate(inst.Init, typeHint: inst.Variable.Type).ConvertTo(inst.Variable.Type, exprBuilder);
+			}
+			else
+			{
+				IType refType = inst.Variable.Type;
+				if (refType is PointerType pointerType)
+				{
+					refType = new ByReferenceType(pointerType.ElementType);
+				}
+				initExpr = exprBuilder.Translate(inst.Init, typeHint: refType).ConvertTo(refType, exprBuilder);
+				if (initExpr is DirectionExpression dirExpr)
+				{
+					if (dirExpr.Expression is UnaryOperatorExpression uoe && uoe.Operator == UnaryOperatorType.Dereference)
+					{
+						initExpr = uoe.Expression.Detach();
+					}
+					else
+					{
+						initExpr = new UnaryOperatorExpression(UnaryOperatorType.AddressOf, dirExpr.Expression.Detach())
+							.WithRR(new ResolveResult(inst.Variable.Type));
+					}
+				}
+				if (initExpr.GetResolveResult()?.Type.Kind == TypeKind.Pointer
+					&& !IsAddressOfMoveableVar(initExpr)
+					&& !IsFixedSizeBuffer(initExpr)
+					&& refType is ByReferenceType brt)
+				{
+					// C# doesn't allow pinning an already-unmanaged pointer
+					//   fixed (int* ptr = existing_ptr) {} -> invalid
+					//   fixed (int* ptr = &existing_ptr->field) {} -> invalid
+					//   fixed (int* ptr = &local_var) {} -> invalid
+					// We work around this by instead doing:
+					//   fixed (int* ptr = &Unsafe.AsRef<int>(existing_ptr))
+					var asRefCall = exprBuilder.CallUnsafeIntrinsic(
+						name: "AsRef",
+						arguments: new Expression[] { initExpr },
+						returnType: brt.ElementType,
+						typeArguments: new IType[] { brt.ElementType }
+					);
+					initExpr = new UnaryOperatorExpression(UnaryOperatorType.AddressOf, asRefCall)
+							.WithRR(new ResolveResult(inst.Variable.Type));
+				}
 			}
 			fixedStmt.Variables.Add(new VariableInitializer(inst.Variable.Name, initExpr).WithILVariable(inst.Variable));
 			fixedStmt.EmbeddedStatement = Convert(inst.Body);
 			return fixedStmt.WithILInstruction(inst);
+		}
+
+		private static bool IsAddressOfMoveableVar(Expression initExpr)
+		{
+			if (initExpr is UnaryOperatorExpression { Operator: UnaryOperatorType.AddressOf } uoe)
+			{
+				var inst = uoe.Expression.Annotation<ILInstruction>();
+				return !(inst != null && PointerArithmeticOffset.IsFixedVariable(inst));
+			}
+			return false;
+		}
+
+		private static bool IsFixedSizeBuffer(Expression initExpr)
+		{
+			var mrr = initExpr.GetResolveResult() as MemberResolveResult;
+			return mrr?.Member is IField f && CSharpDecompiler.IsFixedField(f, out _, out _);
 		}
 
 		protected internal override TranslatedStatement VisitBlock(Block block)
@@ -845,7 +1182,8 @@ namespace ICSharpCode.Decompiler.CSharp
 				return Default(block);
 			// Block without container
 			BlockStatement blockStatement = new BlockStatement();
-			foreach (var inst in block.Instructions) {
+			foreach (var inst in block.Instructions)
+			{
 				blockStatement.Add(Convert(inst));
 			}
 			if (block.FinalInstruction.OpCode != OpCode.Nop)
@@ -855,7 +1193,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		protected internal override TranslatedStatement VisitBlockContainer(BlockContainer container)
 		{
-			if (container.Kind != ContainerKind.Normal && container.EntryPoint.IncomingEdgeCount > 1) {
+			if (container.Kind != ContainerKind.Normal && container.EntryPoint.IncomingEdgeCount > 1)
+			{
 				var oldContinueTarget = continueTarget;
 				var oldContinueCount = continueCount;
 				var oldBreakTarget = breakTarget;
@@ -865,9 +1204,13 @@ namespace ICSharpCode.Decompiler.CSharp
 				continueCount = oldContinueCount;
 				breakTarget = oldBreakTarget;
 				return loop.WithILInstruction(container);
-			} else if (container.EntryPoint.Instructions.Count == 1 && container.EntryPoint.Instructions[0] is SwitchInstruction switchInst) {
+			}
+			else if (container.EntryPoint.Instructions.Count == 1 && container.EntryPoint.Instructions[0] is SwitchInstruction switchInst)
+			{
 				return TranslateSwitch(container, switchInst).WithILInstruction(container);
-			} else {
+			}
+			else
+			{
 				var blockStmt = ConvertBlockContainer(container, false);
 				return blockStmt.WithILInstruction(container);
 			}
@@ -880,13 +1223,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			BlockStatement blockStatement;
 			continueCount = 0;
 			breakTarget = container;
-			switch (container.Kind) {
+			switch (container.Kind)
+			{
 				case ContainerKind.Loop:
 					continueTarget = container.EntryPoint;
 					blockStatement = ConvertBlockContainer(container, true);
 					Debug.Assert(continueCount < container.EntryPoint.IncomingEdgeCount);
 					Debug.Assert(blockStatement.Statements.First() is LabelStatement);
-					if (container.EntryPoint.IncomingEdgeCount == continueCount + 1) {
+					if (container.EntryPoint.IncomingEdgeCount == continueCount + 1)
+					{
 						// Remove the entrypoint label if all jumps to the label were replaced with 'continue;' statements
 						blockStatement.Statements.First().Remove();
 					}
@@ -904,13 +1249,14 @@ namespace ICSharpCode.Decompiler.CSharp
 						blockStatement.Add(new BreakStatement());
 					blockStatement = ConvertBlockContainer(blockStatement, container, container.Blocks.Skip(1).Except(new[] { loopBody }), true);
 					Debug.Assert(continueCount < container.EntryPoint.IncomingEdgeCount);
-					if (continueCount + 1 < container.EntryPoint.IncomingEdgeCount) {
+					if (continueCount + 1 < container.EntryPoint.IncomingEdgeCount)
+					{
 						// There's an incoming edge to the entry point (=while condition) that wasn't represented as "continue;"
 						// -> emit a real label
 						// We'll also remove any "continue;" in front of the label, as it's redundant.
 						if (blockStatement.LastOrDefault() is ContinueStatement)
 							blockStatement.Last().Remove();
-						blockStatement.Add(new LabelStatement { Label = container.EntryPoint.Label });
+						blockStatement.Add(new LabelStatement { Label = EnsureUniqueLabel(container.EntryPoint) });
 					}
 
 					if (blockStatement.LastOrDefault() is ContinueStatement continueStmt2)
@@ -922,20 +1268,23 @@ namespace ICSharpCode.Decompiler.CSharp
 					if (!container.MatchConditionBlock(continueTarget, out condition, out _))
 						throw new NotSupportedException("Invalid condition block in do-while loop.");
 					blockStatement = ConvertBlockContainer(new BlockStatement(), container, container.Blocks.SkipLast(1), true);
-					if (container.EntryPoint.IncomingEdgeCount == 2) {
+					if (container.EntryPoint.IncomingEdgeCount == 2)
+					{
 						// Remove the entry-point label, if there are only two jumps to the entry-point:
 						// from outside the loop and from the condition-block.
 						blockStatement.Statements.First().Remove();
 					}
 					if (blockStatement.LastOrDefault() is ContinueStatement continueStmt3)
 						continueStmt3.Remove();
-					if (continueTarget.IncomingEdgeCount > continueCount) {
+					if (continueTarget.IncomingEdgeCount > continueCount)
+					{
 						// if there are branches to the condition block, that were not converted
 						// to continue statements, we have to introduce an extra label.
-						blockStatement.Add(new LabelStatement { Label = continueTarget.Label });
+						blockStatement.Add(new LabelStatement { Label = EnsureUniqueLabel(continueTarget) });
 					}
 					DeclareLocalFunctions(currentFunction, container, blockStatement);
-					if (blockStatement.Statements.Count == 0) {
+					if (blockStatement.Statements.Count == 0)
+					{
 						return new WhileStatement {
 							Condition = exprBuilder.TranslateCondition(condition),
 							EmbeddedStatement = blockStatement
@@ -961,11 +1310,12 @@ namespace ICSharpCode.Decompiler.CSharp
 					};
 					if (blockStatement.LastOrDefault() is ContinueStatement continueStmt4)
 						continueStmt4.Remove();
-					for (int i = 0; i < continueTarget.Instructions.Count - 1; i++) {
+					for (int i = 0; i < continueTarget.Instructions.Count - 1; i++)
+					{
 						forStmt.Iterators.Add(Convert(continueTarget.Instructions[i]));
 					}
 					if (continueTarget.IncomingEdgeCount > continueCount)
-						blockStatement.Add(new LabelStatement { Label = continueTarget.Label });
+						blockStatement.Add(new LabelStatement { Label = EnsureUniqueLabel(continueTarget) });
 					DeclareLocalFunctions(currentFunction, container, blockStatement);
 					return forStmt;
 				default:
@@ -982,7 +1332,8 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		void DeclareLocalFunctions(ILFunction currentFunction, BlockContainer container, BlockStatement blockStatement)
 		{
-			foreach (var localFunction in currentFunction.LocalFunctions.OrderBy(f => f.Name)) {
+			foreach (var localFunction in currentFunction.LocalFunctions.OrderBy(f => f.Name))
+			{
 				if (localFunction.DeclarationScope != container)
 					continue;
 				blockStatement.Add(TranslateFunction(localFunction));
@@ -990,34 +1341,37 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			LocalFunctionDeclarationStatement TranslateFunction(ILFunction function)
 			{
-				var stmt = new LocalFunctionDeclarationStatement();
-				var nestedBuilder = new StatementBuilder(typeSystem, exprBuilder.decompilationContext, function, settings, cancellationToken);
-				stmt.Name = function.Name;
-				stmt.Parameters.AddRange(exprBuilder.MakeParameters(function.Parameters, function));
-				stmt.ReturnType = exprBuilder.ConvertType(function.Method.ReturnType);
-				stmt.Body = nestedBuilder.ConvertAsBlock(function.Body);
+				var astBuilder = exprBuilder.astBuilder;
+				var method = (MethodDeclaration)astBuilder.ConvertEntity(function.ReducedMethod);
 
-				Comment prev = null;
-				foreach (string warning in function.Warnings) {
-					stmt.Body.InsertChildAfter(prev, prev = new Comment(warning), Roles.Comment);
-				}
+				if (function.Method.HasBody)
+				{
+					var nestedBuilder = new StatementBuilder(
+						typeSystem,
+						exprBuilder.decompilationContext,
+						function,
+						settings,
+						decompileRun,
+						cancellationToken
+					);
 
-				if (function.Method.TypeParameters.Count > 0) {
-					var astBuilder = exprBuilder.astBuilder;
-					if (astBuilder.ShowTypeParameters) {
-						int skipCount = function.ReducedMethod.NumberOfCompilerGeneratedTypeParameters;
-						stmt.TypeParameters.AddRange(function.Method.TypeParameters.Skip(skipCount).Select(t => astBuilder.ConvertTypeParameter(t)));
-						if (astBuilder.ShowTypeParameterConstraints) {
-							stmt.Constraints.AddRange(function.Method.TypeParameters.Skip(skipCount).Select(t => astBuilder.ConvertTypeParameterConstraint(t)).Where(c => c != null));
-						}
+					method.Body = nestedBuilder.ConvertAsBlock(function.Body);
+
+					Comment prev = null;
+					foreach (string warning in function.Warnings)
+					{
+						method.Body.InsertChildAfter(prev, prev = new Comment(warning), Roles.Comment);
 					}
 				}
-				if (function.IsAsync) {
-					stmt.Modifiers |= Modifiers.Async;
+				else
+				{
+					method.Modifiers |= Modifiers.Extern;
 				}
-				if (settings.StaticLocalFunctions && function.ReducedMethod.IsStaticLocalFunction) {
-					stmt.Modifiers |= Modifiers.Static;
-				}
+
+				CSharpDecompiler.AddAnnotationsToDeclaration(function.ReducedMethod, method, function);
+				CSharpDecompiler.CleanUpMethodDeclaration(method, method.Body, function, function.Method.HasBody);
+				CSharpDecompiler.RemoveAttribute(method, KnownAttribute.CompilerGenerated);
+				var stmt = new LocalFunctionDeclarationStatement(method);
 				stmt.AddAnnotation(new MemberResolveResult(null, function.ReducedMethod));
 				stmt.WithILInstruction(function);
 				return stmt;
@@ -1026,39 +1380,69 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		BlockStatement ConvertBlockContainer(BlockStatement blockStatement, BlockContainer container, IEnumerable<Block> blocks, bool isLoop)
 		{
-			foreach (var block in blocks) {
-				if (block.IncomingEdgeCount > 1 || block != container.EntryPoint) {
+			foreach (var block in blocks)
+			{
+				if (block.IncomingEdgeCount > 1 || block != container.EntryPoint)
+				{
 					// If there are any incoming branches to this block, add a label:
-					blockStatement.Add(new LabelStatement { Label = block.Label });
+					blockStatement.Add(new LabelStatement { Label = EnsureUniqueLabel(block) });
 				}
-				foreach (var inst in block.Instructions) {
-					if (!isLoop && inst is Leave leave && IsFinalLeave(leave)) {
+				foreach (var inst in block.Instructions)
+				{
+					if (!isLoop && inst is Leave leave && IsFinalLeave(leave))
+					{
 						// skip the final 'leave' instruction and just fall out of the BlockStatement
 						blockStatement.AddAnnotation(new ImplicitReturnAnnotation(leave));
 						continue;
 					}
 					var stmt = Convert(inst);
-					if (stmt is BlockStatement b) {
+					if (stmt is BlockStatement b)
+					{
 						foreach (var nested in b.Statements)
 							blockStatement.Add(nested.Detach());
-					} else {
-						blockStatement.Add(stmt);
+					}
+					else
+					{
+						blockStatement.Add(stmt.Detach());
 					}
 				}
-				if (block.FinalInstruction.OpCode != OpCode.Nop) {
+				if (block.FinalInstruction.OpCode != OpCode.Nop)
+				{
 					blockStatement.Add(Convert(block.FinalInstruction));
 				}
 			}
-			if (endContainerLabels.TryGetValue(container, out string label)) {
-				if (isLoop && !(blockStatement.LastOrDefault() is ContinueStatement)) {
+			if (endContainerLabels.TryGetValue(container, out string label))
+			{
+				if (isLoop && !(blockStatement.LastOrDefault() is ContinueStatement))
+				{
 					blockStatement.Add(new ContinueStatement());
 				}
 				blockStatement.Add(new LabelStatement { Label = label });
-				if (isLoop) {
+				if (isLoop)
+				{
 					blockStatement.Add(new BreakStatement());
 				}
 			}
 			return blockStatement;
+		}
+
+		readonly Dictionary<Block, string> labels = new Dictionary<Block, string>();
+		readonly Dictionary<string, int> duplicateLabels = new Dictionary<string, int>();
+
+		string EnsureUniqueLabel(Block block)
+		{
+			if (labels.TryGetValue(block, out string label))
+				return label;
+			if (!duplicateLabels.TryGetValue(block.Label, out int count))
+			{
+				labels.Add(block, block.Label);
+				duplicateLabels.Add(block.Label, 1);
+				return block.Label;
+			}
+			label = $"{block.Label}_{count + 1}";
+			duplicateLabels[block.Label]++;
+			labels.Add(block, label);
+			return label;
 		}
 
 		static bool IsFinalLeave(Leave leave)

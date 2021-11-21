@@ -18,27 +18,32 @@
 
 using System.IO;
 using System.Linq;
+
+using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
+
 using Microsoft.Win32;
 namespace ICSharpCode.ILSpy
 {
-	[ExportContextMenuEntry(Header = "Select PDB...")]
+	[ExportContextMenuEntry(Header = nameof(Resources.SelectPDB))]
 	class SelectPdbContextMenuEntry : IContextMenuEntry
 	{
-		public void Execute(TextViewContext context)
+		public async void Execute(TextViewContext context)
 		{
 			var assembly = (context.SelectedTreeNodes?.FirstOrDefault() as AssemblyTreeNode)?.LoadedAssembly;
-			if (assembly == null) return;
+			if (assembly == null)
+				return;
 			OpenFileDialog dlg = new OpenFileDialog();
 			dlg.FileName = DecompilerTextView.CleanUpName(assembly.ShortName) + ".pdb";
-			dlg.Filter = "Portable PDB|*.pdb|All files|*.*";
+			dlg.Filter = Resources.PortablePDBPdbAllFiles;
 			dlg.InitialDirectory = Path.GetDirectoryName(assembly.FileName);
-			if (dlg.ShowDialog() != true) return;
+			if (dlg.ShowDialog() != true)
+				return;
 
-			using (context.TreeView.LockUpdates()) {
-				assembly.PdbFileOverride = dlg.FileName;
-				assembly.AssemblyList.ReloadAssembly(assembly);
+			using (context.TreeView.LockUpdates())
+			{
+				await assembly.LoadDebugInfo(dlg.FileName);
 			}
 
 			MainWindow.Instance.SelectNode(MainWindow.Instance.FindNodeByPath(new[] { assembly.FileName }, true));
@@ -50,7 +55,8 @@ namespace ICSharpCode.ILSpy
 		public bool IsVisible(TextViewContext context)
 		{
 			return context.SelectedTreeNodes?.Length == 1
-				&& context.SelectedTreeNodes?.FirstOrDefault() is AssemblyTreeNode;
+				&& context.SelectedTreeNodes?.FirstOrDefault() is AssemblyTreeNode asm
+				&& asm.LoadedAssembly.IsLoadedAsValidAssembly;
 		}
 	}
 }

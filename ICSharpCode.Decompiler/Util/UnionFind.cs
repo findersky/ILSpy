@@ -15,6 +15,7 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+#nullable enable
 
 using System.Collections.Generic;
 
@@ -32,6 +33,12 @@ namespace ICSharpCode.Decompiler.Util
 			public int rank;
 			public Node parent;
 			public T value;
+
+			internal Node(T value)
+			{
+				this.value = value;
+				this.parent = this;
+			}
 		}
 
 		public UnionFind()
@@ -42,11 +49,9 @@ namespace ICSharpCode.Decompiler.Util
 		Node GetNode(T element)
 		{
 			Node node;
-			if (!mapping.TryGetValue(element, out node)) {
-				node = new Node {
-					value = element,
-					rank = 0
-				};
+			if (!mapping.TryGetValue(element, out node))
+			{
+				node = new Node(element);
 				node.parent = node;
 				mapping.Add(element, node);
 			}
@@ -75,12 +80,11 @@ namespace ICSharpCode.Decompiler.Util
 				rootA.parent = rootB;
 			else if (rootA.rank > rootB.rank)
 				rootB.parent = rootA;
-			else {
+			else
+			{
 				rootB.parent = rootA;
 				rootA.rank++;
 			}
 		}
 	}
 }
-
-

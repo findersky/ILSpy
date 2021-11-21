@@ -16,7 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -40,21 +41,21 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the short name of the entity.
 		/// </summary>
 		new string Name { get; }
-		
+
 		/// <summary>
 		/// Gets the declaring class.
 		/// For members, this is the class that contains the member.
 		/// For nested classes, this is the outer class. For top-level entities, this property returns null.
 		/// </summary>
-		ITypeDefinition DeclaringTypeDefinition { get; }
-		
+		ITypeDefinition? DeclaringTypeDefinition { get; }
+
 		/// <summary>
 		/// Gets/Sets the declaring type (incl. type arguments, if any).
 		/// This property will return null for top-level entities.
 		/// If this is not a specialized member, the value returned is equal to <see cref="DeclaringTypeDefinition"/>.
 		/// </summary>
-		IType DeclaringType { get; }
-		
+		IType? DeclaringType { get; }
+
 		/// <summary>
 		/// The module in which this entity is defined.
 		/// </summary>
@@ -76,13 +77,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Returns true if either the 'static' or the 'const' modifier is set.
 		/// </summary>
 		bool IsStatic { get; }
-		
+
 		/// <summary>
 		/// Returns whether this entity is abstract.
 		/// </summary>
 		/// <remarks>Static classes also count as abstract classes.</remarks>
 		bool IsAbstract { get; }
-		
+
 		/// <summary>
 		/// Returns whether this entity is sealed.
 		/// </summary>

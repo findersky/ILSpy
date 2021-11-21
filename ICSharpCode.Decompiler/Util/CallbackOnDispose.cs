@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Threading;
 
@@ -30,19 +32,20 @@ namespace ICSharpCode.Decompiler.Util
 	/// </remarks>
 	public sealed class CallbackOnDispose : IDisposable
 	{
-		Action action;
-		
+		Action? action;
+
 		public CallbackOnDispose(Action action)
 		{
 			if (action == null)
 				throw new ArgumentNullException(nameof(action));
 			this.action = action;
 		}
-		
+
 		public void Dispose()
 		{
-			Action a = Interlocked.Exchange(ref action, null);
-			if (a != null) {
+			Action? a = Interlocked.Exchange(ref action, null);
+			if (a != null)
+			{
 				a();
 			}
 		}

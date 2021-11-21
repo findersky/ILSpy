@@ -1,9 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="MSBuild.Sdk.Extras">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
-
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
 
     <EnableDefaultItems>false</EnableDefaultItems>
@@ -14,6 +12,11 @@
     <OutputType>Exe</OutputType>
     <StartupObject>ILSpy.BamlDecompiler.Tests.Stub</StartupObject>
     <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <Import Project="..\multitargeting.props" Condition="Exists('..\multitargeting.props')" />
+  <PropertyGroup Condition="!Exists('..\multitargeting.props')">
+    <TargetFramework>net472</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -34,8 +37,11 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
 
+  <Import Project="..\packages.props" />
+
   <ItemGroup>
-    <PackageReference Include="NUnit" Version="3.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="$(MicrosoftNETTestSdkVersion)" />
+    <PackageReference Include="NUnit" Version="$(NUnitVersion)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -52,6 +58,8 @@
     </Compile>
     <Compile Include="Cases\CustomControl.cs" />
     <Compile Include="Cases\Issue1547.xaml.cs" />
+    <Compile Include="Cases\Issue2097.xaml.cs" />
+    <Compile Include="Cases\Issue2116.xaml.cs" />
     <Compile Include="Cases\MyControl.xaml.cs">
       <DependentUpon>MyControl.xaml</DependentUpon>
     </Compile>
@@ -84,6 +92,15 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Cases\Issue1547.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Cases\Issue2052.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Cases\Issue2097.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Cases\Issue2116.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="Cases\Issue775.xaml">

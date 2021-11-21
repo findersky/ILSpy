@@ -21,7 +21,9 @@ using System.CodeDom.Compiler;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+
 using ICSharpCode.Decompiler.Tests.Helpers;
+
 using NUnit.Framework;
 
 namespace ICSharpCode.Decompiler.Tests
@@ -38,7 +40,8 @@ namespace ICSharpCode.Decompiler.Tests
 				.Where(m => m.GetCustomAttributes(typeof(TestAttribute), false).Any())
 				.Select(m => m.Name)
 				.ToArray();
-			foreach (var file in new DirectoryInfo(TestCasePath).EnumerateFiles()) {
+			foreach (var file in new DirectoryInfo(TestCasePath).EnumerateFiles())
+			{
 				if (file.Extension == ".txt" || file.Extension == ".exe" || file.Extension == ".config")
 					continue;
 				var testName = Path.GetFileNameWithoutExtension(file.Name);
@@ -50,40 +53,76 @@ namespace ICSharpCode.Decompiler.Tests
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
-			CompilerOptions.UseRoslyn,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn,
+			CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
 		};
 
 		static readonly CompilerOptions[] defaultOptions =
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
-			CompilerOptions.UseRoslyn,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn,
-			CompilerOptions.UseMcs,
-			CompilerOptions.Optimize | CompilerOptions.UseMcs
+			CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+			CompilerOptions.UseMcs2_6_4,
+			CompilerOptions.Optimize | CompilerOptions.UseMcs2_6_4,
+			CompilerOptions.UseMcs5_23,
+			CompilerOptions.Optimize | CompilerOptions.UseMcs5_23
 		};
 
 		static readonly CompilerOptions[] roslynOnlyOptions =
+{
+			CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
+			CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		};
+
+		static readonly CompilerOptions[] roslyn2OrNewerOptions =
 		{
-			CompilerOptions.UseRoslyn,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn
+			CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		};
+
+		static readonly CompilerOptions[] roslynLatestOnlyOptions =
+		{
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
 		};
 
 		[Test]
-		public void Comparisons([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Comparisons([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Conversions([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Conversions([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void FloatingPointArithmetic([ValueSource("noMonoOptions")] CompilerOptions options, [Values(32, 64)] int bits)
+		public void FloatingPointArithmetic([ValueSource(nameof(noMonoOptions))] CompilerOptions options, [Values(32, 64)] int bits)
 		{
 			// The behavior of the #1794 incorrect `(float)(double)val` cast only causes test failures
 			// for some runtime+compiler combinations.
@@ -95,109 +134,115 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
-		public void HelloWorld([ValueSource("defaultOptions")] CompilerOptions options)
+		public void HelloWorld([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void ControlFlow([ValueSource("defaultOptions")] CompilerOptions options)
+		public void ControlFlow([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void CompoundAssignment([ValueSource("defaultOptions")] CompilerOptions options)
+		public void CompoundAssignment([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void PropertiesAndEvents([ValueSource("defaultOptions")] CompilerOptions options)
+		public void PropertiesAndEvents([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Switch([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Switch([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Using([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Using([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Loops([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Loops([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void NullableTests([ValueSource("defaultOptions")] CompilerOptions options)
+		public void NullableTests([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Generics([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Generics([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void ValueTypeCall([ValueSource("defaultOptions")] CompilerOptions options)
+		public void ValueTypeCall([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void InitializerTests([ValueSource("defaultOptions")] CompilerOptions options)
+		public void InitializerTests([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void DecimalFields([ValueSource("defaultOptions")] CompilerOptions options)
+		public void DecimalFields([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void UndocumentedExpressions([ValueSource("noMonoOptions")] CompilerOptions options)
+		public void UndocumentedExpressions([ValueSource(nameof(noMonoOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Uninit([ValueSource("noMonoOptions")] CompilerOptions options)
+		public void Uninit([ValueSource(nameof(noMonoOptions))] CompilerOptions options)
 		{
 			RunVB(options: options);
 		}
 
 		[Test]
-		public void MemberLookup([ValueSource("defaultOptions")] CompilerOptions options)
+		public void MemberLookup([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void OverloadResolution([ValueSource("defaultOptions")] CompilerOptions options)
+		public void OverloadResolution([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void ExpressionTrees([ValueSource("defaultOptions")] CompilerOptions options)
+		public void ExpressionTrees([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void NullPropagation([ValueSource("roslynOnlyOptions")] CompilerOptions options)
+		public void NullPropagation([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions options)
+		{
+			RunCS(options: options);
+		}
+
+		[Test]
+		public void DeconstructionTests([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
@@ -207,7 +252,8 @@ namespace ICSharpCode.Decompiler.Tests
 		{
 			CompilerOptions compiler = CompilerOptions.UseDebug;
 			AssemblerOptions asm = AssemblerOptions.None;
-			if (force32Bit) {
+			if (force32Bit)
+			{
 				compiler |= CompilerOptions.Force32Bit;
 				asm |= AssemblerOptions.Force32Bit;
 			}
@@ -229,9 +275,10 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public void StackTypes([Values(false, true)] bool force32Bit)
 		{
-			CompilerOptions compiler = CompilerOptions.UseRoslyn | CompilerOptions.UseDebug;
+			CompilerOptions compiler = CompilerOptions.UseRoslynLatest | CompilerOptions.UseDebug;
 			AssemblerOptions asm = AssemblerOptions.None;
-			if (force32Bit) {
+			if (force32Bit)
+			{
 				compiler |= CompilerOptions.Force32Bit;
 				asm |= AssemblerOptions.Force32Bit;
 			}
@@ -239,63 +286,72 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
-		public void UnsafeCode([ValueSource("defaultOptions")] CompilerOptions options)
+		public void UnsafeCode([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
-			if (options.HasFlag(CompilerOptions.UseMcs)) {
+			if (options.HasFlag(CompilerOptions.UseMcs2_6_4))
+			{
 				Assert.Ignore("Decompiler bug with mono!");
 			}
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void ConditionalAttr([ValueSource("defaultOptions")] CompilerOptions options)
+		public void ConditionalAttr([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void TrickyTypes([ValueSource("defaultOptions")] CompilerOptions options)
+		public void TrickyTypes([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Capturing([ValueSource("defaultOptions")] CompilerOptions options)
+		public void Capturing([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void YieldReturn([ValueSource("defaultOptions")] CompilerOptions options)
+		public void YieldReturn([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
-			if (options.HasFlag(CompilerOptions.UseMcs)) {
+			if ((options & CompilerOptions.UseMcsMask) != 0)
+			{
 				Assert.Ignore("Decompiler bug with mono!");
 			}
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void Async([ValueSource("noMonoOptions")] CompilerOptions options)
+		public void Async([ValueSource(nameof(noMonoOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void LINQRaytracer([ValueSource("defaultOptions")] CompilerOptions options)
+		public void LINQRaytracer([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void StringConcat([ValueSource("defaultOptions")] CompilerOptions options)
+		public void StringConcat([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			RunCS(options: options);
 		}
 
 		[Test]
-		public void MiniJSON([ValueSource("defaultOptions")] CompilerOptions options)
+		public void DynamicTests([ValueSource(nameof(noMonoOptions))] CompilerOptions options)
 		{
-			if (options.HasFlag(CompilerOptions.UseMcs)) {
+			RunCS(options: options);
+		}
+
+		[Test]
+		public void MiniJSON([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			if (options.HasFlag(CompilerOptions.UseMcs2_6_4))
+			{
 				Assert.Ignore("Decompiler bug with mono!");
 			}
 			RunCS(options: options);
@@ -307,16 +363,18 @@ namespace ICSharpCode.Decompiler.Tests
 			string testOutputFileName = testName + Tester.GetSuffix(options) + ".exe";
 			CompilerResults outputFile = null, decompiledOutputFile = null;
 
-			try {
+			try
+			{
 				outputFile = Tester.CompileCSharp(Path.Combine(TestCasePath, testFileName), options,
 					outputFileName: Path.Combine(TestCasePath, testOutputFileName));
 				string decompiledCodeFile = Tester.DecompileCSharp(outputFile.PathToAssembly, Tester.GetSettings(options));
-				if (options.HasFlag(CompilerOptions.UseMcs)) {
+				if ((options & CompilerOptions.UseMcsMask) != 0)
+				{
 					// For second pass, use roslyn instead of mcs.
 					// mcs has some compiler bugs that cause it to not accept ILSpy-generated code,
 					// for example when there's unreachable code due to other compiler bugs in the first mcs run.
-					options &= ~CompilerOptions.UseMcs;
-					options |= CompilerOptions.UseRoslyn;
+					options &= ~CompilerOptions.UseMcsMask;
+					options |= CompilerOptions.UseRoslynLatest;
 					// Also, add an .exe.config so that we consistently use the .NET 4.x runtime.
 					File.WriteAllText(outputFile.PathToAssembly + ".config", @"<?xml version=""1.0"" encoding=""utf-8""?>
 <configuration>
@@ -326,12 +384,14 @@ namespace ICSharpCode.Decompiler.Tests
 </configuration>");
 				}
 				decompiledOutputFile = Tester.CompileCSharp(decompiledCodeFile, options);
-				
+
 				Tester.RunAndCompareOutput(testFileName, outputFile.PathToAssembly, decompiledOutputFile.PathToAssembly, decompiledCodeFile);
-				
+
 				Tester.RepeatOnIOError(() => File.Delete(decompiledCodeFile));
 				Tester.RepeatOnIOError(() => File.Delete(decompiledOutputFile.PathToAssembly));
-			} finally {
+			}
+			finally
+			{
 				if (outputFile != null)
 					outputFile.TempFiles.Delete();
 				if (decompiledOutputFile != null)
@@ -346,7 +406,8 @@ namespace ICSharpCode.Decompiler.Tests
 			string testOutputFileName = testName + Tester.GetSuffix(options) + ".exe";
 			CompilerResults outputFile = null, decompiledOutputFile = null;
 
-			try {
+			try
+			{
 				outputFile = Tester.CompileVB(Path.Combine(TestCasePath, testFileName), options,
 					outputFileName: Path.Combine(TestCasePath, testOutputFileName));
 				string decompiledCodeFile = Tester.DecompileCSharp(outputFile.PathToAssembly, Tester.GetSettings(options));
@@ -356,7 +417,9 @@ namespace ICSharpCode.Decompiler.Tests
 
 				Tester.RepeatOnIOError(() => File.Delete(decompiledCodeFile));
 				Tester.RepeatOnIOError(() => File.Delete(decompiledOutputFile.PathToAssembly));
-			} finally {
+			}
+			finally
+			{
 				if (outputFile != null)
 					outputFile.TempFiles.Delete();
 				if (decompiledOutputFile != null)
@@ -369,16 +432,19 @@ namespace ICSharpCode.Decompiler.Tests
 			string outputFile = null;
 			CompilerResults decompiledOutputFile = null;
 
-			try {
+			try
+			{
 				outputFile = Tester.AssembleIL(Path.Combine(TestCasePath, testFileName), asmOptions);
 				string decompiledCodeFile = Tester.DecompileCSharp(outputFile, Tester.GetSettings(options));
 				decompiledOutputFile = Tester.CompileCSharp(decompiledCodeFile, options);
-				
+
 				Tester.RunAndCompareOutput(testFileName, outputFile, decompiledOutputFile.PathToAssembly, decompiledCodeFile);
 
 				Tester.RepeatOnIOError(() => File.Delete(decompiledCodeFile));
 				Tester.RepeatOnIOError(() => File.Delete(decompiledOutputFile.PathToAssembly));
-			} finally {
+			}
+			finally
+			{
 				if (decompiledOutputFile != null)
 					decompiledOutputFile.TempFiles.Delete();
 			}

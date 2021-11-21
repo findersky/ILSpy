@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -30,25 +31,29 @@ namespace ICSharpCode.Decompiler.IL
 	partial class Branch : SimpleInstruction, IBranchOrLeaveInstruction
 	{
 		readonly int targetILOffset;
-		Block targetBlock;
-		
+		Block? targetBlock;
+
 		public Branch(int targetILOffset) : base(OpCode.Branch)
 		{
 			this.targetILOffset = targetILOffset;
 		}
-		
+
 		public Branch(Block targetBlock) : base(OpCode.Branch)
 		{
 			this.targetBlock = targetBlock ?? throw new ArgumentNullException(nameof(targetBlock));
 			this.targetILOffset = targetBlock.StartILOffset;
 		}
-		
+
 		public int TargetILOffset {
 			get { return targetBlock != null ? targetBlock.StartILOffset : targetILOffset; }
 		}
-		
+
 		public Block TargetBlock {
-			get { return targetBlock; }
+			get {
+				// HACK: We treat TargetBlock as non-nullable publicly, because it's only null inside
+				// the ILReader, and becomes non-null once the BlockBuilder has run.
+				return targetBlock!;
+			}
 			set {
 				if (targetBlock != null && IsConnected)
 					targetBlock.IncomingEdgeCount--;
@@ -57,28 +62,28 @@ namespace ICSharpCode.Decompiler.IL
 					targetBlock.IncomingEdgeCount++;
 			}
 		}
-		
+
 		/// <summary>
 		/// Gets the BlockContainer that contains the target block.
 		/// </summary>
 		public BlockContainer TargetContainer {
-			get { return (BlockContainer)targetBlock?.Parent; }
+			get { return (BlockContainer)targetBlock?.Parent!; }
 		}
-		
+
 		protected override void Connected()
 		{
 			base.Connected();
 			if (targetBlock != null)
 				targetBlock.IncomingEdgeCount++;
 		}
-		
+
 		protected override void Disconnected()
 		{
 			base.Disconnected();
 			if (targetBlock != null)
 				targetBlock.IncomingEdgeCount--;
 		}
-		
+
 		public string TargetLabel {
 			get { return targetBlock != null ? targetBlock.Label : string.Format("IL_{0:x4}", TargetILOffset); }
 		}
@@ -92,9 +97,10 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		internal static bool GetExecutesFinallyBlock(ILInstruction inst, BlockContainer container)
+		internal static bool GetExecutesFinallyBlock(ILInstruction? inst, BlockContainer? container)
 		{
-			for (; inst != container; inst = inst.Parent) {
+			for (; inst != container && inst != null; inst = inst.Parent)
+			{
 				if (inst.Parent is TryFinally && inst.SlotInfo == TryFinally.TryBlockSlot)
 					return true;
 			}
@@ -104,19 +110,20 @@ namespace ICSharpCode.Decompiler.IL
 		internal override void CheckInvariant(ILPhase phase)
 		{
 			base.CheckInvariant(phase);
-			if (phase > ILPhase.InILReader) {
-				Debug.Assert(targetBlock.Parent is BlockContainer);
-				Debug.Assert(this.IsDescendantOf(targetBlock.Parent));
-				Debug.Assert(targetBlock.Parent.Children[targetBlock.ChildIndex] == targetBlock);
+			if (phase > ILPhase.InILReader)
+			{
+				Debug.Assert(targetBlock?.Parent is BlockContainer);
+				Debug.Assert(this.IsDescendantOf(targetBlock!.Parent!));
+				Debug.Assert(targetBlock!.Parent!.Children[targetBlock.ChildIndex] == targetBlock);
 			}
 		}
-		
+
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
 			output.Write(' ');
-			output.WriteLocalReference(TargetLabel, (object)targetBlock ?? TargetILOffset);
+			output.WriteLocalReference(TargetLabel, (object?)targetBlock ?? TargetILOffset);
 		}
 	}
 

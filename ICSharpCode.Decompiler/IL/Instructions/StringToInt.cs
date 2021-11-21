@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+﻿#nullable enable
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -23,24 +24,25 @@ namespace ICSharpCode.Decompiler.IL
 {
 	partial class StringToInt
 	{
-		public List<(string Key, int Value)> Map { get; }
+		public List<(string? Key, int Value)> Map { get; }
 
-		public StringToInt(ILInstruction argument, List<(string Key, int Value)> map)
+		public StringToInt(ILInstruction argument, List<(string? Key, int Value)> map)
 			: base(OpCode.StringToInt)
 		{
 			this.Argument = argument;
 			this.Map = map;
 		}
 
-		public StringToInt(ILInstruction argument, string[] map)
+		public StringToInt(ILInstruction argument, string?[] map)
 			: this(argument, ArrayToDictionary(map))
 		{
 		}
 
-		static List<(string Key, int Value)> ArrayToDictionary(string[] map)
+		static List<(string? Key, int Value)> ArrayToDictionary(string?[] map)
 		{
-			var dict = new List<(string Key, int Value)>();
-			for (int i = 0; i < map.Length; i++) {
+			var dict = new List<(string? Key, int Value)>();
+			for (int i = 0; i < map.Length; i++)
+			{
 				dict.Add((map[i], i));
 			}
 			return dict;
@@ -53,8 +55,10 @@ namespace ICSharpCode.Decompiler.IL
 			Argument.WriteTo(output, options);
 			output.Write(", { ");
 			int i = 0;
-			foreach (var entry in Map) {
-				if (i > 0) output.Write(", ");
+			foreach (var entry in Map)
+			{
+				if (i > 0)
+					output.Write(", ");
 				if (entry.Key is null)
 					output.Write($"[null] = {entry.Value}");
 				else

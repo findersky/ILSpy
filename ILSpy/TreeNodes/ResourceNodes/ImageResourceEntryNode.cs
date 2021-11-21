@@ -21,6 +21,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
@@ -35,25 +36,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public ILSpyTreeNode CreateNode(Resource resource)
 		{
-			Stream stream = resource.TryOpenStream();
-			if (stream == null)
-				return null;
-			return CreateNode(resource.Name, stream);
-		}
-
-		public ILSpyTreeNode CreateNode(string key, object data)
-		{
-			if (data is System.Drawing.Image)
+			string key = resource.Name;
+			foreach (string fileExt in imageFileExtensions)
 			{
-				MemoryStream s = new MemoryStream();
-				((System.Drawing.Image)data).Save(s, System.Drawing.Imaging.ImageFormat.Bmp);
-				return new ImageResourceEntryNode(key, s);
-			}
-			if (!(data is Stream))
-			    return null;
-			foreach (string fileExt in imageFileExtensions) {
 				if (key.EndsWith(fileExt, StringComparison.OrdinalIgnoreCase))
-					return new ImageResourceEntryNode(key, (Stream)data);
+					return new ImageResourceEntryNode(key, resource.TryOpenStream);
 			}
 			return null;
 		}
@@ -61,8 +48,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 	sealed class ImageResourceEntryNode : ResourceEntryNode
 	{
-		public ImageResourceEntryNode(string key, Stream data)
-			: base(key, data)
+		public ImageResourceEntryNode(string key, Func<Stream> openStream)
+			: base(key, openStream)
 		{
 		}
 
@@ -70,12 +57,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool View(TabPageModel tabPage)
 		{
-			try {
+			try
+			{
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
-				Data.Position = 0;
 				BitmapImage image = new BitmapImage();
 				image.BeginInit();
-				image.StreamSource = Data;
+				image.StreamSource = OpenStream();
 				image.EndInit();
 				output.AddUIElement(() => new Image { Source = image });
 				output.WriteLine();
@@ -86,7 +73,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				tabPage.SupportsLanguageSwitching = false;
 				return true;
 			}
-			catch (Exception) {
+			catch (Exception)
+			{
 				return false;
 			}
 		}

@@ -21,6 +21,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
@@ -33,28 +34,17 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	{
 		public ILSpyTreeNode CreateNode(Resource resource)
 		{
-			Stream stream = resource.TryOpenStream();
-			if (stream == null)
-				return null;
-			return CreateNode(resource.Name, stream);
-		}
-
-		public ILSpyTreeNode CreateNode(string key, object data)
-		{
-			if (data is System.Drawing.Icon) {
-				MemoryStream s = new MemoryStream();
-				((System.Drawing.Icon)data).Save(s);
-				return new IconResourceEntryNode(key, s);
+			if (resource.Name.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+			{
+				return new IconResourceEntryNode(resource.Name, resource.TryOpenStream);
 			}
-			if (data is Stream && key.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
-				return new IconResourceEntryNode(key, (Stream)data);
 			return null;
 		}
 	}
 
 	sealed class IconResourceEntryNode : ResourceEntryNode
 	{
-		public IconResourceEntryNode(string key, Stream data)
+		public IconResourceEntryNode(string key, Func<Stream> data)
 			: base(key, data)
 		{
 		}
@@ -63,11 +53,15 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool View(TabPageModel tabPage)
 		{
-			try {
+			try
+			{
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
-				Data.Position = 0;
-				IconBitmapDecoder decoder = new IconBitmapDecoder(Data, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.None);
-				foreach (var frame in decoder.Frames) {
+				using var data = OpenStream();
+				if (data == null)
+					return false;
+				IconBitmapDecoder decoder = new IconBitmapDecoder(data, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.None);
+				foreach (var frame in decoder.Frames)
+				{
 					output.Write(String.Format("{0}x{1}, {2} bit: ", frame.PixelHeight, frame.PixelWidth, frame.Thumbnail.Format.BitsPerPixel));
 					AddIcon(output, frame);
 					output.WriteLine();
@@ -78,7 +72,9 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				tabPage.ShowTextView(textView => textView.ShowNode(output, this));
 				tabPage.SupportsLanguageSwitching = false;
 				return true;
-			} catch (Exception) {
+			}
+			catch (Exception)
+			{
 				return false;
 			}
 		}

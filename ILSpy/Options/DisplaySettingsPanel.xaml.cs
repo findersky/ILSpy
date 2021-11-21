@@ -44,14 +44,16 @@ namespace ICSharpCode.ILSpy.Options
 			Task<FontFamily[]> task = new Task<FontFamily[]>(FontLoader);
 			task.Start();
 			task.ContinueWith(
-				delegate(Task continuation) {
+				delegate (Task continuation) {
 					App.Current.Dispatcher.Invoke(
 						DispatcherPriority.Normal,
 						(Action)(
 							() => {
 								fontSelector.ItemsSource = task.Result;
-								if (continuation.Exception != null) {
-									foreach (var ex in continuation.Exception.InnerExceptions) {
+								if (continuation.Exception != null)
+								{
+									foreach (var ex in continuation.Exception.InnerExceptions)
+									{
 										MessageBox.Show(ex.ToString());
 									}
 								}
@@ -65,29 +67,33 @@ namespace ICSharpCode.ILSpy.Options
 		{
 			this.DataContext = LoadDisplaySettings(settings);
 		}
-		
+
 		static DisplaySettings currentDisplaySettings;
-		
+
 		public static DisplaySettings CurrentDisplaySettings {
 			get {
 				return currentDisplaySettings ?? (currentDisplaySettings = LoadDisplaySettings(ILSpySettings.Load()));
 			}
 		}
-		
+
 		static bool IsSymbolFont(FontFamily fontFamily)
 		{
-			foreach (var tf in fontFamily.GetTypefaces()) {
+			foreach (var tf in fontFamily.GetTypefaces())
+			{
 				GlyphTypeface glyph;
-				try {
+				try
+				{
 					if (tf.TryGetGlyphTypeface(out glyph))
 						return glyph.Symbol;
-				} catch (Exception) {
+				}
+				catch (Exception)
+				{
 					return true;
 				}
 			}
 			return false;
 		}
-		
+
 		static FontFamily[] FontLoader()
 		{
 			return (from ff in Fonts.SystemFontFamilies
@@ -95,7 +101,7 @@ namespace ICSharpCode.ILSpy.Options
 					orderby ff.Source
 					select ff).ToArray();
 		}
-		
+
 		public static DisplaySettings LoadDisplaySettings(ILSpySettings settings)
 		{
 			XElement e = settings["DisplaySettings"];
@@ -115,15 +121,18 @@ namespace ICSharpCode.ILSpy.Options
 			s.IndentationSize = (int?)e.Attribute("IndentationSize") ?? 4;
 			s.IndentationTabSize = (int?)e.Attribute("IndentationTabSize") ?? 4;
 			s.HighlightMatchingBraces = (bool?)e.Attribute("HighlightMatchingBraces") ?? true;
+			s.HighlightCurrentLine = (bool?)e.Attribute("HighlightCurrentLine") ?? false;
 			s.HideEmptyMetadataTables = (bool?)e.Attribute("HideEmptyMetadataTables") ?? true;
+			s.ShowRawOffsetsAndBytesBeforeInstruction = (bool?)e.Attribute("ShowRawOffsetsAndBytesBeforeInstruction") ?? false;
+			s.StyleWindowTitleBar = (bool?)e.Attribute("StyleWindowTitleBar") ?? false;
 
 			return s;
 		}
-		
+
 		public void Save(XElement root)
 		{
 			var s = (DisplaySettings)this.DataContext;
-			
+
 			var section = new XElement("DisplaySettings");
 			section.SetAttributeValue("Font", s.SelectedFont.Source);
 			section.SetAttributeValue("FontSize", s.SelectedFontSize);
@@ -140,7 +149,10 @@ namespace ICSharpCode.ILSpy.Options
 			section.SetAttributeValue("IndentationSize", s.IndentationSize);
 			section.SetAttributeValue("IndentationTabSize", s.IndentationTabSize);
 			section.SetAttributeValue("HighlightMatchingBraces", s.HighlightMatchingBraces);
+			section.SetAttributeValue("HighlightCurrentLine", s.HighlightCurrentLine);
 			section.SetAttributeValue("HideEmptyMetadataTables", s.HideEmptyMetadataTables);
+			section.SetAttributeValue("ShowRawOffsetsAndBytesBeforeInstruction", s.ShowRawOffsetsAndBytesBeforeInstruction);
+			section.SetAttributeValue("StyleWindowTitleBar", s.StyleWindowTitleBar);
 
 			XElement existingElement = root.Element("DisplaySettings");
 			if (existingElement != null)
@@ -178,21 +190,23 @@ namespace ICSharpCode.ILSpy.Options
 	{
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			if (value is double d) {
+			if (value is double d)
+			{
 				return Math.Round(d / 4 * 3);
 			}
-			
+
 			throw new NotImplementedException();
 		}
-		
+
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			if (value is string s) {
+			if (value is string s)
+			{
 				if (double.TryParse(s, out double d))
 					return d * 4 / 3;
 				return 11.0 * 4 / 3;
 			}
-			
+
 			throw new NotImplementedException();
 		}
 	}

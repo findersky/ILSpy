@@ -21,8 +21,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler;
+using ICSharpCode.ILSpy.Themes;
 
 namespace ICSharpCode.ILSpy
 {
@@ -54,12 +56,13 @@ namespace ICSharpCode.ILSpy
 		{
 			output.AddUIElement(
 				delegate {
-					Button button = new Button();
+					Button button = ThemeManager.Current.CreateButton();
 					button.Cursor = Cursors.Arrow;
 					button.Margin = new Thickness(2);
 					button.Padding = new Thickness(9, 1, 9, 1);
 					button.MinWidth = 73;
-					if (icon != null) {
+					if (icon != null)
+					{
 						button.Content = new StackPanel {
 							Orientation = Orientation.Horizontal,
 							Children = {
@@ -67,7 +70,9 @@ namespace ICSharpCode.ILSpy
 								new TextBlock { Text = text }
 							}
 						};
-					} else {
+					}
+					else
+					{
 						button.Content = text;
 					}
 					button.Click += click;

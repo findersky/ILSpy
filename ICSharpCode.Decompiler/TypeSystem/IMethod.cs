@@ -16,7 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+#nullable enable
+
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -41,6 +42,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		bool ReturnTypeIsRefReadOnly { get; }
 
 		/// <summary>
+		/// Gets whether this method may only be called on fresh instances.
+		/// Used with C# 9 `init;` property setters.
+		/// </summary>
+		bool IsInitOnly { get; }
+
+		/// <summary>
 		/// Gets whether the method accepts the 'this' reference as ref readonly.
 		/// This can be either because the method is C# 8.0 'readonly', or because it is within a C# 7.2 'readonly struct'
 		/// </summary>
@@ -63,24 +70,24 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		bool IsConstructor { get; }
 		bool IsDestructor { get; }
 		bool IsOperator { get; }
-		
+
 		/// <summary>
 		/// Gets whether the method has a body.
 		/// This property returns <c>false</c> for <c>abstract</c> or <c>extern</c> methods,
 		/// or for <c>partial</c> methods without implementation.
 		/// </summary>
 		bool HasBody { get; }
-		
+
 		/// <summary>
 		/// Gets whether the method is a property/event accessor.
 		/// </summary>
 		bool IsAccessor { get; }
-		
+
 		/// <summary>
 		/// If this method is an accessor, returns the corresponding property/event.
 		/// Otherwise, returns null.
 		/// </summary>
-		IMember AccessorOwner { get; }
+		IMember? AccessorOwner { get; }
 
 		/// <summary>
 		/// Gets the kind of accessor this is.
@@ -92,8 +99,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// A reduced method doesn't contain the extension method parameter. That means that it has one parameter less than its definition.
 		/// A local function doesn't contain compiler-generated method parameters at the end.
 		/// </summary>
-		IMethod ReducedFrom { get; }
-		
+		IMethod? ReducedFrom { get; }
+
 		/// <summary>
 		/// Specializes this method with the given substitution.
 		/// If this method is already specialized, the new substitution is composed with the existing substition.

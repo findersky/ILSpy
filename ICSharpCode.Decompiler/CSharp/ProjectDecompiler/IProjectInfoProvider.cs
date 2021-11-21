@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+
 using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
@@ -31,6 +32,8 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		/// </summary>
 		IAssemblyResolver AssemblyResolver { get; }
 
+		AssemblyReferenceClassifier AssemblyReferenceClassifier { get; }
+
 		/// <summary>
 		/// Gets the C# language version of the project.
 		/// </summary>
@@ -40,6 +43,11 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		/// Gets the unique ID of the project.
 		/// </summary>
 		Guid ProjectGuid { get; }
+
+		/// <summary>
+		/// Gets the target directory of the project
+		/// </summary>
+		string TargetDirectory { get; }
 
 		/// <summary>
 		/// Gets the name of the key file being used for strong name signing. Can be null if no file is available.

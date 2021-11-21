@@ -16,46 +16,86 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
-using System.IO;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace ICSharpCode.Decompiler.Metadata
 {
-	public sealed class AssemblyResolutionException : FileNotFoundException
+	public sealed class ResolutionException : Exception
 	{
-		public IAssemblyReference Reference { get; }
+		public IAssemblyReference? Reference { get; }
 
-		public AssemblyResolutionException(IAssemblyReference reference)
-			: this(reference, null)
+		public string? ModuleName { get; }
+
+		public string? MainModuleFullPath { get; }
+
+		public string? ResolvedFullPath { get; }
+
+		public ResolutionException(IAssemblyReference reference, string? resolvedPath, Exception? innerException)
+			: base($"Failed to resolve assembly: '{reference}'{Environment.NewLine}" +
+				  $"Resolve result: {resolvedPath ?? "<not found>"}", innerException)
 		{
+			this.Reference = reference ?? throw new ArgumentNullException(nameof(reference));
+			this.ResolvedFullPath = resolvedPath;
 		}
 
-		public AssemblyResolutionException(IAssemblyReference reference, Exception innerException)
-			: base($"Failed to resolve assembly: '{reference}'", innerException)
+		public ResolutionException(string mainModule, string moduleName, string? resolvedPath, Exception? innerException)
+			: base($"Failed to resolve module: '{moduleName} of {mainModule}'{Environment.NewLine}" +
+				  $"Resolve result: {resolvedPath ?? "<not found>"}", innerException)
 		{
-			this.Reference = reference;
+			this.MainModuleFullPath = mainModule ?? throw new ArgumentNullException(nameof(mainModule));
+			this.ModuleName = moduleName ?? throw new ArgumentNullException(nameof(moduleName));
+			this.ResolvedFullPath = resolvedPath;
 		}
 	}
 
 	public interface IAssemblyResolver
 	{
-		PEFile Resolve(IAssemblyReference reference);
-		PEFile ResolveModule(PEFile mainModule, string moduleName);
-		bool IsGacAssembly(IAssemblyReference reference);
+#if !VSADDIN
+		PEFile? Resolve(IAssemblyReference reference);
+		PEFile? ResolveModule(PEFile mainModule, string moduleName);
+		Task<PEFile?> ResolveAsync(IAssemblyReference reference);
+		Task<PEFile?> ResolveModuleAsync(PEFile mainModule, string moduleName);
+#endif
+	}
+
+	public class AssemblyReferenceClassifier
+	{
+		/// <summary>
+		/// For GAC assembly references, the WholeProjectDecompiler will omit the HintPath in the
+		/// generated .csproj file.
+		/// </summary>
+		public virtual bool IsGacAssembly(IAssemblyReference reference)
+		{
+			return UniversalAssemblyResolver.GetAssemblyInGac(reference) != null;
+		}
+
+		/// <summary>
+		/// For .NET Core framework references, the WholeProjectDecompiler will omit the
+		/// assembly reference if the runtimePack is already included as an SDK.
+		/// </summary>
+		public virtual bool IsSharedAssembly(IAssemblyReference reference, [NotNullWhen(true)] out string? runtimePack)
+		{
+			runtimePack = null;
+			return false;
+		}
 	}
 
 	public interface IAssemblyReference
 	{
 		string Name { get; }
 		string FullName { get; }
-		Version Version { get; }
-		string Culture { get; }
-		byte[] PublicKeyToken { get; }
+		Version? Version { get; }
+		string? Culture { get; }
+		byte[]? PublicKeyToken { get; }
 
 		bool IsWindowsRuntime { get; }
 		bool IsRetargetable { get; }
@@ -63,9 +103,9 @@ namespace ICSharpCode.Decompiler.Metadata
 
 	public class AssemblyNameReference : IAssemblyReference
 	{
-		string fullName;
+		string? fullName;
 
-		public string Name { get; private set; }
+		public string Name { get; private set; } = string.Empty;
 
 		public string FullName {
 			get {
@@ -86,14 +126,18 @@ namespace ICSharpCode.Decompiler.Metadata
 				builder.Append("PublicKeyToken=");
 
 				var pk_token = PublicKeyToken;
-				if (pk_token != null && pk_token.Length > 0) {
-					for (int i = 0; i < pk_token.Length; i++) {
+				if (pk_token != null && pk_token.Length > 0)
+				{
+					for (int i = 0; i < pk_token.Length; i++)
+					{
 						builder.Append(pk_token[i].ToString("x2"));
 					}
-				} else
+				}
+				else
 					builder.Append("null");
 
-				if (IsRetargetable) {
+				if (IsRetargetable)
+				{
 					builder.Append(sep);
 					builder.Append("Retargetable=Yes");
 				}
@@ -102,11 +146,11 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
-		public Version Version { get; private set; }
+		public Version? Version { get; private set; }
 
-		public string Culture { get; private set; }
+		public string? Culture { get; private set; }
 
-		public byte[] PublicKeyToken { get; private set; }
+		public byte[]? PublicKeyToken { get; private set; }
 
 		public bool IsWindowsRuntime { get; private set; }
 
@@ -121,10 +165,12 @@ namespace ICSharpCode.Decompiler.Metadata
 
 			var name = new AssemblyNameReference();
 			var tokens = fullName.Split(',');
-			for (int i = 0; i < tokens.Length; i++) {
+			for (int i = 0; i < tokens.Length; i++)
+			{
 				var token = tokens[i].Trim();
 
-				if (i == 0) {
+				if (i == 0)
+				{
 					name.Name = token;
 					continue;
 				}
@@ -133,7 +179,8 @@ namespace ICSharpCode.Decompiler.Metadata
 				if (parts.Length != 2)
 					throw new ArgumentException("Malformed name");
 
-				switch (parts[0].ToLowerInvariant()) {
+				switch (parts[0].ToLowerInvariant())
+				{
 					case "version":
 						name.Version = new Version(parts[1]);
 						break;
@@ -162,6 +209,7 @@ namespace ICSharpCode.Decompiler.Metadata
 		}
 	}
 
+#if !VSADDIN
 	public class AssemblyReference : IAssemblyReference
 	{
 		static readonly SHA1 sha1 = SHA1.Create();
@@ -174,18 +222,43 @@ namespace ICSharpCode.Decompiler.Metadata
 		public bool IsWindowsRuntime => (entry.Flags & AssemblyFlags.WindowsRuntime) != 0;
 		public bool IsRetargetable => (entry.Flags & AssemblyFlags.Retargetable) != 0;
 
-		public string Name => Metadata.GetString(entry.Name);
-		public string FullName => entry.GetFullAssemblyName(Metadata);
-		public Version Version => entry.Version;
-		public string Culture => Metadata.GetString(entry.Culture);
-		byte[] IAssemblyReference.PublicKeyToken => GetPublicKeyToken();
+		public string Name {
+			get {
+				try
+				{
+					return Metadata.GetString(entry.Name);
+				}
+				catch (BadImageFormatException)
+				{
+					return $"AR:{Handle}";
+				}
+			}
+		}
 
-		public byte[] GetPublicKeyToken()
+		public string FullName {
+			get {
+				try
+				{
+					return entry.GetFullAssemblyName(Metadata);
+				}
+				catch (BadImageFormatException)
+				{
+					return $"fullname(AR:{Handle})";
+				}
+			}
+		}
+
+		public Version? Version => entry.Version;
+		public string Culture => Metadata.GetString(entry.Culture);
+		byte[]? IAssemblyReference.PublicKeyToken => GetPublicKeyToken();
+
+		public byte[]? GetPublicKeyToken()
 		{
 			if (entry.PublicKeyOrToken.IsNil)
 				return null;
 			var bytes = Metadata.GetBlobBytes(entry.PublicKeyOrToken);
-			if ((entry.Flags & AssemblyFlags.PublicKey) != 0) {
+			if ((entry.Flags & AssemblyFlags.PublicKey) != 0)
+			{
 				return sha1.ComputeHash(bytes).Skip(12).ToArray();
 			}
 			return bytes;
@@ -218,4 +291,5 @@ namespace ICSharpCode.Decompiler.Metadata
 			return FullName;
 		}
 	}
+#endif
 }

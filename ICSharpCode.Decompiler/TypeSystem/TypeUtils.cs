@@ -32,10 +32,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static int GetSize(this IType type)
 		{
-			switch (type.Kind) {
+			switch (type.Kind)
+			{
 				case TypeKind.Pointer:
 				case TypeKind.ByReference:
 				case TypeKind.Class:
+				case TypeKind.NInt:
+				case TypeKind.NUInt:
 					return NativeIntSize;
 				case TypeKind.Enum:
 					type = type.GetEnumUnderlyingType();
@@ -48,7 +51,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var typeDef = type.GetDefinition();
 			if (typeDef == null)
 				return 0;
-			switch (typeDef.KnownTypeCode) {
+			switch (typeDef.KnownTypeCode)
+			{
 				case KnownTypeCode.Boolean:
 				case KnownTypeCode.SByte:
 				case KnownTypeCode.Byte:
@@ -83,7 +87,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </returns>
 		public static int GetSize(this StackType type)
 		{
-			switch (type) {
+			switch (type)
+			{
 				case StackType.I4:
 					return 4;
 				case StackType.I8:
@@ -120,11 +125,29 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static bool IsCSharpSmallIntegerType(this IType type)
 		{
-			switch (type.GetDefinition()?.KnownTypeCode) {
+			switch (type.GetDefinition()?.KnownTypeCode)
+			{
 				case KnownTypeCode.Byte:
 				case KnownTypeCode.SByte:
 				case KnownTypeCode.Int16:
 				case KnownTypeCode.UInt16:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		/// <summary>
+		/// Gets whether the type is a C# 9 native integer type: nint or nuint.
+		/// 
+		/// Returns false for (U)IntPtr.
+		/// </summary>
+		public static bool IsCSharpNativeIntegerType(this IType type)
+		{
+			switch (type.Kind)
+			{
+				case TypeKind.NInt:
+				case TypeKind.NUInt:
 					return true;
 				default:
 					return false;
@@ -138,7 +161,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static bool IsCSharpPrimitiveIntegerType(this IType type)
 		{
-			switch (type.GetDefinition()?.KnownTypeCode) {
+			switch (type.GetDefinition()?.KnownTypeCode)
+			{
 				case KnownTypeCode.Byte:
 				case KnownTypeCode.SByte:
 				case KnownTypeCode.Int16:
@@ -159,7 +183,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static bool IsIntegerType(this StackType type)
 		{
-			switch (type) {
+			switch (type)
+			{
 				case StackType.I4:
 				case StackType.I:
 				case StackType.I8:
@@ -175,7 +200,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static bool IsFloatType(this StackType type)
 		{
-			switch (type) {
+			switch (type)
+			{
 				case StackType.F4:
 				case StackType.F8:
 					return true;
@@ -234,15 +260,20 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static StackType GetStackType(this IType type)
 		{
-			switch (type.Kind) {
+			switch (type.Kind)
+			{
 				case TypeKind.Unknown:
-					if (type.IsReferenceType == true) {
+					if (type.IsReferenceType == true)
+					{
 						return StackType.O;
 					}
 					return StackType.Unknown;
 				case TypeKind.ByReference:
 					return StackType.Ref;
 				case TypeKind.Pointer:
+				case TypeKind.NInt:
+				case TypeKind.NUInt:
+				case TypeKind.FunctionPointer:
 					return StackType.I;
 				case TypeKind.TypeParameter:
 					// Type parameters are always considered StackType.O, even
@@ -255,7 +286,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			ITypeDefinition typeDef = type.GetEnumUnderlyingType().GetDefinition();
 			if (typeDef == null)
 				return StackType.O;
-			switch (typeDef.KnownTypeCode) {
+			switch (typeDef.KnownTypeCode)
+			{
 				case KnownTypeCode.Boolean:
 				case KnownTypeCode.Char:
 				case KnownTypeCode.SByte:
@@ -305,12 +337,20 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public static Sign GetSign(this IType type)
 		{
 			type = type.SkipModifiers();
-			if (type.Kind == TypeKind.Pointer)
-				return Sign.Unsigned;
+			switch (type.Kind)
+			{
+				case TypeKind.Pointer:
+				case TypeKind.NUInt:
+				case TypeKind.FunctionPointer:
+					return Sign.Unsigned;
+				case TypeKind.NInt:
+					return Sign.Signed;
+			}
 			var typeDef = type.GetEnumUnderlyingType().GetDefinition();
 			if (typeDef == null)
 				return Sign.None;
-			switch (typeDef.KnownTypeCode) {
+			switch (typeDef.KnownTypeCode)
+			{
 				case KnownTypeCode.SByte:
 				case KnownTypeCode.Int16:
 				case KnownTypeCode.Int32:
@@ -338,7 +378,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static PrimitiveType ToPrimitiveType(this KnownTypeCode knownTypeCode)
 		{
-			switch (knownTypeCode) {
+			switch (knownTypeCode)
+			{
 				case KnownTypeCode.SByte:
 					return PrimitiveType.I1;
 				case KnownTypeCode.Int16:
@@ -375,8 +416,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public static PrimitiveType ToPrimitiveType(this IType type)
 		{
 			type = type.SkipModifiers();
-			if (type.Kind == TypeKind.Unknown) return PrimitiveType.Unknown;
-			if (type.Kind == TypeKind.ByReference) return PrimitiveType.Ref;
+			switch (type.Kind)
+			{
+				case TypeKind.Unknown:
+					return PrimitiveType.Unknown;
+				case TypeKind.ByReference:
+					return PrimitiveType.Ref;
+				case TypeKind.NInt:
+				case TypeKind.FunctionPointer:
+					return PrimitiveType.I;
+				case TypeKind.NUInt:
+					return PrimitiveType.U;
+			}
 			var def = type.GetEnumUnderlyingType().GetDefinition();
 			return def != null ? def.KnownTypeCode.ToPrimitiveType() : PrimitiveType.None;
 		}
@@ -386,7 +437,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		public static KnownTypeCode ToKnownTypeCode(this PrimitiveType primitiveType)
 		{
-			switch (primitiveType) {
+			switch (primitiveType)
+			{
 				case PrimitiveType.I1:
 					return KnownTypeCode.SByte;
 				case PrimitiveType.I2:
@@ -419,7 +471,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		public static KnownTypeCode ToKnownTypeCode(this StackType stackType, Sign sign = Sign.None)
 		{
-			switch (stackType) {
+			switch (stackType)
+			{
 				case StackType.I4:
 					return sign == Sign.Unsigned ? KnownTypeCode.UInt32 : KnownTypeCode.Int32;
 				case StackType.I8:
@@ -441,7 +494,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		public static PrimitiveType ToPrimitiveType(this StackType stackType, Sign sign = Sign.None)
 		{
-			switch (stackType) {
+			switch (stackType)
+			{
 				case StackType.I4:
 					return sign == Sign.Unsigned ? PrimitiveType.U4 : PrimitiveType.I4;
 				case StackType.I8:

@@ -20,8 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem.Implementation
@@ -56,13 +58,18 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			setter = module.GetDefinition(accessors.Setter);
 			name = metadata.GetString(prop.Name);
 			// Maybe we should defer the calculation of symbolKind?
-			if (DetermineIsIndexer(name)) {
+			if (DetermineIsIndexer(name))
+			{
 				symbolKind = SymbolKind.Indexer;
-			} else if (name.IndexOf('.') >= 0) {
+			}
+			else if (name.IndexOf('.') >= 0)
+			{
 				// explicit interface implementation
 				var interfaceProp = this.ExplicitlyImplementedInterfaceMembers.FirstOrDefault() as IProperty;
 				symbolKind = interfaceProp?.SymbolKind ?? SymbolKind.Property;
-			} else {
+			}
+			else
+			{
 				symbolKind = SymbolKind.Property;
 			}
 		}
@@ -126,23 +133,29 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			var genericContext = new GenericContext(DeclaringType.TypeParameters);
 			IType returnType;
 			IParameter[] parameters;
-			try {
+			try
+			{
 				var signature = propertyDef.DecodeSignature(module.TypeProvider, genericContext);
 				var accessors = propertyDef.GetAccessors();
 				var declTypeDef = this.DeclaringTypeDefinition;
 				ParameterHandleCollection? parameterHandles;
 				Nullability nullableContext;
-				if (!accessors.Getter.IsNil) {
+				if (!accessors.Getter.IsNil)
+				{
 					var getter = module.metadata.GetMethodDefinition(accessors.Getter);
 					parameterHandles = getter.GetParameters();
 					nullableContext = getter.GetCustomAttributes().GetNullableContext(module.metadata)
 						?? declTypeDef?.NullableContext ?? Nullability.Oblivious;
-				} else if (!accessors.Setter.IsNil) {
+				}
+				else if (!accessors.Setter.IsNil)
+				{
 					var setter = module.metadata.GetMethodDefinition(accessors.Setter);
 					parameterHandles = setter.GetParameters();
 					nullableContext = setter.GetCustomAttributes().GetNullableContext(module.metadata)
 						?? declTypeDef?.NullableContext ?? Nullability.Oblivious;
-				} else {
+				}
+				else
+				{
 					parameterHandles = null;
 					nullableContext = declTypeDef?.NullableContext ?? Nullability.Oblivious;
 				}
@@ -153,10 +166,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				// Roslyn uses the same workaround (see the NullableTypeDecoder.TransformType
 				// call in PEPropertySymbol).
 				var typeOptions = module.OptionsForEntity(declTypeDef);
-				(returnType, parameters) = MetadataMethod.DecodeSignature(module, this, signature,
+				(returnType, parameters, _) = MetadataMethod.DecodeSignature(
+					module, this, signature,
 					parameterHandles, nullableContext, typeOptions,
 					returnTypeAttributes: propertyDef.GetCustomAttributes());
-			} catch (BadImageFormatException) {
+			}
+			catch (BadImageFormatException)
+			{
 				returnType = SpecialType.UnknownType;
 				parameters = Empty<IParameter>.Array;
 			}
@@ -186,9 +202,17 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			var b = new AttributeListBuilder(module);
 			var metadata = module.metadata;
 			var propertyDef = metadata.GetPropertyDefinition(propertyHandle);
-			if (IsIndexer && Name != "Item" && !IsExplicitInterfaceImplementation) {
+			if (IsIndexer && Name != "Item" && !IsExplicitInterfaceImplementation)
+			{
 				b.Add(KnownAttribute.IndexerName, KnownTypeCode.String, Name);
 			}
+
+			// SpecialName
+			if ((propertyDef.Attributes & (PropertyAttributes.SpecialName | PropertyAttributes.RTSpecialName)) == PropertyAttributes.SpecialName)
+			{
+				b.Add(KnownAttribute.SpecialName);
+			}
+
 			b.Add(propertyDef.GetCustomAttributes(), symbolKind);
 			return b.Build();
 		}
@@ -207,8 +231,10 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		Accessibility ComputeAccessibility()
 		{
-			if (IsOverride && (getter == null || setter == null)) {
-				foreach (var baseMember in InheritanceHelper.GetBaseMembers(this, includeImplementedInterfaces: false)) {
+			if (IsOverride && (getter == null || setter == null))
+			{
+				foreach (var baseMember in InheritanceHelper.GetBaseMembers(this, includeImplementedInterfaces: false))
+				{
 					if (!baseMember.IsOverride)
 						return baseMember.Accessibility;
 				}
@@ -235,7 +261,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public override bool Equals(object obj)
 		{
-			if (obj is MetadataProperty p) {
+			if (obj is MetadataProperty p)
+			{
 				return propertyHandle == p.propertyHandle && module.PEFile == p.module.PEFile;
 			}
 			return false;

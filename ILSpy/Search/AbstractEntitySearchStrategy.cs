@@ -3,13 +3,15 @@ using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Media;
+
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.TreeNodes;
 
 namespace ICSharpCode.ILSpy.Search
 {
-	abstract class AbstractEntitySearchStrategy	: AbstractSearchStrategy
+	using ICSharpCode.Decompiler.TypeSystem;
+
+	abstract class AbstractEntitySearchStrategy : AbstractSearchStrategy
 	{
 		protected readonly Language language;
 		protected readonly ApiVisibility apiVisibility;
@@ -26,13 +28,17 @@ namespace ICSharpCode.ILSpy.Search
 			if (apiVisibility == ApiVisibility.All)
 				return true;
 
-			do {
-				if (apiVisibility == ApiVisibility.PublicOnly) {
+			do
+			{
+				if (apiVisibility == ApiVisibility.PublicOnly)
+				{
 					if (!(entity.Accessibility == Accessibility.Public ||
 						entity.Accessibility == Accessibility.Protected ||
 						entity.Accessibility == Accessibility.ProtectedOrInternal))
 						return false;
-				} else if (apiVisibility == ApiVisibility.PublicAndInternal) {
+				}
+				else if (apiVisibility == ApiVisibility.PublicAndInternal)
+				{
 					if (!language.ShowMember(entity))
 						return false;
 				}
@@ -67,13 +73,15 @@ namespace ICSharpCode.ILSpy.Search
 			string text = member.Name;
 
 			// Probably compiler generated types without meaningful names, show them last
-			if (text.StartsWith("<")) {
+			if (text.StartsWith("<"))
+			{
 				return 0;
 			}
 
-			// Constructors always have the same name in IL:
+			// Constructors and destructors always have the same name in IL:
 			// Use type name instead
-			if (text == ".cctor" || text == ".ctor") {
+			if (member.SymbolKind == SymbolKind.Constructor || member.SymbolKind == SymbolKind.Destructor)
+			{
 				text = member.DeclaringType.Name;
 			}
 
@@ -85,7 +93,8 @@ namespace ICSharpCode.ILSpy.Search
 
 		string GetLanguageSpecificName(IEntity member)
 		{
-			switch (member) {
+			switch (member)
+			{
 				case ITypeDefinition t:
 					return language.TypeToString(t, false);
 				case IField f:
@@ -103,7 +112,8 @@ namespace ICSharpCode.ILSpy.Search
 
 		static internal ImageSource GetIcon(IEntity member)
 		{
-			switch (member) {
+			switch (member)
+			{
 				case ITypeDefinition t:
 					return TypeTreeNode.GetIcon(t);
 				case IField f:

@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
@@ -26,10 +28,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	{
 		// Keep this interface simple: I decided against having GetMethods/GetEvents etc. here,
 		// so that the Resolve step is never hidden from the consumer.
-		
+
 		// I decided against implementing IFreezable here: IUnresolvedTypeDefinition can be used as ITypeReference,
 		// but when freezing the reference, one wouldn't expect the definition to freeze.
-		
+
 		/// <summary>
 		/// Resolves this type reference.
 		/// </summary>
@@ -46,26 +48,26 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </returns>
 		IType Resolve(ITypeResolveContext context);
 	}
-	
+
 	public interface ITypeResolveContext : ICompilationProvider
 	{
 		/// <summary>
 		/// Gets the current module.
 		/// This property may return null if this context does not specify any module.
 		/// </summary>
-		IModule CurrentModule { get; }
-		
+		IModule? CurrentModule { get; }
+
 		/// <summary>
 		/// Gets the current type definition.
 		/// </summary>
-		ITypeDefinition CurrentTypeDefinition { get ;}
-		
+		ITypeDefinition? CurrentTypeDefinition { get; }
+
 		/// <summary>
 		/// Gets the current member.
 		/// </summary>
-		IMember CurrentMember { get; }
-		
-		ITypeResolveContext WithCurrentTypeDefinition(ITypeDefinition typeDefinition);
-		ITypeResolveContext WithCurrentMember(IMember member);
+		IMember? CurrentMember { get; }
+
+		ITypeResolveContext WithCurrentTypeDefinition(ITypeDefinition? typeDefinition);
+		ITypeResolveContext WithCurrentMember(IMember? member);
 	}
 }

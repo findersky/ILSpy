@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
@@ -27,12 +29,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the name of the field.
 		/// </summary>
 		new string Name { get; } // solve ambiguity between IMember.Name and IVariable.Name
-		
+
 		/// <summary>
 		/// Gets whether this field is readonly.
 		/// </summary>
 		bool IsReadOnly { get; }
-		
+
 		/// <summary>
 		/// Gets whether this field is volatile.
 		/// </summary>

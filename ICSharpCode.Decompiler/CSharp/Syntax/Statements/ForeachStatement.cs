@@ -32,77 +32,74 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	/// </summary>
 	public class ForeachStatement : Statement
 	{
-		public static readonly TokenRole ForeachKeywordRole = new TokenRole ("foreach");
-		public static readonly TokenRole InKeywordRole = new TokenRole ("in");
-		
+		public static readonly TokenRole AwaitRole = UnaryOperatorExpression.AwaitRole;
+		public static readonly TokenRole ForeachKeywordRole = new TokenRole("foreach");
+		public static readonly TokenRole InKeywordRole = new TokenRole("in");
+
+		public CSharpTokenNode AwaitToken {
+			get { return GetChildByRole(AwaitRole); }
+		}
+
+		public bool IsAsync {
+			get { return !GetChildByRole(AwaitRole).IsNull; }
+			set { SetChildByRole(AwaitRole, value ? new CSharpTokenNode(TextLocation.Empty, null) : null); }
+		}
+
 		public CSharpTokenNode ForeachToken {
-			get { return GetChildByRole (ForeachKeywordRole); }
+			get { return GetChildByRole(ForeachKeywordRole); }
 		}
-		
+
 		public CSharpTokenNode LParToken {
-			get { return GetChildByRole (Roles.LPar); }
+			get { return GetChildByRole(Roles.LPar); }
 		}
-		
+
 		public AstType VariableType {
-			get { return GetChildByRole (Roles.Type); }
-			set { SetChildByRole (Roles.Type, value); }
+			get { return GetChildByRole(Roles.Type); }
+			set { SetChildByRole(Roles.Type, value); }
 		}
-		
-		public string VariableName {
-			get {
-				return GetChildByRole (Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create (value));
-			}
+
+		public VariableDesignation VariableDesignation {
+			get { return GetChildByRole(Roles.VariableDesignationRole); }
+			set { SetChildByRole(Roles.VariableDesignationRole, value); }
 		}
-		
-		public Identifier VariableNameToken {
-			get {
-				return GetChildByRole (Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-		
+
 		public CSharpTokenNode InToken {
-			get { return GetChildByRole (InKeywordRole); }
+			get { return GetChildByRole(InKeywordRole); }
 		}
-		
+
 		public Expression InExpression {
-			get { return GetChildByRole (Roles.Expression); }
-			set { SetChildByRole (Roles.Expression, value); }
+			get { return GetChildByRole(Roles.Expression); }
+			set { SetChildByRole(Roles.Expression, value); }
 		}
-		
+
 		public CSharpTokenNode RParToken {
-			get { return GetChildByRole (Roles.RPar); }
+			get { return GetChildByRole(Roles.RPar); }
 		}
-		
+
 		public Statement EmbeddedStatement {
-			get { return GetChildByRole (Roles.EmbeddedStatement); }
-			set { SetChildByRole (Roles.EmbeddedStatement, value); }
+			get { return GetChildByRole(Roles.EmbeddedStatement); }
+			set { SetChildByRole(Roles.EmbeddedStatement, value); }
 		}
-		
-		public override void AcceptVisitor (IAstVisitor visitor)
+
+		public override void AcceptVisitor(IAstVisitor visitor)
 		{
-			visitor.VisitForeachStatement (this);
+			visitor.VisitForeachStatement(this);
 		}
-			
-		public override T AcceptVisitor<T> (IAstVisitor<T> visitor)
+
+		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
 		{
-			return visitor.VisitForeachStatement (this);
+			return visitor.VisitForeachStatement(this);
 		}
-		
-		public override S AcceptVisitor<T, S> (IAstVisitor<T, S> visitor, T data)
+
+		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
 		{
-			return visitor.VisitForeachStatement (this, data);
+			return visitor.VisitForeachStatement(this, data);
 		}
-		
+
 		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
 		{
 			ForeachStatement o = other as ForeachStatement;
-			return o != null && this.VariableType.DoMatch(o.VariableType, match) && MatchString(this.VariableName, o.VariableName)
+			return o != null && this.VariableType.DoMatch(o.VariableType, match) && this.VariableDesignation.DoMatch(o.VariableDesignation, match)
 				&& this.InExpression.DoMatch(o.InExpression, match) && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match);
 		}
 	}

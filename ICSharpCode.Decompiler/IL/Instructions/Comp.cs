@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -18,9 +19,9 @@
 
 using System;
 using System.Diagnostics;
+
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -33,17 +34,18 @@ namespace ICSharpCode.Decompiler.IL
 		GreaterThan,
 		GreaterThanOrEqual
 	}
-	
+
 	static class ComparisonKindExtensions
 	{
 		public static bool IsEqualityOrInequality(this ComparisonKind kind)
 		{
 			return kind == ComparisonKind.Equality || kind == ComparisonKind.Inequality;
 		}
-		
+
 		public static ComparisonKind Negate(this ComparisonKind kind)
 		{
-			switch (kind) {
+			switch (kind)
+			{
 				case ComparisonKind.Equality:
 					return ComparisonKind.Inequality;
 				case ComparisonKind.Inequality:
@@ -60,10 +62,11 @@ namespace ICSharpCode.Decompiler.IL
 					throw new ArgumentOutOfRangeException();
 			}
 		}
-		
+
 		public static BinaryOperatorType ToBinaryOperatorType(this ComparisonKind kind)
 		{
-			switch (kind) {
+			switch (kind)
+			{
 				case ComparisonKind.Equality:
 					return BinaryOperatorType.Equality;
 				case ComparisonKind.Inequality:
@@ -80,13 +83,13 @@ namespace ICSharpCode.Decompiler.IL
 					throw new ArgumentOutOfRangeException();
 			}
 		}
-		
+
 		public static string GetToken(this ComparisonKind kind)
 		{
 			return BinaryOperatorExpression.GetOperatorRole(kind.ToBinaryOperatorType()).Token;
 		}
 	}
-	
+
 	public enum ComparisonLiftingKind
 	{
 		/// <summary>
@@ -164,10 +167,13 @@ namespace ICSharpCode.Decompiler.IL
 		internal override void CheckInvariant(ILPhase phase)
 		{
 			base.CheckInvariant(phase);
-			if (LiftingKind == ComparisonLiftingKind.None) {
+			if (LiftingKind == ComparisonLiftingKind.None)
+			{
 				Debug.Assert(Left.ResultType == InputType);
 				Debug.Assert(Right.ResultType == InputType);
-			} else {
+			}
+			else
+			{
 				Debug.Assert(Left.ResultType == InputType || Left.ResultType == StackType.O);
 				Debug.Assert(Right.ResultType == InputType || Right.ResultType == StackType.O);
 			}
@@ -176,7 +182,8 @@ namespace ICSharpCode.Decompiler.IL
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
-			if (options.UseLogicOperationSugar && MatchLogicNot(out var arg)) {
+			if (options.UseLogicOperationSugar && MatchLogicNot(out var arg))
+			{
 				output.Write("logic.not(");
 				arg.WriteTo(output, options);
 				output.Write(')');
@@ -185,7 +192,8 @@ namespace ICSharpCode.Decompiler.IL
 			output.Write(OpCode);
 			output.Write('.');
 			output.Write(InputType.ToString().ToLower());
-			switch (Sign) {
+			switch (Sign)
+			{
 				case Sign.Signed:
 					output.Write(".signed");
 					break;
@@ -193,7 +201,8 @@ namespace ICSharpCode.Decompiler.IL
 					output.Write(".unsigned");
 					break;
 			}
-			switch (LiftingKind) {
+			switch (LiftingKind)
+			{
 				case ComparisonLiftingKind.CSharp:
 					output.Write(".lifted[C#]");
 					break;
@@ -214,7 +223,11 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			return new Comp(ComparisonKind.Equality, Sign.None, arg, new LdcI4(0));
 		}
+
+		public static Comp LogicNot(ILInstruction arg, bool isLifted)
+		{
+			var liftingKind = isLifted ? ComparisonLiftingKind.ThreeValuedLogic : ComparisonLiftingKind.None;
+			return new Comp(ComparisonKind.Equality, liftingKind, StackType.I4, Sign.None, arg, new LdcI4(0));
+		}
 	}
 }
-
-

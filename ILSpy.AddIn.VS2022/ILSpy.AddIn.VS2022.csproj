@@ -1,0 +1,190 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>ICSharpCode.ILSpy.AddIn</RootNamespace>
+
+    <Company>IC#Code</Company>
+    <Description>ILSpy</Description>
+    <Version>1.7.1.0</Version>
+    <FileVersion>1.7.1.0</FileVersion>
+    <LangVersion>9.0</LangVersion>
+
+    <EnableDefaultItems>False</EnableDefaultItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>TRACE;VSADDIN;VS2022</DefineConstants>
+
+    <SignAssembly>True</SignAssembly>
+    <AssemblyOriginatorKeyFile>Key.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(AppVeyor)' != ''">
+    <DeployExtension>False</DeployExtension>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Design" />
+  </ItemGroup>
+
+  <Import Project="..\packages.props" />
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.31902.203" />
+    <!-- Intentionally using an old Roslyn version in the AddIn, so that we stay compatible with old VS versions. -->
+    <PackageReference Include="Microsoft.CodeAnalysis" Version="2.4.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="2.4.0" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="2.4.0" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.0.5232">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Mono.Cecil" Version="$(MonoCecilVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ILSpy\ILSpy.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\AssemblyReferences.cs" Link="Decompiler\AssemblyReferences.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\DotNetCorePathFinder.cs" Link="Decompiler\DotNetCorePathFinder.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\JsonArray.cs" Link="Decompiler\LightJson\JsonArray.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\JsonObject.cs" Link="Decompiler\LightJson\JsonObject.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\JsonValue.cs" Link="Decompiler\LightJson\JsonValue.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\JsonValueType.cs" Link="Decompiler\LightJson\JsonValueType.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\Serialization\JsonParseException.cs" Link="Decompiler\LightJson\Serialization\JsonParseException.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\Serialization\JsonReader.cs" Link="Decompiler\LightJson\Serialization\JsonReader.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\Serialization\TextPosition.cs" Link="Decompiler\LightJson\Serialization\TextPosition.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\LightJson\Serialization\TextScanner.cs" Link="Decompiler\LightJson\Serialization\TextScanner.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Metadata\UniversalAssemblyResolver.cs" Link="UniversalAssemblyResolver.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Util\EmptyList.cs" Link="Decompiler\EmptyList.cs" />
+    <Compile Include="..\ICSharpCode.Decompiler\Util\NullAttributes.cs" Link="NullAttributes.cs" />
+    <Compile Include="..\ILSpy\NativeMethods.cs" Link="NativeMethods.cs" />
+    <Compile Include="Decompiler\Dummy.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <!--
+  BEGIN WORKAROUND:
+  Nuget packages do not get added to the vsix automatically.
+  (related to https://github.com/icsharpcode/ILSpy/issues/511)
+  -->
+  <PropertyGroup>
+    <ILSpyBuildPath>..\ILSpy\bin\$(Configuration)\$(TargetFramework)\</ILSpyBuildPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="$(OutputPath)Mono.Cecil.dll">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>\</VSIXSubPath>
+    </Content>
+  </ItemGroup>
+  <!-- END WORKAROUND -->
+
+  <ItemGroup>
+    <Content Include="$(ILSpyBuildPath)*.dll;$(ILSpyBuildPath)ILSpy.exe;$(ILSpyBuildPath)ILSpy.exe.config">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>\ILSpy</VSIXSubPath>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="$(ILSpyBuildPath)zh-Hans\ILSpy.resources.dll;$(ILSpyBuildPath)zh-Hans\ILSpy.ReadyToRun.Plugin.resources.dll;">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <VSIXSubPath>\ILSpy\zh-Hans\</VSIXSubPath>
+    </Content>
+    <Content Include="ILSpy-Large.ico">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\Images.png" />
+    <Content Include="Resources\Package.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="ILSpyAddIn.en-US.vsct">
+      <SubType>Designer</SubType>
+    </None>
+    <None Include="ILSpyAddIn.vsct">
+      <SubType>Designer</SubType>
+    </None>
+    <None Include="ILSpyAddIn.zh-Hans.vsct">
+      <SubType>Designer</SubType>
+    </None>
+    <None Include="source.extension.vsixmanifest.template" />
+    <None Include="source.extension.vsixmanifest">
+      <SubType>Designer</SubType>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="zh-Hans\extension.vsixlangpack">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <VSCTCompile Include="ILSpyAddIn.en-US.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+      <SubType>Designer</SubType>
+      <DependentUpon>ILSpyAddIn.vsct</DependentUpon>
+    </VSCTCompile>
+    <VSCTCompile Include="ILSpyAddIn.zh-Hans.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+      <SubType>Designer</SubType>
+      <DependentUpon>ILSpyAddIn.vsct</DependentUpon>
+    </VSCTCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Key.snk" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Properties\launchSettings.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\doc\license.txt" Link="license.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <UseCodebase>true</UseCodebase>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+    <RunAnalyzersDuringLiveAnalysis>true</RunAnalyzersDuringLiveAnalysis>
+    <Product>ILSpy.AddIn for Visual Studio 2022</Product>
+  </PropertyGroup>
+
+  <Import Project="..\ILSpy.AddIn.Shared\ILSpy.AddIn.Shared.projitems" Label="Shared" />
+
+  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
+
+  <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="Exists('$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets')" />
+
+  <ItemGroup>
+    <Compile Update="..\ILSpy.AddIn.Shared\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Resources\" />
+  </ItemGroup>
+
+</Project>

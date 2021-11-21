@@ -16,10 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Xml.Linq;
+
 using ICSharpCode.ILSpy.ViewModels;
 
 namespace ICSharpCode.ILSpy
@@ -37,13 +37,14 @@ namespace ICSharpCode.ILSpy
 		{
 			this.spySettings = spySettings;
 			XElement doc = spySettings["AssemblyLists"];
-			foreach (var list in doc.Elements("List")) {
+			foreach (var list in doc.Elements("List"))
+			{
 				AssemblyLists.Add((string)list.Attribute("name"));
 			}
 		}
-		
+
 		public ObservableCollection<string> AssemblyLists { get; } = new ObservableCollection<string>();
-		
+
 		/// <summary>
 		/// Loads an assembly list from the ILSpySettings.
 		/// If no list with the specified name is found, the default list is loaded instead.
@@ -56,13 +57,16 @@ namespace ICSharpCode.ILSpy
 				AssemblyLists.Add(list.ListName);
 			return list;
 		}
-		
+
 		AssemblyList DoLoadList(ILSpySettings spySettings, string listName)
 		{
 			XElement doc = spySettings["AssemblyLists"];
-			if (listName != null) {
-				foreach (var list in doc.Elements("List")) {
-					if ((string)list.Attribute("name") == listName) {
+			if (listName != null)
+			{
+				foreach (var list in doc.Elements("List"))
+				{
+					if ((string)list.Attribute("name") == listName)
+					{
 						return new AssemblyList(list);
 					}
 				}
@@ -85,7 +89,7 @@ namespace ICSharpCode.ILSpy
 		}
 
 		public const string DefaultListName = "(Default)";
-		
+
 		/// <summary>
 		/// Saves the specifies assembly list into the config file.
 		/// </summary>
@@ -94,7 +98,8 @@ namespace ICSharpCode.ILSpy
 			ILSpySettings.Update(
 				delegate (XElement root) {
 					XElement doc = root.Element("AssemblyLists");
-					if (doc == null) {
+					if (doc == null)
+					{
 						doc = new XElement("AssemblyLists");
 						root.Add(doc);
 					}
@@ -119,13 +124,10 @@ namespace ICSharpCode.ILSpy
 
 		public bool DeleteList(string Name)
 		{
-			if (AssemblyLists.Contains(Name))
+			if (AssemblyLists.Remove(Name))
 			{
-				AssemblyLists.Remove(Name);
-
 				ILSpySettings.Update(
-					delegate(XElement root)
-					{
+					delegate (XElement root) {
 						XElement doc = root.Element("AssemblyLists");
 						if (doc == null)
 						{
@@ -146,7 +148,8 @@ namespace ICSharpCode.ILSpy
 			ILSpySettings.Update(
 				delegate (XElement root) {
 					XElement doc = root.Element("AssemblyLists");
-					if (doc == null) {
+					if (doc == null)
+					{
 						return;
 					}
 					doc.Remove();
@@ -158,23 +161,29 @@ namespace ICSharpCode.ILSpy
 			if (AssemblyLists.Count > 0)
 				return;
 
-			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.DotNet4List)) {
+			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.DotNet4List))
+			{
 				AssemblyList dotnet4 = ManageAssemblyListsViewModel.CreateDefaultList(ManageAssemblyListsViewModel.DotNet4List);
-				if (dotnet4.assemblies.Count > 0) {
+				if (dotnet4.Count > 0)
+				{
 					CreateList(dotnet4);
 				}
 			}
 
-			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.DotNet35List)) {
+			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.DotNet35List))
+			{
 				AssemblyList dotnet35 = ManageAssemblyListsViewModel.CreateDefaultList(ManageAssemblyListsViewModel.DotNet35List);
-				if (dotnet35.assemblies.Count > 0) {
+				if (dotnet35.Count > 0)
+				{
 					CreateList(dotnet35);
 				}
 			}
 
-			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.ASPDotNetMVC3List)) {
+			if (!AssemblyLists.Contains(ManageAssemblyListsViewModel.ASPDotNetMVC3List))
+			{
 				AssemblyList mvc = ManageAssemblyListsViewModel.CreateDefaultList(ManageAssemblyListsViewModel.ASPDotNetMVC3List);
-				if (mvc.assemblies.Count > 0) {
+				if (mvc.Count > 0)
+				{
 					CreateList(mvc);
 				}
 			}

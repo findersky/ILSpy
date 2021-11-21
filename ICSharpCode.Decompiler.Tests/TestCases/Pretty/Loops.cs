@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -257,10 +258,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #endif
 		public struct DataItem
 		{
-			public int Property {
-				get;
-				set;
-			}
+			public int Property { get; set; }
 
 			public void TestCall()
 			{
@@ -270,6 +268,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public class Item
 		{
 
+		}
+
+		public class NonEnumerableArrayLike
+		{
+			private readonly int length;
+
+			public Item this[int index] {
+				get {
+					return null;
+				}
+			}
+
+			public int Length {
+				get {
+					return length;
+				}
+			}
 		}
 
 		private IEnumerable<string> alternatives;
@@ -290,14 +305,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOnField()
 		{
-			foreach (string alternative in alternatives) {
+			foreach (string alternative in alternatives)
+			{
 				alternative.ToLower();
 			}
 		}
 
 		public void ForEach(IEnumerable<string> alternatives)
 		{
-			foreach (string alternative in alternatives) {
+			foreach (string alternative in alternatives)
+			{
 				alternative.ToLower();
 			}
 		}
@@ -305,35 +322,40 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void ForEachOverList(List<string> list)
 		{
 			// List has a struct as enumerator, so produces quite different IL than foreach over the IEnumerable interface
-			foreach (string item in list) {
+			foreach (string item in list)
+			{
 				item.ToLower();
 			}
 		}
 
 		public void ForEachOverNonGenericEnumerable(IEnumerable enumerable)
 		{
-			foreach (object item in enumerable) {
+			foreach (object item in enumerable)
+			{
 				item.ToString();
 			}
 		}
 
 		public void ForEachOverNonGenericEnumerableWithAutomaticCastValueType(IEnumerable enumerable)
 		{
-			foreach (int item in enumerable) {
+			foreach (int item in enumerable)
+			{
 				item.ToString();
 			}
 		}
 
 		public void ForEachOverNonGenericEnumerableWithAutomaticCastRefType(IEnumerable enumerable)
 		{
-			foreach (string item in enumerable) {
+			foreach (string item in enumerable)
+			{
 				Console.WriteLine(item);
 			}
 		}
 
 		public void ForEachOnCustomClassEnumerator(CustomClassEnumerator e)
 		{
-			foreach (object item in e) {
+			foreach (object item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
@@ -350,7 +372,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOnGenericCustomClassEnumerator<T>(CustomClassEnumerator<T> e)
 		{
-			foreach (T item in e) {
+			foreach (T item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
@@ -367,28 +390,32 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOnCustomClassEnumeratorWithIDisposable(CustomClassEnumeratorWithIDisposable e)
 		{
-			foreach (object item in e) {
+			foreach (object item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
 
 		public void ForEachOnCustomStructEnumeratorWithIDisposable(CustomStructEnumeratorWithIDisposable e)
 		{
-			foreach (object item in e) {
+			foreach (object item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
 
 		public void ForEachOnGenericCustomClassEnumeratorWithIDisposable<T>(CustomClassEnumeratorWithIDisposable<T> e)
 		{
-			foreach (T item in e) {
+			foreach (T item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
 
 		public void ForEachOnGenericCustomStructEnumeratorWithIDisposable<T>(CustomStructEnumeratorWithIDisposable<T> e)
 		{
-			foreach (T item in e) {
+			foreach (T item in e)
+			{
 				Console.WriteLine(item);
 			}
 		}
@@ -397,16 +424,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			Console.WriteLine("NonGenericForeachWithReturnFallback:");
 			IEnumerator enumerator = e.GetEnumerator();
-			try {
+			try
+			{
 				Console.WriteLine("MoveNext");
-				if (enumerator.MoveNext()) {
+				if (enumerator.MoveNext())
+				{
 					object current = enumerator.Current;
 					Console.WriteLine("please don't inline 'current'");
 					Console.WriteLine(current);
 				}
-			} finally {
+			}
+			finally
+			{
 				IDisposable disposable = enumerator as IDisposable;
-				if (disposable != null) {
+				if (disposable != null)
+				{
 					disposable.Dispose();
 				}
 			}
@@ -415,7 +447,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void ForeachWithRefUsage(List<int> items)
 		{
-			foreach (int item in items) {
+			foreach (int item in items)
+			{
 #if ROSLYN && OPT
 				// The variable name differs based on whether roslyn optimizes out the 'item' variable
 				int i = item;
@@ -429,7 +462,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void ForeachWithCapturedVariable(List<int> items)
 		{
-			foreach (int item in items) {
+			foreach (int item in items)
+			{
 				int c = item;
 				Operation(() => c == 5);
 			}
@@ -438,7 +472,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static T LastOrDefault<T>(IEnumerable<T> items)
 		{
 			T result = default(T);
-			foreach (T item in items) {
+			foreach (T item in items)
+			{
 				result = item;
 			}
 			return result;
@@ -446,14 +481,25 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOverArray(string[] array)
 		{
-			foreach (string text in array) {
+			foreach (string text in array)
+			{
 				Console.WriteLine(text.ToLower() + text.ToUpper());
+			}
+		}
+
+		public void ForOverNonArray(NonEnumerableArrayLike array)
+		{
+			for (int i = 0; i < array.Length; i++)
+			{
+				Item item = array[i];
+				Console.WriteLine(item.ToString() + item.ToString());
 			}
 		}
 
 		public unsafe void ForEachOverArrayOfPointers(int*[] array)
 		{
-			foreach (int* value in array) {
+			foreach (int* value in array)
+			{
 				Console.WriteLine(new IntPtr(value));
 				Console.WriteLine(new IntPtr(value));
 			}
@@ -461,16 +507,30 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachBreakWhenFound(string name, ref StringComparison output)
 		{
-#if MCS
-			foreach (int value in Enum.GetValues(typeof(StringComparison))) {
-				if (((StringComparison)value).ToString() == name) {
+#if MCS2
+			foreach (int value in Enum.GetValues(typeof(StringComparison)))
+			{
+				if (((StringComparison)value).ToString() == name)
+				{
+					output = (StringComparison)value;
+					break;
+				}
+			}
+#elif MCS5
+			foreach (int value in Enum.GetValues(typeof(StringComparison)))
+			{
+				StringComparison stringComparison = (StringComparison)value;
+				if (stringComparison.ToString() == name)
+				{
 					output = (StringComparison)value;
 					break;
 				}
 			}
 #else
-			foreach (StringComparison value in Enum.GetValues(typeof(StringComparison))) {
-				if (value.ToString() == name) {
+			foreach (StringComparison value in Enum.GetValues(typeof(StringComparison)))
+			{
+				if (value.ToString() == name)
+				{
 					output = value;
 					break;
 				}
@@ -480,7 +540,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOverListOfStruct(List<DataItem> items, int value)
 		{
-			foreach (DataItem item in items) {
+			foreach (DataItem item in items)
+			{
 #if ROSLYN && OPT
 				// The variable name differs based on whether roslyn optimizes out the 'item' variable
 				DataItem current = item;
@@ -494,7 +555,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOverListOfStruct2(List<DataItem> items, int value)
 		{
-			foreach (DataItem item in items) {
+			foreach (DataItem item in items)
+			{
 #if ROSLYN && OPT
 				// The variable name differs based on whether roslyn optimizes out the 'item' variable
 				DataItem current = item;
@@ -510,7 +572,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOverListOfStruct3(List<DataItem> items, int value)
 		{
-			foreach (DataItem item in items) {
+			foreach (DataItem item in items)
+			{
 				item.TestCall();
 			}
 		}
@@ -518,7 +581,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if !MCS
 		public void ForEachOverMultiDimArray(int[,] items)
 		{
-			foreach (int value in items) {
+			foreach (int value in items)
+			{
 				Console.WriteLine(value);
 				Console.WriteLine(value);
 			}
@@ -526,7 +590,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForEachOverMultiDimArray2(int[,,] items)
 		{
-			foreach (int value in items) {
+			foreach (int value in items)
+			{
 				Console.WriteLine(value);
 				Console.WriteLine(value);
 			}
@@ -535,12 +600,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public unsafe void ForEachOverMultiDimArray3(int*[,] items)
 		{
 #if ROSLYN && OPT
-			foreach (int* intPtr in items) {
+			foreach (int* intPtr in items)
+			{
 				Console.WriteLine(*intPtr);
 				Console.WriteLine(*intPtr);
 			}
 #else
-			foreach (int* ptr in items) {
+			foreach (int* ptr in items)
+			{
 				Console.WriteLine(*ptr);
 				Console.WriteLine(*ptr);
 			}
@@ -548,20 +615,35 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 #endif
 
-#endregion
+		#endregion
 
 		public void ForOverArray(string[] array)
 		{
-			for (int i = 0; i < array.Length; i++) {
+			for (int i = 0; i < array.Length; i++)
+			{
 				array[i].ToLower();
+			}
+		}
+
+		private static void AppendNamePart(string part, StringBuilder name)
+		{
+			foreach (char c in part)
+			{
+				if (c == '\\')
+				{
+					name.Append('\\');
+				}
+				name.Append(c);
 			}
 		}
 
 		public void NoForeachOverArray(string[] array)
 		{
-			for (int i = 0; i < array.Length; i++) {
+			for (int i = 0; i < array.Length; i++)
+			{
 				string value = array[i];
-				if (i % 5 == 0) {
+				if (i % 5 == 0)
+				{
 					Console.WriteLine(value);
 				}
 			}
@@ -569,12 +651,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void NestedLoops()
 		{
-			for (int i = 0; i < 10; i++) {
-				if (i % 2 == 0) {
-					for (int j = 0; j < 5; j++) {
+			for (int i = 0; i < 10; i++)
+			{
+				if (i % 2 == 0)
+				{
+					for (int j = 0; j < 5; j++)
+					{
 						Console.WriteLine("Y");
 					}
-				} else {
+				}
+				else
+				{
 					Console.WriteLine("X");
 				}
 			}
@@ -583,17 +670,22 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public int MultipleExits()
 		{
 			int num = 0;
-			while (true) {
-				if (num % 4 == 0) {
+			while (true)
+			{
+				if (num % 4 == 0)
+				{
 					return 4;
 				}
-				if (num % 7 == 0) {
+				if (num % 7 == 0)
+				{
 					break;
 				}
-				if (num % 9 == 0) {
+				if (num % 9 == 0)
+				{
 					return 5;
 				}
-				if (num % 11 == 0) {
+				if (num % 11 == 0)
+				{
 					break;
 				}
 				num++;
@@ -630,18 +722,25 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public int InterestingLoop()
 		{
 			int num = 0;
-			if (num % 11 == 0) {
-				while (true) {
-					if (num % 4 == 0) {
-						if (num % 7 != 0) {
+			if (num % 11 == 0)
+			{
+				while (true)
+				{
+					if (num % 4 == 0)
+					{
+						if (num % 7 != 0)
+						{
 							Console.WriteLine("!7");
 							break;
 						}
-						if (num % 11 != 0) {
+						if (num % 11 != 0)
+						{
 							Console.WriteLine("7");
 							break;
 						}
-					} else {
+					}
+					else
+					{
 						num++;
 					}
 				}
@@ -659,14 +758,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void WhileLoop()
 		{
 			Console.WriteLine("Initial");
-			if (Condition("if")) {
-				while (Condition("while")) {
+			if (Condition("if"))
+			{
+				while (Condition("while"))
+				{
 					Console.WriteLine("Loop Body");
-					if (Condition("test")) {
-						if (Condition("continue")) {
+					if (Condition("test"))
+					{
+						if (Condition("continue"))
+						{
 							continue;
 						}
-						if (!Condition("break")) {
+						if (!Condition("break"))
+						{
 							break;
 						}
 					}
@@ -676,20 +780,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 			Console.WriteLine("End of method");
 		}
-		
+
 		//other configurations work fine, just with different labels
 #if OPT && !MCS
 		public void WhileWithGoto()
 		{
-			while (Condition("Main Loop")) {
-				if (Condition("Condition")) {
+			while (Condition("Main Loop"))
+			{
+				if (Condition("Condition"))
+				{
 					goto IL_000f;
 				}
 				// TODO reorder branches with successive block?
 				goto IL_0026;
 				IL_000f:
 				Console.WriteLine("Block1");
-				if (Condition("Condition2")) {
+				if (Condition("Condition2"))
+				{
 					continue;
 				}
 				// TODO remove redundant goto?
@@ -704,14 +811,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void DoWhileLoop()
 		{
 			Console.WriteLine("Initial");
-			if (Condition("if")) {
-				do {
+			if (Condition("if"))
+			{
+				do
+				{
 					Console.WriteLine("Loop Body");
-					if (Condition("test")) {
-						if (Condition("continue")) {
+					if (Condition("test"))
+					{
+						if (Condition("continue"))
+						{
 							continue;
 						}
-						if (!Condition("break")) {
+						if (!Condition("break"))
+						{
 							break;
 						}
 					}
@@ -725,30 +837,38 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void Issue1395(int count)
 		{
 			Environment.GetCommandLineArgs();
-			for (int i = 0; i < count; i++) {
+			for (int i = 0; i < count; i++)
+			{
 				Environment.GetCommandLineArgs();
-				do {
+				do
+				{
 #if OPT || MCS
 					IL_0013:
 #else
 					IL_0016:
 #endif
 					Environment.GetCommandLineArgs();
-					if (Condition("part1")) {
+					if (Condition("part1"))
+					{
 						Environment.GetEnvironmentVariables();
-						if (Condition("restart")) {
+						if (Condition("restart"))
+						{
 #if OPT || MCS
 							goto IL_0013;
 #else
 							goto IL_0016;
 #endif
 						}
-					} else {
+					}
+					else
+					{
 						Environment.GetLogicalDrives();
 					}
 					Environment.GetCommandLineArgs();
-					while (count > 0) {
-						switch (count) {
+					while (count > 0)
+					{
+						switch (count)
+						{
 							case 0:
 							case 1:
 							case 2:
@@ -774,14 +894,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public void ForLoop()
 		{
 			Console.WriteLine("Initial");
-			if (Condition("if")) {
-				for (int i = 0; Condition("for"); i++) {
+			if (Condition("if"))
+			{
+				for (int i = 0; Condition("for"); i++)
+				{
 					Console.WriteLine("Loop Body");
-					if (Condition("test")) {
-						if (Condition("continue")) {
+					if (Condition("test"))
+					{
+						if (Condition("continue"))
+						{
 							continue;
 						}
-						if (!Condition("not-break")) {
+						if (!Condition("not-break"))
+						{
 							break;
 						}
 					}
@@ -794,15 +919,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ReturnFromDoWhileInTryFinally()
 		{
-			try {
-				do {
-					if (Condition("return")) {
+			try
+			{
+				do
+				{
+					if (Condition("return"))
+					{
 						return;
 					}
 				} while (Condition("repeat"));
 
 				Environment.GetCommandLineArgs();
-			} finally {
+			}
+			finally
+			{
 				Environment.GetCommandLineArgs();
 			}
 
@@ -811,10 +941,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForLoopWithEarlyReturn(int[] ids)
 		{
-			for (int i = 0; i < ids.Length; i++) {
+			for (int i = 0; i < ids.Length; i++)
+			{
 				Item item = null;
 				TryGetItem(ids[i], out item);
-				if (item == null) {
+				if (item == null)
+				{
 					break;
 				}
 			}
@@ -822,8 +954,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void ForeachLoopWithEarlyReturn(List<object> items)
 		{
-			foreach (object item in items) {
-				if ((someObject = item) == null) {
+			foreach (object item in items)
+			{
+				if ((someObject = item) == null)
+				{
 					break;
 				}
 			}
@@ -831,16 +965,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void NestedForeach(List<object> items1, List<object> items2)
 		{
-			foreach (object item in items1) {
+			foreach (object item in items1)
+			{
 				bool flag = false;
-				foreach (object item2 in items2) {
-					if (item2 == item) {
+				foreach (object item2 in items2)
+				{
+					if (item2 == item)
+					{
 						flag = true;
 						break;
 					}
 				}
 
-				if (!flag) {
+				if (!flag)
+				{
 					Console.WriteLine(item);
 				}
 			}
@@ -849,26 +987,58 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void MergeAroundContinue()
 		{
-			for (int i = 0; i < 20; i++) {
-				if (i % 3 == 0) {
-					if (i != 6) {
+			for (int i = 0; i < 20; i++)
+			{
+				if (i % 3 == 0)
+				{
+					if (i != 6)
+					{
 						continue;
 					}
-				} else if (i % 5 == 0) {
-					if (i != 5) {
+				}
+				else if (i % 5 == 0)
+				{
+					if (i != 5)
+					{
 						continue;
 					}
-				} else if (i % 7 == 0) {
-					if (i != 7) {
+				}
+				else if (i % 7 == 0)
+				{
+					if (i != 7)
+					{
 						continue;
 					}
-				} else if (i % 11 == 0) {
+				}
+				else if (i % 11 == 0)
+				{
 					continue;
 				}
-				
+
 				Console.WriteLine(i);
 			}
 			Console.WriteLine("end");
+		}
+
+		public void ForEachInSwitch(int i, IEnumerable<string> args)
+		{
+			switch (i)
+			{
+
+				case 1:
+					Console.WriteLine("one");
+					break;
+				case 2:
+				{
+					foreach (string arg in args)
+					{
+						Console.WriteLine(arg);
+					}
+					break;
+				}
+				default:
+					throw new NotImplementedException();
+			}
 		}
 	}
 }

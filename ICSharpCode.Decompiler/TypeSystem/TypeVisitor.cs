@@ -16,7 +16,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -30,27 +29,27 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		{
 			return type.VisitChildren(this);
 		}
-		
+
 		public virtual IType VisitTypeParameter(ITypeParameter type)
 		{
 			return type.VisitChildren(this);
 		}
-		
+
 		public virtual IType VisitParameterizedType(ParameterizedType type)
 		{
 			return type.VisitChildren(this);
 		}
-		
+
 		public virtual IType VisitArrayType(ArrayType type)
 		{
 			return type.VisitChildren(this);
 		}
-		
+
 		public virtual IType VisitPointerType(PointerType type)
 		{
 			return type.VisitChildren(this);
 		}
-		
+
 		public virtual IType VisitByReferenceType(ByReferenceType type)
 		{
 			return type.VisitChildren(this);
@@ -77,6 +76,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		public virtual IType VisitNullabilityAnnotatedType(NullabilityAnnotatedType type)
+		{
+			return type.VisitChildren(this);
+		}
+
+		public virtual IType VisitFunctionPointerType(FunctionPointerType type)
 		{
 			return type.VisitChildren(this);
 		}

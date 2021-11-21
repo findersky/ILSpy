@@ -16,45 +16,109 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+// #define STRESS
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection.Metadata;
-using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
-using Iced.Intel;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.TextView;
+
 using ILCompiler.Reflection.ReadyToRun;
 
 namespace ICSharpCode.ILSpy.ReadyToRun
 {
+#if STRESS
+	class DummyOutput : ITextOutput
+	{
+		public string IndentationString { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+
+		public void Indent()
+		{
+		}
+
+		public void MarkFoldEnd()
+		{
+		}
+
+		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false)
+		{
+		}
+
+		public void Unindent()
+		{
+		}
+
+		public void Write(char ch)
+		{
+		}
+
+		public void Write(string text)
+		{
+		}
+
+		public void WriteLine()
+		{
+		}
+
+		public void WriteLocalReference(string text, object reference, bool isDefinition = false)
+		{
+		}
+
+		public void WriteReference(OpCodeInfo opCode, bool omitSuffix = false)
+		{
+		}
+
+		public void WriteReference(PEFile module, Handle handle, string text, string protocol = "decompile", bool isDefinition = false)
+		{
+		}
+
+		public void WriteReference(IType type, string text, bool isDefinition = false)
+		{
+		}
+
+		public void WriteReference(IMember member, string text, bool isDefinition = false)
+		{
+		}
+	}
+#endif
+
 	[Export(typeof(Language))]
 	internal class ReadyToRunLanguage : Language
 	{
 		private static readonly ConditionalWeakTable<PEFile, ReadyToRunReaderCacheEntry> readyToRunReaders = new ConditionalWeakTable<PEFile, ReadyToRunReaderCacheEntry>();
+
 		public override string Name => "ReadyToRun";
 
 		public override string FileExtension {
 			get { return ".asm"; }
 		}
 
+		public override void WriteCommentLine(ITextOutput output, string comment)
+		{
+			output.WriteLine("; " + comment);
+		}
+
 		public override ProjectId DecompileAssembly(LoadedAssembly assembly, ITextOutput output, DecompilationOptions options)
 		{
-			PEFile module = assembly.GetPEFileOrNull();
+			PEFile module = assembly.GetPEFileAsync().GetAwaiter().GetResult();
 			ReadyToRunReaderCacheEntry cacheEntry = GetReader(assembly, module);
-			if (cacheEntry.readyToRunReader == null) {
+			if (cacheEntry.readyToRunReader == null)
+			{
 				WriteCommentLine(output, cacheEntry.failureReason);
-			} else {
+			}
+			else
+			{
 				ReadyToRunReader reader = cacheEntry.readyToRunReader;
 				WriteCommentLine(output, reader.Machine.ToString());
 				WriteCommentLine(output, reader.OperatingSystem.ToString());
@@ -69,133 +133,54 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		{
 			PEFile module = method.ParentModule.PEFile;
 			ReadyToRunReaderCacheEntry cacheEntry = GetReader(module.GetLoadedAssembly(), module);
-			if (cacheEntry.readyToRunReader == null) {
+			if (cacheEntry.readyToRunReader == null)
+			{
 				WriteCommentLine(output, cacheEntry.failureReason);
-			} else {
+			}
+			else
+			{
 				ReadyToRunReader reader = cacheEntry.readyToRunReader;
 				int bitness = -1;
-				if (reader.Machine == Machine.Amd64) {
+				if (reader.Machine == Machine.Amd64)
+				{
 					bitness = 64;
-				} else {
+				}
+				else
+				{
 					Debug.Assert(reader.Machine == Machine.I386);
 					bitness = 32;
 				}
-				if (cacheEntry.methodMap == null) {
-					cacheEntry.methodMap = reader.Methods.Values
-						.SelectMany(m => m)
+				if (cacheEntry.methodMap == null)
+				{
+					cacheEntry.methodMap = reader.Methods.ToList()
 						.GroupBy(m => m.MethodHandle)
 						.ToDictionary(g => g.Key, g => g.ToArray());
 				}
 				bool showMetadataTokens = ILSpy.Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokens;
 				bool showMetadataTokensInBase10 = ILSpy.Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokensInBase10;
-				if (cacheEntry.methodMap.TryGetValue(method.MetadataToken, out var methods)) {
-					foreach (var readyToRunMethod in methods) {
-						foreach (RuntimeFunction runtimeFunction in readyToRunMethod.RuntimeFunctions) {
-							Disassemble(method.ParentModule.PEFile, output, reader, readyToRunMethod, runtimeFunction, bitness, (ulong)runtimeFunction.StartAddress, showMetadataTokens, showMetadataTokensInBase10);
+#if STRESS
+				ITextOutput originalOutput = output;
+				output = new DummyOutput();
+				{
+					foreach (var readyToRunMethod in reader.Methods)
+					{
+#else
+				if (cacheEntry.methodMap.TryGetValue(method.MetadataToken, out var methods))
+				{
+					foreach (var readyToRunMethod in methods)
+					{
+#endif
+						foreach (RuntimeFunction runtimeFunction in readyToRunMethod.RuntimeFunctions)
+						{
+							new ReadyToRunDisassembler(output, reader, runtimeFunction).Disassemble(method.ParentModule.PEFile, bitness, (ulong)runtimeFunction.StartAddress, showMetadataTokens, showMetadataTokensInBase10);
 						}
 					}
 				}
+#if STRESS
+				output = originalOutput;
+				output.WriteLine("Passed");
+#endif
 			}
-		}
-
-		public override void WriteCommentLine(ITextOutput output, string comment)
-		{
-			output.WriteLine("; " + comment);
-		}
-
-		private void Disassemble(PEFile currentFile, ITextOutput output, ReadyToRunReader reader, ReadyToRunMethod readyToRunMethod, RuntimeFunction runtimeFunction, int bitness, ulong address, bool showMetadataTokens, bool showMetadataTokensInBase10)
-		{
-			WriteCommentLine(output, readyToRunMethod.SignatureString);
-			byte[] codeBytes = new byte[runtimeFunction.Size];
-			for (int i = 0; i < runtimeFunction.Size; i++) {
-				codeBytes[i] = reader.Image[reader.GetOffset(runtimeFunction.StartAddress) + i];
-			}
-
-			// TODO: Decorate the disassembly with Unwind, GC and debug info
-			var codeReader = new ByteArrayCodeReader(codeBytes);
-			var decoder = Decoder.Create(bitness, codeReader);
-			decoder.IP = address;
-			ulong endRip = decoder.IP + (uint)codeBytes.Length;
-
-			var instructions = new InstructionList();
-			while (decoder.IP < endRip) {
-				decoder.Decode(out instructions.AllocUninitializedElement());
-			}
-
-			string disassemblyFormat = ReadyToRunOptions.GetDisassemblyFormat(null);
-			Formatter formatter = null;
-			if (disassemblyFormat.Equals(ReadyToRunOptions.intel)) {
-				formatter = new NasmFormatter();
-			} else {
-				Debug.Assert(disassemblyFormat.Equals(ReadyToRunOptions.gas));
-				formatter = new GasFormatter();
-			}
-			formatter.Options.DigitSeparator = "`";
-			formatter.Options.FirstOperandCharIndex = 10;
-			var tempOutput = new StringOutput();
-			foreach (var instr in instructions) {
-				int byteBaseIndex = (int)(instr.IP - address);
-				if (runtimeFunction.DebugInfo != null) {
-					foreach (var bound in runtimeFunction.DebugInfo.BoundsList) {
-						if (bound.NativeOffset == byteBaseIndex) {
-							if (bound.ILOffset == (uint)DebugInfoBoundsType.Prolog) {
-								WriteCommentLine(output, "Prolog");
-							} else if (bound.ILOffset == (uint)DebugInfoBoundsType.Epilog) {
-								WriteCommentLine(output, "Epilog");
-							} else {
-								WriteCommentLine(output, $"IL_{bound.ILOffset:x4}");
-							}
-						}
-					}
-				}
-				formatter.Format(instr, tempOutput);
-				output.Write(instr.IP.ToString("X16"));
-				output.Write(" ");
-				int instrLen = instr.Length;
-				for (int i = 0; i < instrLen; i++)
-					output.Write(codeBytes[byteBaseIndex + i].ToString("X2"));
-				int missingBytes = 10 - instrLen;
-				for (int i = 0; i < missingBytes; i++)
-					output.Write("  ");
-				output.Write(" ");
-				output.Write(tempOutput.ToStringAndReset());
-				int importCellAddress = (int)instr.IPRelativeMemoryAddress;
-				if (instr.IsCallNearIndirect && reader.ImportCellNames.ContainsKey(importCellAddress)) {
-					output.Write(" ; ");
-					ReadyToRunSignature signature = reader.ImportSignatures[(int)instr.IPRelativeMemoryAddress];
-					switch(signature) {
-						case MethodDefEntrySignature methodDefSignature:
-							var methodDefToken = MetadataTokens.EntityHandle(unchecked((int)methodDefSignature.MethodDefToken));
-							if (showMetadataTokens) {
-								if (showMetadataTokensInBase10) {
-									output.WriteReference(currentFile, methodDefToken, $"({MetadataTokens.GetToken(methodDefToken)}) ", "metadata");
-								} else {
-									output.WriteReference(currentFile, methodDefToken, $"({MetadataTokens.GetToken(methodDefToken):X8}) ", "metadata");
-								}
-							}
-							methodDefToken.WriteTo(currentFile, output, Decompiler.Metadata.GenericContext.Empty);
-							break;
-						case MethodRefEntrySignature methodRefSignature:
-							var methodRefToken = MetadataTokens.EntityHandle(unchecked((int)methodRefSignature.MethodRefToken));
-							if (showMetadataTokens) {
-								if (showMetadataTokensInBase10) {
-									output.WriteReference(currentFile, methodRefToken, $"({MetadataTokens.GetToken(methodRefToken)}) ", "metadata");
-								} else {
-									output.WriteReference(currentFile, methodRefToken, $"({MetadataTokens.GetToken(methodRefToken):X8}) ", "metadata");
-								}
-							}
-							methodRefToken.WriteTo(currentFile, output, Decompiler.Metadata.GenericContext.Empty);
-							break;
-						default:
-							output.WriteLine(reader.ImportCellNames[importCellAddress]);
-							break;
-					}
-					output.WriteLine();
-				} else {
-					output.WriteLine();
-				}
-			}
-			output.WriteLine();
 		}
 
 		public override RichText GetRichTextTooltip(IEntity entity)
@@ -206,16 +191,22 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		private ReadyToRunReaderCacheEntry GetReader(LoadedAssembly assembly, PEFile module)
 		{
 			ReadyToRunReaderCacheEntry result;
-			lock (readyToRunReaders) {
-				if (!readyToRunReaders.TryGetValue(module, out result)) {
+			lock (readyToRunReaders)
+			{
+				if (!readyToRunReaders.TryGetValue(module, out result))
+				{
 					result = new ReadyToRunReaderCacheEntry();
-					try {
-						result.readyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), module.Metadata, module.Reader, module.FileName);
-						if (result.readyToRunReader.Machine != Machine.Amd64 && result.readyToRunReader.Machine != Machine.I386) {
+					try
+					{
+						result.readyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), new StandaloneAssemblyMetadata(module.Reader), module.Reader, module.FileName);
+						if (result.readyToRunReader.Machine != Machine.Amd64 && result.readyToRunReader.Machine != Machine.I386)
+						{
 							result.failureReason = $"Architecture {result.readyToRunReader.Machine} is not currently supported.";
 							result.readyToRunReader = null;
 						}
-					} catch (BadImageFormatException e) {
+					}
+					catch (BadImageFormatException e)
+					{
 						result.failureReason = e.Message;
 					}
 					readyToRunReaders.Add(module, result);
@@ -226,24 +217,21 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 
 		private class ReadyToRunAssemblyResolver : ILCompiler.Reflection.ReadyToRun.IAssemblyResolver
 		{
-			private LoadedAssembly loadedAssembly;
+			private Decompiler.Metadata.IAssemblyResolver assemblyResolver;
+
 			public ReadyToRunAssemblyResolver(LoadedAssembly loadedAssembly)
 			{
-				this.loadedAssembly = loadedAssembly;
+				assemblyResolver = loadedAssembly.GetAssemblyResolver();
 			}
-			public bool Naked => false;
 
-			public bool SignatureBinary => false;
-
-			public bool InlineSignatureBinary => false;
-
-			public MetadataReader FindAssembly(MetadataReader metadataReader, AssemblyReferenceHandle assemblyReferenceHandle, string parentFile)
+			public IAssemblyMetadata FindAssembly(MetadataReader metadataReader, AssemblyReferenceHandle assemblyReferenceHandle, string parentFile)
 			{
-				LoadedAssembly loadedAssembly = this.loadedAssembly.LookupReferencedAssembly(new Decompiler.Metadata.AssemblyReference(metadataReader, assemblyReferenceHandle));
-				return loadedAssembly?.GetPEFileOrNull()?.Metadata;
+				PEFile module = assemblyResolver.Resolve(new Decompiler.Metadata.AssemblyReference(metadataReader, assemblyReferenceHandle));
+				PEReader reader = module?.Reader;
+				return reader == null ? null : new StandaloneAssemblyMetadata(reader);
 			}
 
-			public MetadataReader FindAssembly(string simpleName, string parentFile)
+			public IAssemblyMetadata FindAssembly(string simpleName, string parentFile)
 			{
 				// This is called only for the composite R2R scenario, 
 				// So it will never be called before the feature is released.

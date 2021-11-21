@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -35,7 +36,7 @@ namespace ICSharpCode.Decompiler.IL
 	/// </remarks>
 	partial class IfInstruction : ILInstruction
 	{
-		public IfInstruction(ILInstruction condition, ILInstruction trueInst, ILInstruction falseInst = null) : base(OpCode.IfInstruction)
+		public IfInstruction(ILInstruction condition, ILInstruction trueInst, ILInstruction? falseInst = null) : base(OpCode.IfInstruction)
 		{
 			this.Condition = condition;
 			this.TrueInst = trueInst;
@@ -47,7 +48,7 @@ namespace ICSharpCode.Decompiler.IL
 			return new IfInstruction(lhs, rhs, new LdcI4(0));
 		}
 
-		public static IfInstruction LogicOr(ILInstruction lhs, ILInstruction rhs)
+		public static IfInstruction LogicOr(ILInstruction lhs, ILInstruction? rhs)
 		{
 			return new IfInstruction(lhs, new LdcI4(1), rhs);
 		}
@@ -60,7 +61,7 @@ namespace ICSharpCode.Decompiler.IL
 				|| trueInst.HasDirectFlag(InstructionFlags.EndPointUnreachable)
 				|| falseInst.HasDirectFlag(InstructionFlags.EndPointUnreachable));
 		}
-		
+
 		public override StackType ResultType {
 			get {
 				if (trueInst.HasDirectFlag(InstructionFlags.EndPointUnreachable))
@@ -69,23 +70,25 @@ namespace ICSharpCode.Decompiler.IL
 					return trueInst.ResultType;
 			}
 		}
-		
+
 		public override InstructionFlags DirectFlags {
 			get {
 				return InstructionFlags.ControlFlow;
 			}
 		}
-		
+
 		protected override InstructionFlags ComputeFlags()
 		{
 			return InstructionFlags.ControlFlow | condition.Flags | SemanticHelper.CombineBranches(trueInst.Flags, falseInst.Flags);
 		}
-		
+
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
-			if (options.UseLogicOperationSugar) {
-				if (MatchLogicAnd(out var lhs, out var rhs)) {
+			if (options.UseLogicOperationSugar)
+			{
+				if (MatchLogicAnd(out var lhs, out var rhs))
+				{
 					output.Write("logic.and(");
 					lhs.WriteTo(output, options);
 					output.Write(", ");
@@ -93,7 +96,8 @@ namespace ICSharpCode.Decompiler.IL
 					output.Write(')');
 					return;
 				}
-				if (MatchLogicOr(out lhs, out rhs)) {
+				if (MatchLogicOr(out lhs, out rhs))
+				{
 					output.Write("logic.or(");
 					lhs.WriteTo(output, options);
 					output.Write(", ");
@@ -107,7 +111,8 @@ namespace ICSharpCode.Decompiler.IL
 			condition.WriteTo(output, options);
 			output.Write(") ");
 			trueInst.WriteTo(output, options);
-			if (falseInst.OpCode != OpCode.Nop) {
+			if (falseInst.OpCode != OpCode.Nop)
+			{
 				output.Write(" else ");
 				falseInst.WriteTo(output, options);
 			}
@@ -122,8 +127,9 @@ namespace ICSharpCode.Decompiler.IL
 			if (slot == IfInstruction.ConditionSlot)
 				return true;
 			if (slot == IfInstruction.TrueInstSlot || slot == IfInstruction.FalseInstSlot || slot == NullCoalescingInstruction.FallbackInstSlot)
-				return IsInConditionSlot(inst.Parent);
-			if (inst.Parent is Comp comp) {
+				return IsInConditionSlot(inst.Parent!);
+			if (inst.Parent is Comp comp)
+			{
 				if (comp.Left == inst && comp.Right.MatchLdcI4(0))
 					return true;
 				if (comp.Right == inst && comp.Left.MatchLdcI4(0))

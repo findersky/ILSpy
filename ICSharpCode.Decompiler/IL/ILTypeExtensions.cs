@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -17,7 +18,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using ICSharpCode.Decompiler.TypeSystem;
-using System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -25,7 +25,8 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public static StackType GetStackType(this PrimitiveType primitiveType)
 		{
-			switch (primitiveType) {
+			switch (primitiveType)
+			{
 				case PrimitiveType.I1:
 				case PrimitiveType.U1:
 				case PrimitiveType.I2:
@@ -52,10 +53,11 @@ namespace ICSharpCode.Decompiler.IL
 					return StackType.O;
 			}
 		}
-		
+
 		public static Sign GetSign(this PrimitiveType primitiveType)
 		{
-			switch (primitiveType) {
+			switch (primitiveType)
+			{
 				case PrimitiveType.I1:
 				case PrimitiveType.I2:
 				case PrimitiveType.I4:
@@ -75,7 +77,7 @@ namespace ICSharpCode.Decompiler.IL
 					return Sign.None;
 			}
 		}
-		
+
 		/// <summary>
 		/// Gets the size in bytes of the primitive type.
 		/// 
@@ -84,7 +86,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public static int GetSize(this PrimitiveType type)
 		{
-			switch (type) {
+			switch (type)
+			{
 				case PrimitiveType.I1:
 				case PrimitiveType.U1:
 					return 1;
@@ -108,7 +111,7 @@ namespace ICSharpCode.Decompiler.IL
 					return 0;
 			}
 		}
-		
+
 		/// <summary>
 		/// Gets whether the type is a small integer type.
 		/// Small integer types are:
@@ -119,7 +122,7 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			return GetSize(type) < 4;
 		}
-		
+
 		public static bool IsIntegerType(this PrimitiveType primitiveType)
 		{
 			return primitiveType.GetStackType().IsIntegerType();
@@ -127,7 +130,8 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static bool IsFloatType(this PrimitiveType type)
 		{
-			switch (type) {
+			switch (type)
+			{
 				case PrimitiveType.R4:
 				case PrimitiveType.R8:
 				case PrimitiveType.R:
@@ -142,11 +146,12 @@ namespace ICSharpCode.Decompiler.IL
 		/// 
 		/// Returns SpecialType.UnknownType for unsupported instructions.
 		/// </summary>
-		public static IType InferType(this ILInstruction inst, ICompilation compilation)
+		public static IType InferType(this ILInstruction inst, ICompilation? compilation)
 		{
-			switch (inst) {
+			switch (inst)
+			{
 				case NewObj newObj:
-					return newObj.Method.DeclaringType;
+					return newObj.Method.DeclaringType ?? SpecialType.UnknownType;
 				case NewArr newArr:
 					if (compilation != null)
 						return new ArrayType(compilation, newArr.Type, newArr.Indices.Count);
@@ -157,7 +162,7 @@ namespace ICSharpCode.Decompiler.IL
 				case CallVirt callVirt:
 					return callVirt.Method.ReturnType;
 				case CallIndirect calli:
-					return calli.ReturnType;
+					return calli.FunctionPointerType.ReturnType;
 				case UserDefinedLogicOperator logicOp:
 					return logicOp.Method.ReturnType;
 				case LdObj ldobj:
@@ -175,8 +180,10 @@ namespace ICSharpCode.Decompiler.IL
 				case LdsFlda ldsflda:
 					return new ByReferenceType(ldsflda.Field.Type);
 				case LdElema ldelema:
-					if (ldelema.Array.InferType(compilation) is ArrayType arrayType) {
-						if (TypeUtils.IsCompatibleTypeForMemoryAccess(arrayType.ElementType, ldelema.Type)) {
+					if (ldelema.Array.InferType(compilation) is ArrayType arrayType)
+					{
+						if (TypeUtils.IsCompatibleTypeForMemoryAccess(arrayType.ElementType, ldelema.Type))
+						{
 							return new ByReferenceType(arrayType.ElementType);
 						}
 					}
@@ -184,7 +191,8 @@ namespace ICSharpCode.Decompiler.IL
 				case Comp comp:
 					if (compilation == null)
 						return SpecialType.UnknownType;
-					switch (comp.LiftingKind) {
+					switch (comp.LiftingKind)
+					{
 						case ComparisonLiftingKind.None:
 						case ComparisonLiftingKind.CSharp:
 							return compilation.FindType(KnownTypeCode.Boolean);
@@ -196,13 +204,14 @@ namespace ICSharpCode.Decompiler.IL
 				case BinaryNumericInstruction bni:
 					if (bni.IsLifted)
 						return SpecialType.UnknownType;
-					switch (bni.Operator) {
+					switch (bni.Operator)
+					{
 						case BinaryNumericOperator.BitAnd:
 						case BinaryNumericOperator.BitOr:
 						case BinaryNumericOperator.BitXor:
 							var left = bni.Left.InferType(compilation);
 							var right = bni.Right.InferType(compilation);
-							if (left.Equals(right) && (left.IsCSharpPrimitiveIntegerType() || left.IsKnownType(KnownTypeCode.Boolean)))
+							if (left.Equals(right) && (left.IsCSharpPrimitiveIntegerType() || left.IsCSharpNativeIntegerType() || left.IsKnownType(KnownTypeCode.Boolean)))
 								return left;
 							else
 								return SpecialType.UnknownType;

@@ -18,6 +18,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private (string, string?, string) field_tuple;
 		private string[]?[] field_array;
 		private Dictionary<(string, string?), (int, string[]?, string?[])> field_complex;
+		private dynamic[][,]?[,,][,,,] field_complex_nested_array;
 
 		public (string A, dynamic? B) PropertyNamedTuple {
 			get {
@@ -74,10 +75,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private int field3;
 		private int? field4;
 
-		public string? Property {
-			get;
-			set;
-		}
+		public string? Property { get; set; }
 		public event EventHandler? Event;
 
 		public static int? NullConditionalOperator(T02_EverythingIsNullableInHere? x)
@@ -97,10 +95,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private int field3;
 		private int? field4;
 
-		public string Property {
-			get;
-			set;
-		}
+		public string Property { get; set; }
 		public event EventHandler Event;
 	}
 

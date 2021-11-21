@@ -22,9 +22,11 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+
 using ICSharpCode.Decompiler.FlowAnalysis;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
+
 using NUnit.Framework;
 
 namespace ICSharpCode.Decompiler.Tests
@@ -55,10 +57,14 @@ namespace ICSharpCode.Decompiler.Tests
 		public void TryFinallyWithAssignmentInFinally()
 		{
 			ILVariable v = new ILVariable(VariableKind.Local, SpecialType.UnknownType, 0);
-			ILFunction f = new ILFunction((IMethod)null, 0, new GenericContext(), new TryFinally(
-				new Nop(),
-				new StLoc(v, new LdcI4(0))
-			));
+			ILFunction f = new ILFunction(
+				returnType: SpecialType.UnknownType,
+				parameters: new IParameter[0],
+				genericContext: new GenericContext(),
+				body: new TryFinally(
+					new Nop(),
+					new StLoc(v, new LdcI4(0))
+				));
 			f.AddRef();
 			f.Variables.Add(v);
 			f.Body.AcceptVisitor(new RDTest(f, v));

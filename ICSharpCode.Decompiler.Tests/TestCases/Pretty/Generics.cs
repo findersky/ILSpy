@@ -73,7 +73,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 			public void Grow(int capacity)
 			{
-				if (capacity >= arr.Length) {
+				if (capacity >= arr.Length)
+				{
 					Size(capacity);
 				}
 			}
@@ -284,6 +285,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			// But here there's no ambiguity:
 			Console.WriteLine("{}, {}", a < b, a > b);
 			Console.WriteLine("{}, {}", a < Environment.GetLogicalDrives().Length, a > (c ?? b));
+		}
+
+		public static Type Issue2231<T>()
+		{
+			return default(T).GetType();
+		}
+
+		public static string Issue2231b<T>()
+		{
+			return default(T).ToString();
 		}
 	}
 }

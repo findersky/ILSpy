@@ -26,6 +26,7 @@ using System.Reflection.Metadata;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
@@ -52,10 +53,10 @@ namespace ICSharpCode.ILSpy
 					DetectControlStructure = detectControlStructure,
 					ShowSequencePoints = options.DecompilerSettings.ShowDebugInfo
 				},
-				options.CancellationToken)
-			{
+				options.CancellationToken) {
 				ShowMetadataTokens = Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokens,
 				ShowMetadataTokensInBase10 = Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokensInBase10,
+				ShowRawRVAOffsetAndBytes = Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowRawOffsetsAndBytesBeforeInstruction,
 				ExpandMemberDefinitions = options.DecompilerSettings.ExpandMemberDefinitions
 			};
 		}
@@ -74,7 +75,7 @@ namespace ICSharpCode.ILSpy
 			tokenWriter = TokenWriter.WrapInWriterThatSetsLocationsInAST(tokenWriter);
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(tokenWriter, settings.CSharpFormattingOptions));
 		}
-		
+
 		class MixedMethodBodyDisassembler : MethodBodyDisassembler
 		{
 			readonly DecompilationOptions options;
@@ -91,7 +92,8 @@ namespace ICSharpCode.ILSpy
 
 			public override void Disassemble(PEFile module, MethodDefinitionHandle handle)
 			{
-				try {
+				try
+				{
 					var csharpOutput = new StringWriter();
 					CSharpDecompiler decompiler = CreateDecompiler(module, options);
 					var st = decompiler.Decompile(handle);
@@ -100,21 +102,27 @@ namespace ICSharpCode.ILSpy
 					this.sequencePoints = mapping.Value ?? (IList<SequencePoint>)EmptyList<SequencePoint>.Instance;
 					this.codeLines = csharpOutput.ToString().Split(new[] { Environment.NewLine }, StringSplitOptions.None);
 					base.Disassemble(module, handle);
-				} finally {
+				}
+				finally
+				{
 					this.sequencePoints = null;
 					this.codeLines = null;
 				}
 			}
 
-			protected override void WriteInstruction(ITextOutput output, MetadataReader metadata, MethodDefinitionHandle methodDefinition, ref BlobReader blob)
+			protected override void WriteInstruction(ITextOutput output, MetadataReader metadata, MethodDefinitionHandle methodHandle, ref BlobReader blob, int methodRva)
 			{
 				int index = sequencePoints.BinarySearch(blob.Offset, seq => seq.Offset);
-				if (index >= 0) {
+				if (index >= 0)
+				{
 					var info = sequencePoints[index];
 					var highlightingOutput = output as ISmartTextOutput;
-					if (!info.IsHidden) {
-						for (int line = info.StartLine; line <= info.EndLine; line++) {
-							if (highlightingOutput != null) {
+					if (!info.IsHidden)
+					{
+						for (int line = info.StartLine; line <= info.EndLine; line++)
+						{
+							if (highlightingOutput != null)
+							{
 								string text = codeLines[line - 1];
 								int startColumn = 1;
 								int endColumn = text.Length + 1;
@@ -123,28 +131,33 @@ namespace ICSharpCode.ILSpy
 								if (line == info.EndLine)
 									endColumn = info.EndColumn;
 								WriteHighlightedCommentLine(highlightingOutput, text, startColumn - 1, endColumn - 1, info.StartLine == info.EndLine);
-							} else
+							}
+							else
 								WriteCommentLine(output, codeLines[line - 1]);
 						}
-					} else {
+					}
+					else
+					{
 						output.Write("// ");
 						highlightingOutput?.BeginSpan(gray);
 						output.WriteLine("(no C# code)");
 						highlightingOutput?.EndSpan();
 					}
 				}
-				base.WriteInstruction(output, metadata, methodDefinition, ref blob);
+				base.WriteInstruction(output, metadata, methodHandle, ref blob, methodRva);
 			}
 
 			HighlightingColor gray = new HighlightingColor { Foreground = new SimpleHighlightingBrush(Colors.DarkGray) };
 
 			void WriteHighlightedCommentLine(ISmartTextOutput output, string text, int startColumn, int endColumn, bool isSingleLine)
 			{
-				if (startColumn > text.Length) {
+				if (startColumn > text.Length)
+				{
 					Debug.Fail("startColumn is invalid");
 					startColumn = text.Length;
 				}
-				if (endColumn > text.Length) {
+				if (endColumn > text.Length)
+				{
 					Debug.Fail("endColumn is invalid");
 					endColumn = text.Length;
 				}

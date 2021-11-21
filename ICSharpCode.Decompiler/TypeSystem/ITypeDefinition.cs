@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -28,17 +30,17 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	{
 		IReadOnlyList<ITypeDefinition> NestedTypes { get; }
 		IReadOnlyList<IMember> Members { get; }
-		
+
 		IEnumerable<IField> Fields { get; }
 		IEnumerable<IMethod> Methods { get; }
 		IEnumerable<IProperty> Properties { get; }
 		IEnumerable<IEvent> Events { get; }
-		
+
 		/// <summary>
 		/// Gets the known type code for this type definition.
 		/// </summary>
 		KnownTypeCode KnownTypeCode { get; }
-		
+
 		/// <summary>
 		/// For enums: returns the underlying primitive type.
 		/// For all other types: returns <see cref="SpecialType.UnknownType"/>.
@@ -50,18 +52,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// For all other types: returns false.
 		/// </summary>
 		bool IsReadOnly { get; }
-		
+
 		/// <summary>
 		/// Gets the full name of this type.
 		/// </summary>
 		FullTypeName FullTypeName { get; }
-		
+
 		/// <summary>
 		/// Gets/Sets the declaring type (incl. type arguments, if any).
 		/// This property will return null for top-level types.
 		/// </summary>
-		new IType DeclaringType { get; } // solves ambiguity between IType.DeclaringType and IEntity.DeclaringType
-		
+		new IType? DeclaringType { get; } // solves ambiguity between IType.DeclaringType and IEntity.DeclaringType
+
 		/// <summary>
 		/// Gets whether this type contains extension methods.
 		/// </summary>
@@ -73,5 +75,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// This serves as default nullability for members of the type that do not have a [Nullable] attribute.
 		/// </summary>
 		Nullability NullableContext { get; }
+
+		/// <summary>
+		/// Gets whether the type has the necessary members to be considered a C# 9 record type.
+		/// </summary>
+		bool IsRecord { get; }
 	}
 }

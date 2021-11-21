@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	public enum SymbolKind : byte
@@ -78,7 +80,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		ReturnType,
 	}
-	
+
 	/// <summary>
 	/// Interface for type system symbols.
 	/// </summary>
@@ -89,7 +91,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// (which derived interfaces of ISymbol are implemented)
 		/// </summary>
 		SymbolKind SymbolKind { get; }
-		
+
 		/// <summary>
 		/// Gets the short name of the symbol.
 		/// </summary>

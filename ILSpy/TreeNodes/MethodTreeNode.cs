@@ -20,10 +20,11 @@ using System;
 using System.Windows.Media;
 
 using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
+	using ICSharpCode.Decompiler.TypeSystem;
+
 	/// <summary>
 	/// Tree Node representing a field, method, property, or event.
 	/// </summary>
@@ -65,7 +66,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		internal static AccessOverlayIcon GetOverlayIcon(Accessibility accessibility)
 		{
-			switch (accessibility) {
+			switch (accessibility)
+			{
 				case Accessibility.Public:
 					return AccessOverlayIcon.Public;
 				case Accessibility.Internal:
@@ -100,7 +102,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool IsPublicAPI {
 			get {
-				switch (MethodDefinition.Accessibility) {
+				switch (MethodDefinition.Accessibility)
+				{
 					case Accessibility.Public:
 					case Accessibility.Protected:
 					case Accessibility.ProtectedOrInternal:

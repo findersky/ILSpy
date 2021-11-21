@@ -19,6 +19,7 @@
 using System;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+
 using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.Disassembler
@@ -33,7 +34,8 @@ namespace ICSharpCode.Decompiler.Disassembler
 
 		public static void SkipOperand(this ref BlobReader blob, ILOpCode opCode)
 		{
-			switch (opCode.GetOperandType()) {
+			switch (opCode.GetOperandType())
+			{
 				// 64-bit
 				case OperandType.I8:
 				case OperandType.R:
@@ -90,7 +92,8 @@ namespace ICSharpCode.Decompiler.Disassembler
 
 		public static int DecodeIndex(this ref BlobReader blob, ILOpCode opCode)
 		{
-			switch (opCode.GetOperandType()) {
+			switch (opCode.GetOperandType())
+			{
 				case OperandType.ShortVariable:
 					return blob.ReadByte();
 				case OperandType.Variable:
@@ -103,6 +106,22 @@ namespace ICSharpCode.Decompiler.Disassembler
 		public static bool IsReturn(this ILOpCode opCode)
 		{
 			return opCode == ILOpCode.Ret || opCode == ILOpCode.Endfilter || opCode == ILOpCode.Endfinally;
+		}
+
+		public static int GetHeaderSize(BlobReader bodyBlockReader)
+		{
+			byte header = bodyBlockReader.ReadByte();
+			if ((header & 3) == 3)
+			{
+				// fat
+				ushort largeHeader = (ushort)((bodyBlockReader.ReadByte() << 8) | header);
+				return (byte)(largeHeader >> 12) * 4;
+			}
+			else
+			{
+				// tiny
+				return 1;
+			}
 		}
 	}
 }

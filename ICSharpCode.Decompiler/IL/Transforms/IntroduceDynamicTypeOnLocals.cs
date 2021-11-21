@@ -19,28 +19,34 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
-	class IntroduceDynamicTypeOnLocals : IILTransform
+	public class IntroduceDynamicTypeOnLocals : IILTransform
 	{
 		public void Run(ILFunction function, ILTransformContext context)
 		{
-			foreach (var variable in function.Variables) {
+			foreach (var variable in function.Variables)
+			{
 				if (variable.Kind != VariableKind.Local &&
 					variable.Kind != VariableKind.StackSlot &&
 					variable.Kind != VariableKind.ForeachLocal &&
-					variable.Kind != VariableKind.UsingLocal) {
+					variable.Kind != VariableKind.UsingLocal)
+				{
 					continue;
 				}
 				if (!variable.Type.IsKnownType(KnownTypeCode.Object) || variable.LoadCount == 0)
 					continue;
-				foreach (var load in variable.LoadInstructions) {
-					if (load.Parent is DynamicInstruction dynamicInstruction) {
+				foreach (var load in variable.LoadInstructions)
+				{
+					if (load.Parent is DynamicInstruction dynamicInstruction)
+					{
 						var argumentInfo = dynamicInstruction.GetArgumentInfoOfChild(load.ChildIndex);
-						if (!argumentInfo.HasFlag(CSharpArgumentInfoFlags.UseCompileTimeType)) {
+						if (!argumentInfo.HasFlag(CSharpArgumentInfoFlags.UseCompileTimeType))
+						{
 							variable.Type = SpecialType.Dynamic;
 						}
 					}

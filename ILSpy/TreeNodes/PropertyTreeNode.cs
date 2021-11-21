@@ -20,13 +20,16 @@ using System;
 using System.Reflection;
 using System.Reflection.Metadata;
 using System.Windows.Media;
+
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.TypeSystem;
+
 using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
+	using ICSharpCode.Decompiler.TypeSystem;
+
 	/// <summary>
 	/// Represents a property in the TreeView.
 	/// </summary>
@@ -81,7 +84,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool IsPublicAPI {
 			get {
-				switch (PropertyDefinition.Accessibility) {
+				switch (PropertyDefinition.Accessibility)
+				{
 					case Accessibility.Public:
 					case Accessibility.ProtectedOrInternal:
 					case Accessibility.Protected:

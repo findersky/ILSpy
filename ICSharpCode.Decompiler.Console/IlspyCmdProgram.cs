@@ -2,18 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.IO;
+using System.IO.Compression;
+using System.IO.MemoryMappedFiles;
 using System.Linq;
-using McMaster.Extensions.CommandLineUtils;
-using ICSharpCode.Decompiler.CSharp;
-using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.Disassembler;
-using System.Threading;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
-using ICSharpCode.Decompiler.DebugInfo;
-using ICSharpCode.Decompiler.PdbProvider;
+using System.Threading;
+
+using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
+using ICSharpCode.Decompiler.DebugInfo;
+using ICSharpCode.Decompiler.Disassembler;
+using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.Decompiler.PdbProvider;
+using ICSharpCode.Decompiler.TypeSystem;
+
+using McMaster.Extensions.CommandLineUtils;
 // ReSharper disable All
 
 namespace ICSharpCode.Decompiler.Console
@@ -47,6 +51,9 @@ Remarks:
 		[Option("-il|--ilcode", "Show IL code.", CommandOptionType.NoValue)]
 		public bool ShowILCodeFlag { get; }
 
+		[Option("--il-sequence-points", "Show IL with sequence points. Implies -il.", CommandOptionType.NoValue)]
+		public bool ShowILSequencePointsFlag { get; }
+
 		[Option("-genpdb", "Generate PDB.", CommandOptionType.NoValue)]
 		public bool CreateDebugInfoFlag { get; }
 
@@ -73,48 +80,73 @@ Remarks:
 		[Option("--no-dead-stores", "Remove dead stores.", CommandOptionType.NoValue)]
 		public bool RemoveDeadStores { get; }
 
+		[Option("-d|--dump-package", "Dump package assembiles into a folder. This requires the output directory option.", CommandOptionType.NoValue)]
+		public bool DumpPackageFlag { get; }
+
 		private int OnExecute(CommandLineApplication app)
 		{
 			TextWriter output = System.Console.Out;
 			bool outputDirectorySpecified = !string.IsNullOrEmpty(OutputDirectory);
 
-			try {
-				if (CreateCompilableProjectFlag) {
+			try
+			{
+				if (CreateCompilableProjectFlag)
+				{
 					return DecompileAsProject(InputAssemblyName, OutputDirectory);
-				} else if (EntityTypes.Any()) {
+				}
+				else if (EntityTypes.Any())
+				{
 					var values = EntityTypes.SelectMany(v => v.Split(',', ';')).ToArray();
 					HashSet<TypeKind> kinds = TypesParser.ParseSelection(values);
-					if (outputDirectorySpecified) {
+					if (outputDirectorySpecified)
+					{
 						string outputName = Path.GetFileNameWithoutExtension(InputAssemblyName);
 						output = File.CreateText(Path.Combine(OutputDirectory, outputName) + ".list.txt");
 					}
 
 					return ListContent(InputAssemblyName, output, kinds);
-				} else if (ShowILCodeFlag) {
-					if (outputDirectorySpecified) {
+				}
+				else if (ShowILCodeFlag || ShowILSequencePointsFlag)
+				{
+					if (outputDirectorySpecified)
+					{
 						string outputName = Path.GetFileNameWithoutExtension(InputAssemblyName);
 						output = File.CreateText(Path.Combine(OutputDirectory, outputName) + ".il");
 					}
 
 					return ShowIL(InputAssemblyName, output);
-				} else if (CreateDebugInfoFlag) {
+				}
+				else if (CreateDebugInfoFlag)
+				{
 					string pdbFileName = null;
-					if (outputDirectorySpecified) {
+					if (outputDirectorySpecified)
+					{
 						string outputName = Path.GetFileNameWithoutExtension(InputAssemblyName);
 						pdbFileName = Path.Combine(OutputDirectory, outputName) + ".pdb";
-					} else {
+					}
+					else
+					{
 						pdbFileName = Path.ChangeExtension(InputAssemblyName, ".pdb");
 					}
 
 					return GeneratePdbForAssembly(InputAssemblyName, pdbFileName, app);
-				} else if (ShowVersion) {
+				}
+				else if (ShowVersion)
+				{
 					string vInfo = "ilspycmd: " + typeof(ILSpyCmdProgram).Assembly.GetName().Version.ToString() +
-					               Environment.NewLine
-					               + "ICSharpCode.Decompiler: " +
-					               typeof(FullTypeName).Assembly.GetName().Version.ToString();
+								   Environment.NewLine
+								   + "ICSharpCode.Decompiler: " +
+								   typeof(FullTypeName).Assembly.GetName().Version.ToString();
 					output.WriteLine(vInfo);
-				} else {
-					if (outputDirectorySpecified) {
+				}
+				else if (DumpPackageFlag)
+				{
+					return DumpPackageAssemblies(InputAssemblyName, OutputDirectory, app);
+				}
+				else
+				{
+					if (outputDirectorySpecified)
+					{
 						string outputName = Path.GetFileNameWithoutExtension(InputAssemblyName);
 						output = File.CreateText(Path.Combine(OutputDirectory,
 							(string.IsNullOrEmpty(TypeName) ? outputName : TypeName) + ".decompiled.cs"));
@@ -122,22 +154,27 @@ Remarks:
 
 					return Decompile(InputAssemblyName, output, TypeName);
 				}
-			} catch (Exception ex) {
+			}
+			catch (Exception ex)
+			{
 				app.Error.WriteLine(ex.ToString());
 				return ProgramExitCodes.EX_SOFTWARE;
-			} finally {
+			}
+			finally
+			{
 				output.Close();
 			}
 
 			return 0;
 		}
 
-		DecompilerSettings GetSettings()
+		DecompilerSettings GetSettings(PEFile module)
 		{
 			return new DecompilerSettings(LanguageVersion) {
 				ThrowOnAssemblyResolveErrors = false,
 				RemoveDeadCode = RemoveDeadCode,
-				RemoveDeadStores = RemoveDeadStores
+				RemoveDeadStores = RemoveDeadStores,
+				UseSdkStyleProjectFormat = WholeProjectDecompiler.CanUseSdkStyleProjectFormat(module),
 			};
 		}
 
@@ -145,10 +182,11 @@ Remarks:
 		{
 			var module = new PEFile(assemblyFileName);
 			var resolver = new UniversalAssemblyResolver(assemblyFileName, false, module.Reader.DetectTargetFrameworkId());
-			foreach (var path in ReferencePaths) {
+			foreach (var path in ReferencePaths)
+			{
 				resolver.AddSearchDirectory(path);
 			}
-			return new CSharpDecompiler(assemblyFileName, resolver, GetSettings()) {
+			return new CSharpDecompiler(assemblyFileName, resolver, GetSettings(module)) {
 				DebugInfoProvider = TryLoadPDB(module)
 			};
 		}
@@ -157,7 +195,8 @@ Remarks:
 		{
 			CSharpDecompiler decompiler = GetDecompiler(assemblyFileName);
 
-			foreach (var type in decompiler.TypeSystem.MainModule.TypeDefinitions) {
+			foreach (var type in decompiler.TypeSystem.MainModule.TypeDefinitions)
+			{
 				if (!kinds.Contains(type.Kind))
 					continue;
 				output.WriteLine($"{type.Kind} {type.FullName}");
@@ -169,7 +208,10 @@ Remarks:
 		{
 			var module = new PEFile(assemblyFileName);
 			output.WriteLine($"// IL code: {module.Name}");
-			var disassembler = new ReflectionDisassembler(new PlainTextOutput(output), CancellationToken.None);
+			var disassembler = new ReflectionDisassembler(new PlainTextOutput(output), CancellationToken.None) {
+				DebugInfo = TryLoadPDB(module),
+				ShowSequencePoints = ShowILSequencePointsFlag,
+			};
 			disassembler.WriteModuleContents(module);
 			return 0;
 		}
@@ -178,10 +220,11 @@ Remarks:
 		{
 			var module = new PEFile(assemblyFileName);
 			var resolver = new UniversalAssemblyResolver(assemblyFileName, false, module.Reader.DetectTargetFrameworkId());
-			foreach (var path in ReferencePaths) {
+			foreach (var path in ReferencePaths)
+			{
 				resolver.AddSearchDirectory(path);
 			}
-			var decompiler = new WholeProjectDecompiler(GetSettings(), resolver, TryLoadPDB(module));
+			var decompiler = new WholeProjectDecompiler(GetSettings(module), resolver, resolver, TryLoadPDB(module));
 			decompiler.DecompileProject(module, outputDirectory);
 			return 0;
 		}
@@ -190,9 +233,12 @@ Remarks:
 		{
 			CSharpDecompiler decompiler = GetDecompiler(assemblyFileName);
 
-			if (typeName == null) {
+			if (typeName == null)
+			{
 				output.Write(decompiler.DecompileWholeModuleAsString());
-			} else {
+			}
+			else
+			{
 				var name = new FullTypeName(typeName);
 				output.Write(decompiler.DecompileTypeAsString(name));
 			}
@@ -206,14 +252,67 @@ Remarks:
 				PEStreamOptions.PrefetchEntireImage,
 				metadataOptions: MetadataReaderOptions.None);
 
-			if (!PortablePdbWriter.HasCodeViewDebugDirectoryEntry(module)) {
+			if (!PortablePdbWriter.HasCodeViewDebugDirectoryEntry(module))
+			{
 				app.Error.WriteLine($"Cannot create PDB file for {assemblyFileName}, because it does not contain a PE Debug Directory Entry of type 'CodeView'.");
 				return ProgramExitCodes.EX_DATAERR;
 			}
 
-			using (FileStream stream = new FileStream(pdbFileName, FileMode.OpenOrCreate, FileAccess.Write)) {
+			using (FileStream stream = new FileStream(pdbFileName, FileMode.OpenOrCreate, FileAccess.Write))
+			{
 				var decompiler = GetDecompiler(assemblyFileName);
-				PortablePdbWriter.WritePdb(module, decompiler, GetSettings(), stream);
+				PortablePdbWriter.WritePdb(module, decompiler, GetSettings(module), stream);
+			}
+
+			return 0;
+		}
+
+		int DumpPackageAssemblies(string packageFileName, string outputDirectory, CommandLineApplication app)
+		{
+			using (var memoryMappedPackage = MemoryMappedFile.CreateFromFile(packageFileName, FileMode.Open, null, 0, MemoryMappedFileAccess.Read))
+			{
+				using (var packageView = memoryMappedPackage.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read))
+				{
+					if (!SingleFileBundle.IsBundle(packageView, out long bundleHeaderOffset))
+					{
+						app.Error.WriteLine($"Cannot dump assembiles for {packageFileName}, because it is not a single file bundle.");
+						return ProgramExitCodes.EX_DATAERR;
+					}
+
+					var manifest = SingleFileBundle.ReadManifest(packageView, bundleHeaderOffset);
+					foreach (var entry in manifest.Entries)
+					{
+						Stream contents;
+
+						if (entry.CompressedSize == 0)
+						{
+							contents = new UnmanagedMemoryStream(packageView.SafeMemoryMappedViewHandle, entry.Offset, entry.Size);
+						}
+						else
+						{
+							Stream compressedStream = new UnmanagedMemoryStream(packageView.SafeMemoryMappedViewHandle, entry.Offset, entry.CompressedSize);
+							Stream decompressedStream = new MemoryStream((int)entry.Size);
+							using (var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress))
+							{
+								deflateStream.CopyTo(decompressedStream);
+							}
+
+							if (decompressedStream.Length != entry.Size)
+							{
+								app.Error.WriteLine($"Corrupted single-file entry '${entry.RelativePath}'. Declared decompressed size '${entry.Size}' is not the same as actual decompressed size '${decompressedStream.Length}'.");
+								return ProgramExitCodes.EX_DATAERR;
+							}
+
+							decompressedStream.Seek(0, SeekOrigin.Begin);
+							contents = decompressedStream;
+						}
+
+						using (var fileStream = File.Create(Path.Combine(outputDirectory, entry.RelativePath)))
+						{
+							contents.CopyTo(fileStream);
+						}
+					}
+				}
 			}
 
 			return 0;
@@ -221,7 +320,8 @@ Remarks:
 
 		IDebugInfoProvider TryLoadPDB(PEFile module)
 		{
-			if (InputPDBFile.IsSet) {
+			if (InputPDBFile.IsSet)
+			{
 				if (InputPDBFile.Value == null)
 					return DebugInfoUtils.LoadSymbols(module);
 				return DebugInfoUtils.FromFile(module, InputPDBFile.Value);

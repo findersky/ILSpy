@@ -18,7 +18,9 @@
 
 using System.ComponentModel.Composition;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
+
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Metadata;
 
@@ -53,8 +55,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			this.data.ImageStream = data;
 		}
 
-		public override object Text
-		{
+		public override object Text {
 			get { return key; }
 		}
 
@@ -63,8 +64,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		protected override void LoadChildren()
 		{
 			int i = 0;
-			foreach (Image image in this.data.Images) {
-				var node = ResourceEntryNode.Create("Image" + i.ToString(), image);
+			foreach (Image image in this.data.Images)
+			{
+				using var s = new MemoryStream();
+				image.Save(s, System.Drawing.Imaging.ImageFormat.Bmp);
+				var node = ResourceEntryNode.Create("Image" + i.ToString(), s.ToArray());
 				if (node != null)
 					Children.Add(node);
 				++i;

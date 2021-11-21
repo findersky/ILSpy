@@ -18,6 +18,7 @@
 
 using System;
 using System.Windows.Media;
+
 using ICSharpCode.AvalonEdit.Document;
 using ICSharpCode.AvalonEdit.Rendering;
 
@@ -77,8 +78,11 @@ namespace ICSharpCode.ILSpy.TextView
 
 		public void SetHighlight(BracketSearchResult result)
 		{
-			if (this.result != result) {
+			if (this.result != result)
+			{
 				this.result = result;
+				this.borderPen = (Pen)textView.FindResource(Themes.ResourceKeys.BracketHighlightBorderPen);
+				this.backgroundBrush = (SolidColorBrush)textView.FindResource(Themes.ResourceKeys.BracketHighlightBackgroundBrush);
 				textView.InvalidateLayer(this.Layer);
 			}
 		}
@@ -88,11 +92,8 @@ namespace ICSharpCode.ILSpy.TextView
 			if (textView == null)
 				throw new ArgumentNullException("textView");
 
-			this.borderPen = new Pen(new SolidColorBrush(Color.FromArgb(52, 0, 0, 255)), 1);
-			this.borderPen.Freeze();
-
-			this.backgroundBrush = new SolidColorBrush(Color.FromArgb(22, 0, 0, 255));
-			this.backgroundBrush.Freeze();
+			this.borderPen = (Pen)textView.FindResource(Themes.ResourceKeys.BracketHighlightBorderPen);
+			this.backgroundBrush = (SolidColorBrush)textView.FindResource(Themes.ResourceKeys.BracketHighlightBackgroundBrush);
 
 			this.textView = textView;
 
@@ -119,7 +120,8 @@ namespace ICSharpCode.ILSpy.TextView
 			builder.AddSegment(textView, new TextSegment() { StartOffset = result.ClosingBracketOffset, Length = result.ClosingBracketLength });
 
 			Geometry geometry = builder.CreateGeometry();
-			if (geometry != null) {
+			if (geometry != null)
+			{
 				drawingContext.DrawGeometry(backgroundBrush, borderPen, geometry);
 			}
 		}

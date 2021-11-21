@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -18,9 +19,9 @@
 
 using System;
 using System.Collections.Generic;
-using ICSharpCode.Decompiler.TypeSystem;
 using System.Diagnostics;
-using System.Linq;
+
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -31,9 +32,13 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		Local,
 		/// <summary>
-		/// A pinned local variable
+		/// A pinned local variable (not associated with a pinned region)
 		/// </summary>
 		PinnedLocal,
+		/// <summary>
+		/// A pinned local variable (associated with a pinned region)
+		/// </summary>
+		PinnedRegionLocal,
 		/// <summary>
 		/// A local variable used as using-resource variable.
 		/// </summary>
@@ -71,6 +76,14 @@ namespace ICSharpCode.Decompiler.IL
 		/// Local variable that holds the display class used for lambdas within this function.
 		/// </summary>
 		DisplayClassLocal,
+		/// <summary>
+		/// Local variable declared within a pattern match.
+		/// </summary>
+		PatternLocal,
+		/// <summary>
+		/// Temporary variable declared in a deconstruction init section.
+		/// </summary>
+		DeconstructionInitTemporary,
 	}
 
 	static class VariableKindExtensions
@@ -82,12 +95,15 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static bool IsLocal(this VariableKind kind)
 		{
-			switch (kind) {
+			switch (kind)
+			{
 				case VariableKind.Local:
 				case VariableKind.ExceptionLocal:
 				case VariableKind.ForeachLocal:
 				case VariableKind.UsingLocal:
+				case VariableKind.PatternLocal:
 				case VariableKind.PinnedLocal:
+				case VariableKind.PinnedRegionLocal:
 				case VariableKind.DisplayClassLocal:
 					return true;
 				default:
@@ -108,7 +124,8 @@ namespace ICSharpCode.Decompiler.IL
 			internal set {
 				if (kind == VariableKind.Parameter)
 					throw new InvalidOperationException("Kind=Parameter cannot be changed!");
-				if (Index != null && value.IsLocal() && !kind.IsLocal()) {
+				if (Index != null && value.IsLocal() && !kind.IsLocal())
+				{
 					// For variables, Index has different meaning than for stack slots,
 					// so we need to reset it to null.
 					// StackSlot -> ForeachLocal can happen sometimes (e.g. PST.TransformForeachOnArray)
@@ -119,7 +136,7 @@ namespace ICSharpCode.Decompiler.IL
 		}
 
 		public readonly StackType StackType;
-		
+
 		IType type;
 		public IType Type {
 			get {
@@ -136,7 +153,7 @@ namespace ICSharpCode.Decompiler.IL
 		/// This variable is either a C# 7 'in' parameter or must be declared as 'ref readonly'.
 		/// </summary>
 		public bool IsRefReadOnly { get; internal set; }
-		
+
 		/// <summary>
 		/// The index of the local variable or parameter (depending on Kind)
 		/// 
@@ -149,14 +166,17 @@ namespace ICSharpCode.Decompiler.IL
 		/// For other kinds, the index has no meaning, and is usually null.
 		/// </summary>
 		public int? Index { get; private set; }
-		
+
 		[Conditional("DEBUG")]
 		internal void CheckInvariant()
 		{
-			switch (kind) {
+			switch (kind)
+			{
 				case VariableKind.Local:
 				case VariableKind.ForeachLocal:
+				case VariableKind.PatternLocal:
 				case VariableKind.PinnedLocal:
+				case VariableKind.PinnedRegionLocal:
 				case VariableKind.UsingLocal:
 				case VariableKind.ExceptionLocal:
 				case VariableKind.DisplayClassLocal:
@@ -174,7 +194,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public string Name { get; set; }
+		public string? Name { get; set; }
 
 		public bool HasGeneratedName { get; set; }
 
@@ -184,8 +204,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// <remarks>
 		/// This property is set automatically when the variable is added to the <c>ILFunction.Variables</c> collection.
 		/// </remarks>
-		public ILFunction Function { get; internal set; }
-		
+		public ILFunction? Function { get; internal set; }
+
 		/// <summary>
 		/// Gets the block container in which this variable is captured.
 		/// For captured variables declared inside the loop, the capture scope is the BlockContainer of the loop.
@@ -194,7 +214,7 @@ namespace ICSharpCode.Decompiler.IL
 		/// <remarks>
 		/// This property returns null for variables that are not captured.
 		/// </remarks>
-		public BlockContainer CaptureScope { get; internal set; }
+		public BlockContainer? CaptureScope { get; internal set; }
 
 		/// <summary>
 		/// Gets the index of this variable within the <c>Function.Variables</c> collection.
@@ -232,13 +252,13 @@ namespace ICSharpCode.Decompiler.IL
 		/// <item>stloc</item>
 		/// <item>TryCatchHandler (assigning the exception variable)</item>
 		/// <item>PinnedRegion (assigning the pointer variable)</item>
-		/// <item>initial values (<see cref="HasInitialValue"/>)</item>
+		/// <item>initial values (<see cref="UsesInitialValue"/>)</item>
 		/// </list>
 		/// </summary>
 		/// <remarks>
 		/// This variable is automatically updated when adding/removing stores instructions from the ILAst.
 		/// </remarks>
-		public int StoreCount => (hasInitialValue ? 1 : 0) + StoreInstructions.Count;
+		public int StoreCount => (usesInitialValue ? 1 : 0) + StoreInstructions.Count;
 
 		readonly List<IStoreInstruction> storeInstructions = new List<IStoreInstruction>();
 
@@ -250,7 +270,7 @@ namespace ICSharpCode.Decompiler.IL
 		/// <item>stloc</item>
 		/// <item>TryCatchHandler (assigning the exception variable)</item>
 		/// <item>PinnedRegion (assigning the pointer variable)</item>
-		/// <item>initial values (<see cref="HasInitialValue"/>) -- however, there is no instruction for
+		/// <item>initial values (<see cref="UsesInitialValue"/>) -- however, there is no instruction for
 		///       the initial value, so it is not contained in the store list.</item>
 		/// </list>
 		/// </summary>
@@ -291,7 +311,7 @@ namespace ICSharpCode.Decompiler.IL
 			return list.Count - 1;
 		}
 
-		void RemoveInstruction<T>(List<T> list, int index, T inst) where T : class, IInstructionWithVariableOperand
+		void RemoveInstruction<T>(List<T> list, int index, T? inst) where T : class, IInstructionWithVariableOperand
 		{
 			Debug.Assert(list[index] == inst);
 			int indexToMove = list.Count - 1;
@@ -300,25 +320,84 @@ namespace ICSharpCode.Decompiler.IL
 			list.RemoveAt(indexToMove);
 		}
 
-		bool hasInitialValue;
-		
+		bool initialValueIsInitialized;
+
 		/// <summary>
-		/// Gets/Sets whether the variable has an initial value.
+		/// Gets/Sets whether the variable's initial value is initialized.
 		/// This is always <c>true</c> for parameters (incl. <c>this</c>).
 		/// 
-		/// Normal variables have an initial value if the function uses ".locals init"
-		/// and that initialization is not a dead store.
+		/// Normal variables have an initial value if the function uses ".locals init".
 		/// </summary>
-		/// <remarks>
-		/// An initial value is counted as a store (adds 1 to StoreCount)
-		/// </remarks>
-		public bool HasInitialValue {
-			get { return hasInitialValue; }
+		public bool InitialValueIsInitialized {
+			get { return initialValueIsInitialized; }
 			set {
 				if (Kind == VariableKind.Parameter && !value)
-					throw new InvalidOperationException("Cannot remove HasInitialValue from parameters");
-				hasInitialValue = value;
+					throw new InvalidOperationException("Cannot remove InitialValueIsInitialized from parameters");
+				initialValueIsInitialized = value;
 			}
+		}
+
+		bool usesInitialValue;
+
+		/// <summary>
+		/// Gets/Sets whether the initial value of the variable is used.
+		/// This is always <c>true</c> for parameters (incl. <c>this</c>).
+		/// 
+		/// Normal variables use the initial value, if no explicit initialization is done.
+		/// </summary>
+		/// <remarks>
+		/// The following table shows the relationship between <see cref="InitialValueIsInitialized"/>
+		/// and <see cref="UsesInitialValue"/>.
+		/// <list type="table">
+		/// <listheader>
+		/// <term><see cref="InitialValueIsInitialized"/></term>
+		/// <term><see cref="UsesInitialValue"/></term>
+		/// <term>Meaning</term>
+		/// </listheader>
+		/// <item>
+		/// <term><see langword="true" /></term>
+		/// <term><see langword="true" /></term>
+		/// <term>This variable's initial value is zero-initialized (<c>.locals init</c>) and the initial value is used.
+		/// From C#'s point of view a the value <c>default(T)</c> is assigned at the site of declaration.</term>
+		/// </item>
+		/// <item>
+		/// <term><see langword="true" /></term>
+		/// <term><see langword="false" /></term>
+		/// <term>This variable's initial value is zero-initialized (<c>.locals init</c>) and the initial value is not used.
+		/// From C#'s point of view no implicit initialization occurs, because the code assigns a value
+		/// explicitly, before the variable is first read.</term>
+		/// </item>
+		/// <item>
+		/// <term><see langword="false" /></term>
+		/// <term><see langword="true" /></term>
+		/// <term>This variable's initial value is uninitialized (<c>.locals</c> without <c>init</c>) and the
+		/// initial value is used.
+		/// From C#'s point of view a call to <code>System.Runtime.CompilerServices.Unsafe.SkipInit(out T)</code>
+		/// is generated after the declaration.</term>
+		/// </item>
+		/// <item>
+		/// <term><see langword="false" /></term>
+		/// <term><see langword="false" /></term>
+		/// <term>This variable's initial value is uninitialized (<c>.locals</c> without <c>init</c>) and the
+		/// initial value is not used.
+		/// From C#'s point of view no implicit initialization occurs, because the code assigns a value
+		/// explicitly, before the variable is first read.</term>
+		/// </item>
+		/// </list>
+		/// </remarks>
+		public bool UsesInitialValue {
+			get { return usesInitialValue; }
+			set {
+				if (Kind == VariableKind.Parameter && !value)
+					throw new InvalidOperationException("Cannot remove UsesInitialValue from parameters");
+				usesInitialValue = value;
+			}
+		}
+
+		[Obsolete("Use 'UsesInitialValue' instead.")]
+		public bool HasInitialValue {
+			get => UsesInitialValue;
+			set => UsesInitialValue = value;
 		}
 
 		/// <summary>
@@ -342,7 +421,7 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public bool IsDead {
 			get {
-				return StoreCount == (HasInitialValue ? 1 : 0)
+				return StoreInstructions.Count == 0
 					&& LoadCount == 0
 					&& AddressCount == 0;
 			}
@@ -352,7 +431,12 @@ namespace ICSharpCode.Decompiler.IL
 		/// The field which was converted to a local variable.
 		/// Set when the variable is from a 'yield return' or 'async' state machine.
 		/// </summary>
-		public IField StateMachineField;
+		public IField? StateMachineField;
+
+		/// <summary>
+		/// If enabled, remove dead stores to this variable as if the "Remove dead code" option is enabled.
+		/// </summary>
+		internal bool RemoveIfRedundant;
 
 		public ILVariable(VariableKind kind, IType type, int? index = null)
 		{
@@ -363,10 +447,13 @@ namespace ICSharpCode.Decompiler.IL
 			this.StackType = type.GetStackType();
 			this.Index = index;
 			if (kind == VariableKind.Parameter)
-				this.HasInitialValue = true;
+			{
+				this.InitialValueIsInitialized = true;
+				this.UsesInitialValue = true;
+			}
 			CheckInvariant();
 		}
-		
+
 		public ILVariable(VariableKind kind, IType type, StackType stackType, int? index = null)
 		{
 			if (type == null)
@@ -376,26 +463,34 @@ namespace ICSharpCode.Decompiler.IL
 			this.StackType = stackType;
 			this.Index = index;
 			if (kind == VariableKind.Parameter)
-				this.HasInitialValue = true;
+			{
+				this.InitialValueIsInitialized = true;
+				this.UsesInitialValue = true;
+			}
 			CheckInvariant();
 		}
 
-		public override string ToString()
+		public override string? ToString()
 		{
 			return Name;
 		}
-		
+
 		internal void WriteDefinitionTo(ITextOutput output)
 		{
-			if (IsRefReadOnly) {
+			if (IsRefReadOnly)
+			{
 				output.Write("readonly ");
 			}
-			switch (Kind) {
+			switch (Kind)
+			{
 				case VariableKind.Local:
 					output.Write("local ");
 					break;
 				case VariableKind.PinnedLocal:
 					output.Write("pinned local ");
+					break;
+				case VariableKind.PinnedRegionLocal:
+					output.Write("PinnedRegion local ");
 					break;
 				case VariableKind.Parameter:
 					output.Write("param ");
@@ -424,6 +519,12 @@ namespace ICSharpCode.Decompiler.IL
 				case VariableKind.DisplayClassLocal:
 					output.Write("display_class local ");
 					break;
+				case VariableKind.PatternLocal:
+					output.Write("pattern local ");
+					break;
+				case VariableKind.DeconstructionInitTemporary:
+					output.Write("deconstruction init temporary ");
+					break;
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -431,36 +532,57 @@ namespace ICSharpCode.Decompiler.IL
 			output.Write(" : ");
 			Type.WriteTo(output);
 			output.Write('(');
-			if (Kind == VariableKind.Parameter || Kind == VariableKind.Local || Kind == VariableKind.PinnedLocal) {
+			if (Kind == VariableKind.Parameter || Kind == VariableKind.Local || Kind == VariableKind.PinnedLocal || Kind == VariableKind.PinnedRegionLocal)
+			{
 				output.Write("Index={0}, ", Index);
 			}
 			output.Write("LoadCount={0}, AddressCount={1}, StoreCount={2})", LoadCount, AddressCount, StoreCount);
-			if (hasInitialValue && Kind != VariableKind.Parameter) {
-				output.Write(" init");
+			if (Kind != VariableKind.Parameter)
+			{
+				if (initialValueIsInitialized)
+				{
+					output.Write(" init");
+				}
+				else
+				{
+					output.Write(" uninit");
+				}
+				if (usesInitialValue)
+				{
+					output.Write(" used");
+				}
+				else
+				{
+					output.Write(" unused");
+				}
 			}
-			if (CaptureScope != null) {
+			if (CaptureScope != null)
+			{
 				output.Write(" captured in ");
-				output.WriteLocalReference(CaptureScope.EntryPoint.Label, CaptureScope);
+				output.WriteLocalReference(CaptureScope.EntryPoint?.Label, CaptureScope);
 			}
-			if (StateMachineField != null) {
+			if (StateMachineField != null)
+			{
 				output.Write(" from state-machine");
 			}
 		}
-		
+
 		internal void WriteTo(ITextOutput output)
 		{
 			output.WriteLocalReference(this.Name, this);
 		}
-		
+
 		/// <summary>
 		/// Gets whether this variable occurs within the specified instruction.
 		/// </summary>
 		internal bool IsUsedWithin(ILInstruction inst)
 		{
-			if (inst is IInstructionWithVariableOperand iwvo && iwvo.Variable == this) {
+			if (inst is IInstructionWithVariableOperand iwvo && iwvo.Variable == this)
+			{
 				return true;
 			}
-			foreach (var child in inst.Children) {
+			foreach (var child in inst.Children)
+			{
 				if (IsUsedWithin(child))
 					return true;
 			}
@@ -493,13 +615,15 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public static readonly ILVariableEqualityComparer Instance = new ILVariableEqualityComparer();
 
-		public bool Equals(ILVariable x, ILVariable y)
+		public bool Equals(ILVariable? x, ILVariable? y)
 		{
 			if (x == y)
 				return true;
 			if (x == null || y == null)
 				return false;
 			if (x.Kind == VariableKind.StackSlot || y.Kind == VariableKind.StackSlot)
+				return false;
+			if (x.Kind == VariableKind.PatternLocal || y.Kind == VariableKind.PatternLocal)
 				return false;
 			if (!(x.Function == y.Function && x.Kind == y.Kind))
 				return false;

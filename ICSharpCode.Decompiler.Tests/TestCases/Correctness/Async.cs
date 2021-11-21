@@ -34,29 +34,49 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task Run()
 		{
+			Console.WriteLine("SimpleBoolTaskMethod:");
 			await SimpleBoolTaskMethod();
+			Console.WriteLine("StreamCopyTo:");
 			StreamCopyTo(new MemoryStream(new byte[1024]), 16);
+			Console.WriteLine("StreamCopyToWithConfigureAwait:");
 			StreamCopyToWithConfigureAwait(new MemoryStream(new byte[1024]), 16);
+			Console.WriteLine("AwaitInForEach:");
 			await AwaitInForEach(Enumerable.Range(0, 100).Select(i => Task.FromResult(i)));
+			Console.WriteLine("TaskMethodWithoutAwaitButWithExceptionHandling:");
 			await TaskMethodWithoutAwaitButWithExceptionHandling();
 #if CS60
+			Console.WriteLine($"{nameof(AwaitCatch)}:");
 			await AwaitCatch(Task.FromResult(1));
+			Console.WriteLine($"{nameof(AwaitMultipleCatchBlocks)}:");
 			await AwaitMultipleCatchBlocks(Task.FromResult(1));
+			Console.WriteLine($"{nameof(AwaitMultipleCatchBlocks2)}:");
 			await AwaitMultipleCatchBlocks2(Task.FromResult(1));
+			Console.WriteLine($"{nameof(AwaitInComplexFinally)}:");
 			Console.WriteLine(await AwaitInComplexFinally());
-			try {
+			try
+			{
+				Console.WriteLine($"{nameof(AwaitFinally)}:");
 				await AwaitFinally(Task.FromResult(2));
-			} catch (Exception ex) {
+			}
+			catch (Exception ex)
+			{
 				Console.WriteLine(ex + " caught!");
 			}
 #endif
+			Console.WriteLine("NestedAwait:");
 			await NestedAwait(Task.FromResult(Task.FromResult(5)));
+			Console.WriteLine("AwaitWithStack:");
 			await AwaitWithStack(Task.FromResult(3));
+			Console.WriteLine("AwaitWithStack2:");
 			await AwaitWithStack2(Task.FromResult(4));
 #if CS60
+			Console.WriteLine($"{nameof(AwaitInCatch)}:");
 			await AwaitInCatch(Task.FromResult(1), Task.FromResult(2));
+			Console.WriteLine($"{nameof(AwaitInFinally)}:");
 			await AwaitInFinally(Task.FromResult(2), Task.FromResult(4));
+			Console.WriteLine($"{nameof(AwaitInCatchAndFinally)}:");
 			await AwaitInCatchAndFinally(Task.FromResult(3), Task.FromResult(6), Task.FromResult(9));
+			Console.WriteLine($"{nameof(AwaitInFinallyInUsing)}:");
 			Console.WriteLine(await AwaitInFinallyInUsing(Task.FromResult<IDisposable>(new StringWriter()), Task.FromResult(6), Task.FromResult(9)));
 #endif
 		}
@@ -75,7 +95,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 			byte[] array = new byte[bufferSize];
 			int count;
 			Console.WriteLine("BeforeLoop");
-			while ((count = await destination.ReadAsync(array, 0, array.Length)) != 0) {
+			while ((count = await destination.ReadAsync(array, 0, array.Length)) != 0)
+			{
 				Console.WriteLine("In Loop after condition!");
 				await destination.WriteAsync(array, 0, count);
 				Console.WriteLine("In Loop after inner await");
@@ -89,7 +110,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 			byte[] array = new byte[bufferSize];
 			int count;
 			Console.WriteLine("Before Loop");
-			while ((count = await destination.ReadAsync(array, 0, array.Length).ConfigureAwait(false)) != 0) {
+			while ((count = await destination.ReadAsync(array, 0, array.Length).ConfigureAwait(false)) != 0)
+			{
 				Console.WriteLine("Before Inner Await");
 				await destination.WriteAsync(array, 0, count).ConfigureAwait(false);
 				Console.WriteLine("After Inner Await");
@@ -101,7 +123,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 		{
 			int num = 0;
 			Console.WriteLine("Before Loop");
-			foreach (Task<int> current in elements) {
+			foreach (Task<int> current in elements)
+			{
 				Console.WriteLine("Before Inner Await");
 				num += await current;
 				Console.WriteLine("After Inner Await");
@@ -112,11 +135,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task TaskMethodWithoutAwaitButWithExceptionHandling()
 		{
-			try {
-				using (new StringWriter()) {
+			try
+			{
+				using (new StringWriter())
+				{
 					Console.WriteLine("No Await");
 				}
-			} catch (Exception) {
+			}
+			catch (Exception)
+			{
 				Console.WriteLine("Crash");
 			}
 		}
@@ -124,23 +151,31 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 #if CS60
 		public async Task AwaitCatch(Task<int> task)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Before throw");
 				throw new Exception();
-			} catch {
+			}
+			catch
+			{
 				Console.WriteLine(await task);
 			}
 		}
 
 		public async Task AwaitMultipleCatchBlocks(Task<int> task)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Before throw");
 				throw new Exception();
-			} catch (OutOfMemoryException ex) {
+			}
+			catch (OutOfMemoryException ex)
+			{
 				Console.WriteLine(ex.ToString());
 				Console.WriteLine(await task);
-			} catch {
+			}
+			catch
+			{
 				Console.WriteLine(await task);
 			}
 		}
@@ -148,25 +183,35 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task AwaitMultipleCatchBlocks2(Task<int> task)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Before throw");
 				throw new Exception();
-			} catch (OutOfMemoryException ex) {
+			}
+			catch (OutOfMemoryException ex)
+			{
 				Console.WriteLine(ex.ToString());
 				Console.WriteLine(await task);
-			} catch (InternalBufferOverflowException ex) {
+			}
+			catch (InternalBufferOverflowException ex)
+			{
 				Console.WriteLine(ex.ToString());
-			} catch {
+			}
+			catch
+			{
 				Console.WriteLine(await task);
 			}
 		}
 
 		public async Task AwaitFinally(Task<int> task)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Before throw");
 				throw new Exception();
-			} finally {
+			}
+			finally
+			{
 				Console.WriteLine(await task);
 			}
 		}
@@ -184,9 +229,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task AwaitWithStack2(Task<int> task)
 		{
-			if (await this.SimpleBoolTaskMethod()) {
+			if (await this.SimpleBoolTaskMethod())
+			{
 				Console.WriteLine("A", 1, await task);
-			} else {
+			}
+			else
+			{
 				int num = 1;
 				Console.WriteLine("A", 1, num);
 			}
@@ -195,11 +243,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 #if CS60
 		public async Task AwaitInCatch(Task<int> task1, Task<int> task2)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Start try");
 				await task1;
 				Console.WriteLine("End try");
-			} catch (Exception) {
+			}
+			catch (Exception)
+			{
 				Console.WriteLine("Start catch");
 				await task2;
 				Console.WriteLine("End catch");
@@ -209,11 +260,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task AwaitInFinally(Task<int> task1, Task<int> task2)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Start try");
 				await task1;
 				Console.WriteLine("End try");
-			} finally {
+			}
+			finally
+			{
 				Console.WriteLine("Start finally");
 				await task2;
 				Console.WriteLine("End finally");
@@ -224,20 +278,29 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 		public static async Task<int> AwaitInComplexFinally()
 		{
 			Console.WriteLine("a");
-			try {
+			try
+			{
 				Console.WriteLine("b");
 				await Task.Delay(1);
 				Console.WriteLine("c");
-			} catch (Exception ex) {
+			}
+			catch (Exception ex)
+			{
 				await Task.Delay(ex.HResult);
-			} finally {
+			}
+			finally
+			{
 				Console.WriteLine("d");
 				int i = 0;
-				if (Console.CapsLock) {
+				if (Console.CapsLock)
+				{
 					i++;
 					await Task.Delay(i);
-				} else {
-					while (i < 5) {
+				}
+				else
+				{
+					while (i < 5)
+					{
 						Console.WriteLine("i: " + i);
 						i++;
 					}
@@ -250,15 +313,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task AwaitInCatchAndFinally(Task<int> task1, Task<int> task2, Task<int> task3)
 		{
-			try {
+			try
+			{
 				Console.WriteLine("Start try");
 				await task1;
 				Console.WriteLine("End try");
-			} catch (Exception ex) {
+			}
+			catch (Exception ex)
+			{
 				Console.WriteLine("Start catch");
 				await task2;
 				Console.WriteLine("End catch");
-			} finally {
+			}
+			finally
+			{
 				Console.WriteLine("Start finally");
 				await task3;
 				Console.WriteLine("End finally");
@@ -268,12 +336,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 
 		public async Task<int> AwaitInFinallyInUsing(Task<IDisposable> task1, Task<int> task2, Task<int> task3)
 		{
-			using (await task1) {
+			using (await task1)
+			{
 				Console.WriteLine("Start using");
-				try {
+				try
+				{
 					Console.WriteLine("Before return");
 					return await task2;
-				} finally {
+				}
+				finally
+				{
 					Console.WriteLine("Start finally");
 					await task3;
 					Console.WriteLine("End finally");

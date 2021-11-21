@@ -19,14 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using SRM = System.Reflection.Metadata;
+using System.Threading.Tasks;
+
+using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 
 using static ICSharpCode.Decompiler.Metadata.MetadataExtensions;
-using System.Diagnostics;
-using System.Collections.Immutable;
-using ICSharpCode.Decompiler.Metadata;
+
+using SRM = System.Reflection.Metadata;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
@@ -110,10 +111,20 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// </summary>
 		ReadOnlyMethods = 0x800,
 		/// <summary>
+		/// [NativeIntegerAttribute] is used to replace 'IntPtr' types with the 'nint' type.
+		/// </summary>
+		NativeIntegers = 0x1000,
+		/// <summary>
+		/// Allow function pointer types. If this option is not enabled, function pointers are
+		/// replaced with the 'IntPtr' type.
+		/// </summary>
+		FunctionPointers = 0x2000,
+		/// <summary>
 		/// Default settings: typical options for the decompiler, with all C# languages features enabled.
 		/// </summary>
 		Default = Dynamic | Tuple | ExtensionMethods | DecimalConstants | ReadOnlyStructsAndParameters
 			| RefStructs | UnmanagedConstraints | NullabilityAnnotations | ReadOnlyMethods
+			| NativeIntegers | FunctionPointers
 	}
 
 	/// <summary>
@@ -145,7 +156,39 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				typeSystemOptions |= TypeSystemOptions.NullabilityAnnotations;
 			if (settings.ReadOnlyMethods)
 				typeSystemOptions |= TypeSystemOptions.ReadOnlyMethods;
+			if (settings.NativeIntegers)
+				typeSystemOptions |= TypeSystemOptions.NativeIntegers;
+			if (settings.FunctionPointers)
+				typeSystemOptions |= TypeSystemOptions.FunctionPointers;
 			return typeSystemOptions;
+		}
+
+		public static Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver)
+		{
+			return CreateAsync(mainModule, assemblyResolver, TypeSystemOptions.Default);
+		}
+
+		public static Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver, DecompilerSettings settings)
+		{
+			return CreateAsync(mainModule, assemblyResolver, GetOptions(settings ?? throw new ArgumentNullException(nameof(settings))));
+		}
+
+		public static async Task<DecompilerTypeSystem> CreateAsync(PEFile mainModule, IAssemblyResolver assemblyResolver, TypeSystemOptions typeSystemOptions)
+		{
+			if (mainModule == null)
+				throw new ArgumentNullException(nameof(mainModule));
+			if (assemblyResolver == null)
+				throw new ArgumentNullException(nameof(assemblyResolver));
+			var ts = new DecompilerTypeSystem();
+			await ts.InitializeAsync(mainModule, assemblyResolver, typeSystemOptions)
+				.ConfigureAwait(false);
+			return ts;
+		}
+
+		private MetadataModule mainModule;
+
+		private DecompilerTypeSystem()
+		{
 		}
 
 		public DecompilerTypeSystem(PEFile mainModule, IAssemblyResolver assemblyResolver)
@@ -164,51 +207,63 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				throw new ArgumentNullException(nameof(mainModule));
 			if (assemblyResolver == null)
 				throw new ArgumentNullException(nameof(assemblyResolver));
+			InitializeAsync(mainModule, assemblyResolver, typeSystemOptions).GetAwaiter().GetResult();
+		}
+
+		private async Task InitializeAsync(PEFile mainModule, IAssemblyResolver assemblyResolver, TypeSystemOptions typeSystemOptions)
+		{
 			// Load referenced assemblies and type-forwarder references.
 			// This is necessary to make .NET Core/PCL binaries work better.
 			var referencedAssemblies = new List<PEFile>();
-			var assemblyReferenceQueue = new Queue<(bool IsAssembly, PEFile MainModule, object Reference)>();
-			var mainMetadata = mainModule.Metadata;
-			foreach (var h in mainMetadata.GetModuleReferences()) {
-				var moduleRef = mainMetadata.GetModuleReference(h);
-				var moduleName = mainMetadata.GetString(moduleRef.Name);
-				foreach (var fileHandle in mainMetadata.AssemblyFiles) {
-					var file = mainMetadata.GetAssemblyFile(fileHandle);
-					if (mainMetadata.StringComparer.Equals(file.Name, moduleName) && file.ContainsMetadata) {
-						assemblyReferenceQueue.Enqueue((false, mainModule, moduleName));
-						break;
-					}
-				}
-			}
-			foreach (var refs in mainModule.AssemblyReferences) {
-				assemblyReferenceQueue.Enqueue((true, mainModule, refs));
-			}
+			var assemblyReferenceQueue = new Queue<(bool IsAssembly, PEFile MainModule, object Reference, Task<PEFile> ResolveTask)>();
 			var comparer = KeyComparer.Create(((bool IsAssembly, PEFile MainModule, object Reference) reference) =>
 				reference.IsAssembly ? "A:" + ((AssemblyReference)reference.Reference).FullName :
-				                       "M:" + reference.Reference);
-			var processedAssemblyReferences = new HashSet<(bool IsAssembly, PEFile Parent, object Reference)>(comparer);
-			while (assemblyReferenceQueue.Count > 0) {
-				var asmRef = assemblyReferenceQueue.Dequeue();
-				if (!processedAssemblyReferences.Add(asmRef))
-					continue;
-				PEFile asm;
-				if (asmRef.IsAssembly) {
-					asm = assemblyResolver.Resolve((AssemblyReference)asmRef.Reference);
-				} else {
-					asm = assemblyResolver.ResolveModule(asmRef.MainModule, (string)asmRef.Reference);
+									   "M:" + reference.Reference);
+			var assemblyReferencesInQueue = new HashSet<(bool IsAssembly, PEFile Parent, object Reference)>(comparer);
+			var mainMetadata = mainModule.Metadata;
+			foreach (var h in mainMetadata.GetModuleReferences())
+			{
+				try
+				{
+					var moduleRef = mainMetadata.GetModuleReference(h);
+					var moduleName = mainMetadata.GetString(moduleRef.Name);
+					foreach (var fileHandle in mainMetadata.AssemblyFiles)
+					{
+						var file = mainMetadata.GetAssemblyFile(fileHandle);
+						if (mainMetadata.StringComparer.Equals(file.Name, moduleName) && file.ContainsMetadata)
+						{
+							AddToQueue(false, mainModule, moduleName);
+							break;
+						}
+					}
 				}
-				if (asm != null) {
+				catch (BadImageFormatException)
+				{
+				}
+			}
+			foreach (var refs in mainModule.AssemblyReferences)
+			{
+				AddToQueue(true, mainModule, refs);
+			}
+			while (assemblyReferenceQueue.Count > 0)
+			{
+				var asmRef = assemblyReferenceQueue.Dequeue();
+				var asm = await asmRef.ResolveTask.ConfigureAwait(false);
+				if (asm != null)
+				{
 					referencedAssemblies.Add(asm);
 					var metadata = asm.Metadata;
-					foreach (var h in metadata.ExportedTypes) {
+					foreach (var h in metadata.ExportedTypes)
+					{
 						var exportedType = metadata.GetExportedType(h);
-						switch (exportedType.Implementation.Kind) {
+						switch (exportedType.Implementation.Kind)
+						{
 							case SRM.HandleKind.AssemblyReference:
-								assemblyReferenceQueue.Enqueue((true, asm, new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation)));
+								AddToQueue(true, asm, new AssemblyReference(asm, (SRM.AssemblyReferenceHandle)exportedType.Implementation));
 								break;
 							case SRM.HandleKind.AssemblyFile:
 								var file = metadata.GetAssemblyFile((SRM.AssemblyFileHandle)exportedType.Implementation);
-								assemblyReferenceQueue.Enqueue((false, asm, metadata.GetString(file.Name)));
+								AddToQueue(false, asm, metadata.GetString(file.Name));
 								break;
 						}
 					}
@@ -217,27 +272,52 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var mainModuleWithOptions = mainModule.WithOptions(typeSystemOptions);
 			var referencedAssembliesWithOptions = referencedAssemblies.Select(file => file.WithOptions(typeSystemOptions));
 			// Primitive types are necessary to avoid assertions in ILReader.
-			// Fallback to MinimalCorlib to provide the primitive types.
-			if (!HasType(KnownTypeCode.Void) || !HasType(KnownTypeCode.Int32)) {
-				Init(mainModule.WithOptions(typeSystemOptions), referencedAssembliesWithOptions.Concat(new[] { MinimalCorlib.Instance }));
-			} else {
+			// Other known types are necessary in order for transforms to work (e.g. Task<T> for async transform).
+			// Figure out which known types are missing from our type system so far:
+			var missingKnownTypes = KnownTypeReference.AllKnownTypes.Where(IsMissing).ToList();
+			if (missingKnownTypes.Count > 0)
+			{
+				Init(mainModule.WithOptions(typeSystemOptions), referencedAssembliesWithOptions.Concat(new[] { MinimalCorlib.CreateWithTypes(missingKnownTypes) }));
+			}
+			else
+			{
 				Init(mainModuleWithOptions, referencedAssembliesWithOptions);
 			}
-			this.MainModule = (MetadataModule)base.MainModule;
+			this.mainModule = (MetadataModule)base.MainModule;
 
-			bool HasType(KnownTypeCode code)
+			void AddToQueue(bool isAssembly, PEFile mainModule, object reference)
 			{
-				TopLevelTypeName name = KnownTypeReference.Get(code).TypeName;
-				if (!mainModule.GetTypeDefinition(name).IsNil)
-					return true;
-				foreach (var file in referencedAssemblies) {
-					if (!file.GetTypeDefinition(name).IsNil)
-						return true;
+				if (assemblyReferencesInQueue.Add((isAssembly, mainModule, reference)))
+				{
+					// Immediately start loading the referenced module as we add the entry to the queue.
+					// This allows loading multiple modules in parallel.
+					Task<PEFile> asm;
+					if (isAssembly)
+					{
+						asm = assemblyResolver.ResolveAsync((AssemblyReference)reference);
+					}
+					else
+					{
+						asm = assemblyResolver.ResolveModuleAsync(mainModule, (string)reference);
+					}
+					assemblyReferenceQueue.Enqueue((isAssembly, mainModule, reference, asm));
 				}
-				return false;
+			}
+
+			bool IsMissing(KnownTypeReference knownType)
+			{
+				var name = knownType.TypeName;
+				if (!mainModule.GetTypeDefinition(name).IsNil)
+					return false;
+				foreach (var file in referencedAssemblies)
+				{
+					if (!file.GetTypeDefinition(name).IsNil)
+						return false;
+				}
+				return true;
 			}
 		}
-		
-		public new MetadataModule MainModule { get; }
+
+		public new MetadataModule MainModule => mainModule;
 	}
 }

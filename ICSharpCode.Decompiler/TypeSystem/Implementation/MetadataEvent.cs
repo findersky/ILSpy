@@ -25,6 +25,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.Util;
 
@@ -60,7 +61,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public EntityHandle MetadataToken => handle;
 		public string Name => name;
-		
+
 		SymbolKind ISymbol.SymbolKind => SymbolKind.Event;
 
 		public bool CanAdd => !accessors.Adder.IsNil;
@@ -112,6 +113,13 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			var b = new AttributeListBuilder(module);
 			var metadata = module.metadata;
 			var eventDef = metadata.GetEventDefinition(handle);
+
+			// SpecialName
+			if ((eventDef.Attributes & (EventAttributes.SpecialName | EventAttributes.RTSpecialName)) == EventAttributes.SpecialName)
+			{
+				b.Add(KnownAttribute.SpecialName);
+			}
+
 			b.Add(eventDef.GetCustomAttributes(), SymbolKind.Event);
 			return b.Build();
 		}
@@ -134,7 +142,8 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		public override bool Equals(object obj)
 		{
-			if (obj is MetadataEvent ev) {
+			if (obj is MetadataEvent ev)
+			{
 				return handle == ev.handle && module.PEFile == ev.module.PEFile;
 			}
 			return false;

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Windows.Media;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.Search;
@@ -28,7 +29,8 @@ namespace ICSharpCode.ILSpy
 {
 	public class SearchResult
 	{
-		public static readonly IComparer<SearchResult> Comparer = new SearchResultComparer();
+		public static readonly IComparer<SearchResult> ComparerByName = new SearchResultNameComparer();
+		public static readonly IComparer<SearchResult> ComparerByFitness = new SearchResultFitnessComparer();
 
 		public virtual object Reference {
 			get {
@@ -56,11 +58,20 @@ namespace ICSharpCode.ILSpy
 			return Name;
 		}
 
-		class SearchResultComparer : IComparer<SearchResult>
+		class SearchResultNameComparer : IComparer<SearchResult>
 		{
 			public int Compare(SearchResult x, SearchResult y)
 			{
 				return StringComparer.Ordinal.Compare(x?.Name ?? "", y?.Name ?? "");
+			}
+		}
+
+		class SearchResultFitnessComparer : IComparer<SearchResult>
+		{
+			public int Compare(SearchResult x, SearchResult y)
+			{
+				//elements with higher Fitness come first
+				return Comparer<float>.Default.Compare(y?.Fitness ?? 0, x?.Fitness ?? 0);
 			}
 		}
 	}
@@ -72,7 +83,8 @@ namespace ICSharpCode.ILSpy
 
 		public override ImageSource Image {
 			get {
-				if (base.Image == null) {
+				if (base.Image == null)
+				{
 					base.Image = AbstractEntitySearchStrategy.GetIcon(Member);
 				}
 				return base.Image;
@@ -81,7 +93,8 @@ namespace ICSharpCode.ILSpy
 
 		public override ImageSource LocationImage {
 			get {
-				if (base.LocationImage == null) {
+				if (base.LocationImage == null)
+				{
 					base.LocationImage = Member.DeclaringTypeDefinition != null ? TypeTreeNode.GetIcon(Member.DeclaringTypeDefinition) : Images.Namespace;
 				}
 				return base.LocationImage;

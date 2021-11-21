@@ -20,9 +20,9 @@ using System;
 using System.ComponentModel.Composition;
 using System.IO;
 
-using ICSharpCode.ILSpy.TreeNodes;
-using ICSharpCode.ILSpy;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.ILSpy;
+using ICSharpCode.ILSpy.TreeNodes;
 
 namespace ILSpy.BamlDecompiler
 {
@@ -31,13 +31,8 @@ namespace ILSpy.BamlDecompiler
 	{
 		public ILSpyTreeNode CreateNode(Resource resource)
 		{
-			return null;
-		}
-		
-		public ILSpyTreeNode CreateNode(string key, object data)
-		{
-			if (key.EndsWith(".baml", StringComparison.OrdinalIgnoreCase) && data is Stream stream)
-				return new BamlResourceEntryNode(key, stream);
+			if (resource.Name.EndsWith(".baml", StringComparison.OrdinalIgnoreCase))
+				return new BamlResourceEntryNode(resource.Name, resource.TryOpenStream);
 			else
 				return null;
 		}
@@ -51,9 +46,14 @@ namespace ILSpy.BamlDecompiler
 
 		public string WriteResourceToFile(LoadedAssembly assembly, string fileName, Stream stream, DecompilationOptions options)
 		{
-			var document = BamlResourceEntryNode.LoadIntoDocument(assembly.GetPEFileOrNull(), assembly.GetAssemblyResolver(), stream, options.CancellationToken);
+			BamlDecompilerTypeSystem typeSystem = new BamlDecompilerTypeSystem(assembly.GetPEFileOrNull(), assembly.GetAssemblyResolver());
+			var decompiler = new XamlDecompiler(typeSystem, new BamlDecompilerSettings() {
+				ThrowOnAssemblyResolveErrors = options.DecompilerSettings.ThrowOnAssemblyResolveErrors
+			});
+			decompiler.CancellationToken = options.CancellationToken;
 			fileName = Path.ChangeExtension(fileName, ".xaml");
-			document.Save(Path.Combine(options.SaveAsProjectDirectory, fileName));
+			var result = decompiler.Decompile(stream);
+			result.Xaml.Save(Path.Combine(options.SaveAsProjectDirectory, fileName));
 			return fileName;
 		}
 	}

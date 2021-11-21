@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2016 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2016 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -46,7 +47,7 @@ namespace ICSharpCode.Decompiler.Util
 		/// If possible, prefer using InclusiveEnd for comparisons, as that does not have an overflow problem.
 		/// </remarks>
 		public readonly int End;
-		
+
 		/// <summary>
 		/// Creates a new interval.
 		/// </summary>
@@ -61,7 +62,7 @@ namespace ICSharpCode.Decompiler.Util
 			this.Start = start;
 			this.End = end;
 		}
-		
+
 		/// <summary>
 		/// Gets the inclusive end of the interval. (End - 1)
 		/// For empty intervals, this returns Start - 1.
@@ -82,13 +83,13 @@ namespace ICSharpCode.Decompiler.Util
 				return Start > InclusiveEnd;
 			}
 		}
-		
+
 		public bool Contains(int val)
 		{
 			// Use 'val <= InclusiveEnd' instead of 'val < End' to allow intervals to include int.MaxValue.
 			return Start <= val && val <= InclusiveEnd;
 		}
-		
+
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
@@ -101,7 +102,7 @@ namespace ICSharpCode.Decompiler.Util
 			else
 				return default(Interval);
 		}
-		
+
 		public override string ToString()
 		{
 			if (End == int.MinValue)
@@ -109,13 +110,13 @@ namespace ICSharpCode.Decompiler.Util
 			else
 				return string.Format("[{0}..{1})", Start, End);
 		}
-		
+
 		#region Equals and GetHashCode implementation
-		public override bool Equals(object obj)
+		public override bool Equals(object? obj)
 		{
 			return (obj is Interval) && Equals((Interval)obj);
 		}
-		
+
 		public bool Equals(Interval other)
 		{
 			return this.Start == other.Start && this.End == other.End;
@@ -197,7 +198,7 @@ namespace ICSharpCode.Decompiler.Util
 				throw new ArgumentException();
 			return new LongInterval(start, unchecked(inclusiveEnd + 1));
 		}
-		
+
 		/// <summary>
 		/// Gets the inclusive end of the interval. (End - 1)
 		/// For empty intervals, this returns Start - 1.
@@ -218,13 +219,13 @@ namespace ICSharpCode.Decompiler.Util
 				return Start > InclusiveEnd;
 			}
 		}
-		
+
 		public bool Contains(long val)
 		{
 			// Use 'val <= InclusiveEnd' instead of 'val < End' to allow intervals to include long.MaxValue.
 			return Start <= val && val <= InclusiveEnd;
 		}
-		
+
 		/// <summary>
 		/// Calculates the intersection between this interval and the other interval.
 		/// </summary>
@@ -237,46 +238,55 @@ namespace ICSharpCode.Decompiler.Util
 			else
 				return default(LongInterval);
 		}
-		
+
 		/// <summary>
 		/// Returns an enumerator over all values in this interval.
 		/// </summary>
 		public IEnumerable<long> Range()
 		{
-			if (End == long.MinValue) {
+			if (End == long.MinValue)
+			{
 				long i = Start;
-				while (true) {
+				while (true)
+				{
 					yield return i;
 					if (i == long.MaxValue)
 						break;
 					i++;
 				}
-			} else {
+			}
+			else
+			{
 				for (long i = Start; i < End; i++)
 					yield return i;
 			}
 		}
-		
+
 		public override string ToString()
 		{
-			if (End == long.MinValue) {
+			if (End == long.MinValue)
+			{
 				if (Start == long.MinValue)
-					return string.Format("[long.MinValue..long.MaxValue]", End);
+					return "[long.MinValue..long.MaxValue]";
 				else
-					return string.Format("[{0}..long.MaxValue]", Start);
-			} else if (Start == long.MinValue) {
-				return string.Format("[long.MinValue..{0})", End);
-			} else {
-				return string.Format("[{0}..{1})", Start, End);
+					return $"[{Start}..long.MaxValue]";
+			}
+			else if (Start == long.MinValue)
+			{
+				return $"[long.MinValue..{End})";
+			}
+			else
+			{
+				return $"[{Start}..{End})";
 			}
 		}
-		
+
 		#region Equals and GetHashCode implementation
-		public override bool Equals(object obj)
+		public override bool Equals(object? obj)
 		{
 			return (obj is LongInterval) && Equals((LongInterval)obj);
 		}
-		
+
 		public bool Equals(LongInterval other)
 		{
 			return this.Start == other.Start && this.End == other.End;

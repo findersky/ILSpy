@@ -21,6 +21,7 @@ using System.ComponentModel.Composition;
 using System.IO;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
@@ -35,19 +36,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public ILSpyTreeNode CreateNode(Resource resource)
 		{
-			Stream stream = resource.TryOpenStream();
-			if (stream == null)
-				return null;
-			return CreateNode(resource.Name, stream);
-		}
-
-		public ILSpyTreeNode CreateNode(string key, object data)
-		{
-			if (!(data is Stream))
-			    return null;
-			foreach (string fileExt in imageFileExtensions) {
+			string key = resource.Name;
+			foreach (string fileExt in imageFileExtensions)
+			{
 				if (key.EndsWith(fileExt, StringComparison.OrdinalIgnoreCase))
-					return new CursorResourceEntryNode(key, (Stream)data);
+					return new CursorResourceEntryNode(key, resource.TryOpenStream);
 			}
 			return null;
 		}
@@ -55,8 +48,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 	sealed class CursorResourceEntryNode : ResourceEntryNode
 	{
-		public CursorResourceEntryNode(string key, Stream data)
-			: base(key, data)
+		public CursorResourceEntryNode(string key, Func<Stream> openStream)
+			: base(key, openStream)
 		{
 		}
 
@@ -64,23 +57,29 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override bool View(TabPageModel tabPage)
 		{
-			try {
+			try
+			{
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
-				Data.Position = 0;
 				BitmapImage image = new BitmapImage();
-
-				//HACK: windows imaging does not understand that .cur files have the same layout as .ico
-				// so load to data, and modify the ResourceType in the header to make look like an icon...
-				MemoryStream s = Data as MemoryStream;
-				if (null == s)
+				byte[] curData;
+				using (var data = OpenStream())
 				{
-					// data was stored in another stream type (e.g. PinnedBufferedMemoryStream)
-					s = new MemoryStream();
-					Data.CopyTo(s);
+					if (data == null)
+						return false;
+					//HACK: windows imaging does not understand that .cur files have the same layout as .ico
+					// so load to data, and modify the ResourceType in the header to make look like an icon...
+					MemoryStream s = data as MemoryStream;
+					if (s == null)
+					{
+						// data was stored in another stream type (e.g. PinnedBufferedMemoryStream)
+						s = new MemoryStream();
+						data.CopyTo(s);
+					}
+					curData = s.ToArray();
 				}
-				byte[] curData = s.ToArray();
 				curData[2] = 1;
-				using (Stream stream = new MemoryStream(curData)) {
+				using (Stream stream = new MemoryStream(curData))
+				{
 					image.BeginInit();
 					image.StreamSource = stream;
 					image.EndInit();
@@ -95,7 +94,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				tabPage.SupportsLanguageSwitching = false;
 				return true;
 			}
-			catch (Exception) {
+			catch (Exception)
+			{
 				return false;
 			}
 		}

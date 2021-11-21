@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	/// <summary>
@@ -28,7 +30,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets a hash code for interning.
 		/// </summary>
 		int GetHashCodeForInterning();
-		
+
 		/// <summary>
 		/// Equality test for interning.
 		/// </summary>

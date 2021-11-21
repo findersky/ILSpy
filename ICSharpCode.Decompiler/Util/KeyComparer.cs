@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+﻿#nullable enable
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -27,17 +28,17 @@ namespace ICSharpCode.Decompiler.Util
 		{
 			return new KeyComparer<TElement, TKey>(keySelector, Comparer<TKey>.Default, EqualityComparer<TKey>.Default);
 		}
-		
+
 		public static KeyComparer<TElement, TKey> Create<TElement, TKey>(Func<TElement, TKey> keySelector, IComparer<TKey> comparer, IEqualityComparer<TKey> equalityComparer)
 		{
 			return new KeyComparer<TElement, TKey>(keySelector, comparer, equalityComparer);
 		}
-		
+
 		public static IComparer<TElement> Create<TElement, TKey>(Func<TElement, TKey> keySelector, IComparer<TKey> comparer)
 		{
 			return new KeyComparer<TElement, TKey>(keySelector, comparer, EqualityComparer<TKey>.Default);
 		}
-		
+
 		public static IEqualityComparer<TElement> Create<TElement, TKey>(Func<TElement, TKey> keySelector, IEqualityComparer<TKey> equalityComparer)
 		{
 			return new KeyComparer<TElement, TKey>(keySelector, Comparer<TKey>.Default, equalityComparer);
@@ -48,13 +49,13 @@ namespace ICSharpCode.Decompiler.Util
 			list.Sort(Create(keySelector));
 		}
 	}
-	
+
 	public class KeyComparer<TElement, TKey> : IComparer<TElement>, IEqualityComparer<TElement>
 	{
 		readonly Func<TElement, TKey> keySelector;
 		readonly IComparer<TKey> keyComparer;
 		readonly IEqualityComparer<TKey> keyEqualityComparer;
-		
+
 		public KeyComparer(Func<TElement, TKey> keySelector, IComparer<TKey> keyComparer, IEqualityComparer<TKey> keyEqualityComparer)
 		{
 			if (keySelector == null)
@@ -67,17 +68,17 @@ namespace ICSharpCode.Decompiler.Util
 			this.keyComparer = keyComparer;
 			this.keyEqualityComparer = keyEqualityComparer;
 		}
-		
+
 		public int Compare(TElement x, TElement y)
 		{
 			return keyComparer.Compare(keySelector(x), keySelector(y));
 		}
-		
+
 		public bool Equals(TElement x, TElement y)
 		{
 			return keyEqualityComparer.Equals(keySelector(x), keySelector(y));
 		}
-		
+
 		public int GetHashCode(TElement obj)
 		{
 			return keyEqualityComparer.GetHashCode(keySelector(obj));

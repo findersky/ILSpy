@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿#nullable enable
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
@@ -12,7 +10,7 @@ namespace ICSharpCode.Decompiler.IL
 		public ExpressionTreeCast(IType type, ILInstruction argument, bool isChecked)
 			: base(OpCode.ExpressionTreeCast, argument)
 		{
-			this.Type = type;
+			this.type = type;
 			this.IsChecked = isChecked;
 		}
 
@@ -20,7 +18,8 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
-			if (IsChecked) output.Write(".checked");
+			if (IsChecked)
+				output.Write(".checked");
 			output.Write(' ');
 			type.WriteTo(output);
 			output.Write('(');

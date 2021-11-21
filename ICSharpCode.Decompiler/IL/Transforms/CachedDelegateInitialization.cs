@@ -18,6 +18,7 @@
 
 using System;
 using System.Linq;
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
@@ -31,18 +32,27 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			this.context = context;
 			if (!context.Settings.AnonymousMethods)
 				return;
-			for (int i = block.Instructions.Count - 1; i >= 0; i--) {
-				if (block.Instructions[i] is IfInstruction inst) {
-					if (CachedDelegateInitializationWithField(inst)) {
+			for (int i = block.Instructions.Count - 1; i >= 0; i--)
+			{
+				if (block.Instructions[i] is IfInstruction inst)
+				{
+					if (CachedDelegateInitializationWithField(inst))
+					{
 						block.Instructions.RemoveAt(i);
 						continue;
 					}
-					if (CachedDelegateInitializationWithLocal(inst)) {
+					if (CachedDelegateInitializationWithLocal(inst))
+					{
 						ILInlining.InlineOneIfPossible(block, i, InliningOptions.Aggressive, context);
 						continue;
 					}
-					if (CachedDelegateInitializationRoslynInStaticWithLocal(inst) || CachedDelegateInitializationRoslynWithLocal(inst)) {
+					if (CachedDelegateInitializationRoslynInStaticWithLocal(inst) || CachedDelegateInitializationRoslynWithLocal(inst))
+					{
 						block.Instructions.RemoveAt(i);
+						continue;
+					}
+					if (CachedDelegateInitializationVB(inst))
+					{
 						continue;
 					}
 				}
@@ -68,7 +78,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			if (!storeInst.MatchStsFld(out IField field2, out ILInstruction value) || !field.Equals(field2) || !field.IsCompilerGeneratedOrIsInCompilerGeneratedClass())
 				return false;
-			if (!DelegateConstruction.IsDelegateConstruction(value.UnwrapConv(ConversionKind.Invalid) as NewObj, true))
+			if (!DelegateConstruction.MatchDelegateConstruction(value.UnwrapConv(ConversionKind.Invalid) as NewObj, out _, out _, out _, true))
 				return false;
 			var nextInstruction = inst.Parent.Children.ElementAtOrDefault(inst.ChildIndex + 1);
 			if (nextInstruction == null)
@@ -98,7 +108,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var storeInst = trueInst.Instructions.Last();
 			if (!storeInst.MatchStLoc(v, out ILInstruction value))
 				return false;
-			if (!DelegateConstruction.IsDelegateConstruction(value as NewObj, true))
+			if (!DelegateConstruction.MatchDelegateConstruction(value as NewObj, out _, out _, out _, true))
 				return false;
 			// do not transform if there are other stores/loads of this variable
 			if (v.StoreCount != 2 || v.StoreInstructions.Count != 2 || v.LoadCount != 2 || v.AddressCount != 0)
@@ -145,7 +155,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			if (!stobj.Target.MatchLdsFlda(out var field1) || !ldobj.Target.MatchLdsFlda(out var field2) || !field1.Equals(field2))
 				return false;
-			if (!DelegateConstruction.IsDelegateConstruction((NewObj)stobj.Value, true))
+			if (!DelegateConstruction.MatchDelegateConstruction((NewObj)stobj.Value, out _, out _, out _, true))
 				return false;
 			context.Step("CachedDelegateInitializationRoslynInStaticWithLocal", inst);
 			storeBeforeIf.Value = stobj.Value;
@@ -177,10 +187,53 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			if (!stobj.Target.MatchLdFlda(out var _, out var field1) || !ldobj.Target.MatchLdFlda(out var __, out var field2) || !field1.Equals(field2))
 				return false;
-			if (!DelegateConstruction.IsDelegateConstruction((NewObj)stobj.Value, true))
+			if (!DelegateConstruction.MatchDelegateConstruction((NewObj)stobj.Value, out _, out _, out _, true))
 				return false;
 			context.Step("CachedDelegateInitializationRoslynWithLocal", inst);
 			storeBeforeIf.Value = stobj.Value;
+			return true;
+		}
+
+		/// <summary>
+		/// if (comp.i4(comp.o(ldobj delegateType(ldsflda CachedAnonMethodDelegate) != ldnull) == ldc.i4 0)) Block {
+		/// 	stloc s(stobj(ldflda(CachedAnonMethodDelegate), DelegateConstruction))
+		/// } else Block {
+		/// 	stloc s(ldobj System.Action(ldsflda $I4-1))
+		/// }
+		/// =>
+		///	stloc s(DelegateConstruction)
+		/// </summary>
+		bool CachedDelegateInitializationVB(IfInstruction inst)
+		{
+			if (!(inst.TrueInst is Block trueInst && inst.FalseInst is Block falseInst))
+				return false;
+			if (trueInst.Instructions.Count != 1 || falseInst.Instructions.Count != 1)
+				return false;
+			if (!(trueInst.Instructions[0].MatchStLoc(out var s, out var trueInitValue)
+				&& falseInst.Instructions[0].MatchStLoc(s, out var falseInitValue)))
+			{
+				return false;
+			}
+			if (s.Kind != VariableKind.StackSlot || s.StoreCount != 2 || s.LoadCount != 1)
+				return false;
+			if (!(trueInitValue is StObj stobj) || !(falseInitValue is LdObj ldobj))
+				return false;
+			if (!(stobj.Value is NewObj delegateConstruction))
+				return false;
+			if (!stobj.Target.MatchLdsFlda(out var field1)
+				|| !ldobj.Target.MatchLdsFlda(out var field2)
+				|| !field1.Equals(field2))
+			{
+				return false;
+			}
+			if (!inst.Condition.MatchCompEquals(out ILInstruction left, out ILInstruction right) || !right.MatchLdNull())
+				return false;
+			if (!ldobj.Match(left).Success)
+				return false;
+			if (!DelegateConstruction.MatchDelegateConstruction(delegateConstruction, out _, out _, out _, true))
+				return false;
+			context.Step("CachedDelegateInitializationVB", inst);
+			inst.ReplaceWith(new StLoc(s, delegateConstruction));
 			return true;
 		}
 	}

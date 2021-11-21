@@ -15,6 +15,7 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+#nullable enable
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
@@ -27,12 +28,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the name of the variable.
 		/// </summary>
 		new string Name { get; }
-		
+
 		/// <summary>
 		/// Gets the type of the variable.
 		/// </summary>
 		IType Type { get; }
-		
+
 		/// <summary>
 		/// Gets whether this variable is a constant (C#-like const).
 		/// </summary>
@@ -42,6 +43,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// If this field is a constant, retrieves the value.
 		/// For parameters, this is the default value.
 		/// </summary>
-		object GetConstantValue(bool throwOnInvalidMetadata = false);
+		object? GetConstantValue(bool throwOnInvalidMetadata = false);
 	}
 }

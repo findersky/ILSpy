@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -27,11 +29,10 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Does not include method parameters.
 		/// </summary>
 		IEnumerable<IVariable> LocalVariables { get; }
-		
+
 		/// <summary>
 		/// Gets whether the context is within a lambda expression or anonymous method.
 		/// </summary>
 		bool IsWithinLambdaExpression { get; }
 	}
 }
-

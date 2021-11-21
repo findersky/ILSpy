@@ -20,7 +20,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void Test(string text, C c)
 		{
-#if ROSLYN
+#if CS70
 			_ = c.Name;
 #else
 			string name = c.Name;
@@ -29,7 +29,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void Test2(string text, C c)
 		{
-#if ROSLYN
+#if CS70
 			_ = c.Text;
 #else
 			string text2 = c.Text;
@@ -47,6 +47,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void Issue1881()
 		{
+#pragma warning disable CS0219
 			MyEnum enumLocal1 = MyEnum.VALUE1;
 			MyEnum enumLocal2 = (MyEnum)0;
 			enumLocal2 = MyEnum.VALUE1;
@@ -56,6 +57,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ValueType enumLocal5 = MyEnum.VALUE1;
 			ValueType enumLocal6 = (MyEnum)0;
 			enumLocal6 = MyEnum.VALUE2;
+#pragma warning restore CS0219
 		}
 #endif
 	}

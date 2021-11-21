@@ -45,6 +45,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		Conditional,
 		Obsolete,
 		IsReadOnly,
+		SpecialName,
 		DebuggerHidden,
 		DebuggerStepThrough,
 
@@ -53,7 +54,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		InternalsVisibleTo,
 		TypeForwardedTo,
 		ReferenceAssembly,
-		
+
 		// Type attributes:
 		Serializable,
 		Flags,
@@ -98,11 +99,15 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		// Security attributes:
 		PermissionSet,
+
+		// C# 9 attributes:
+		NativeInteger,
+		PreserveBaseOverrides,
 	}
 
 	static class KnownAttributes
 	{
-		internal const int Count = (int)KnownAttribute.PermissionSet + 1;
+		internal const int Count = (int)KnownAttribute.PreserveBaseOverrides + 1;
 
 		static readonly TopLevelTypeName[] typeNames = new TopLevelTypeName[Count]{
 			default,
@@ -116,6 +121,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Diagnostics", nameof(ConditionalAttribute)),
 			new TopLevelTypeName("System", nameof(ObsoleteAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", "IsReadOnlyAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(SpecialNameAttribute)),
 			new TopLevelTypeName("System.Diagnostics", nameof(DebuggerHiddenAttribute)),
 			new TopLevelTypeName("System.Diagnostics", nameof(DebuggerStepThroughAttribute)),
 			// Assembly attributes:
@@ -160,6 +166,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(MarshalAsAttribute)),
 			// Security attributes:
 			new TopLevelTypeName("System.Security.Permissions", "PermissionSetAttribute"),
+			// C# 9 attributes:
+			new TopLevelTypeName("System.Runtime.CompilerServices", "NativeIntegerAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "PreserveBaseOverridesAttribute"),
 		};
 
 		public static ref readonly TopLevelTypeName GetTypeName(this KnownAttribute attr)
@@ -177,7 +186,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		{
 			if (!attributeType.GetNonInterfaceBaseTypes().Any(t => t.IsKnownType(KnownTypeCode.Attribute)))
 				return KnownAttribute.None;
-			for (int i = 1; i < typeNames.Length; i++) {
+			for (int i = 1; i < typeNames.Length; i++)
+			{
 				if (typeNames[i] == attributeType.FullTypeName)
 					return (KnownAttribute)i;
 			}

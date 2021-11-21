@@ -21,14 +21,18 @@
 */
 
 using System.Xml.Linq;
+
 using ILSpy.BamlDecompiler.Baml;
 using ILSpy.BamlDecompiler.Xaml;
 
-namespace ILSpy.BamlDecompiler.Handlers {
-	internal class PropertyWithExtensionHandler : IHandler {
+namespace ILSpy.BamlDecompiler.Handlers
+{
+	internal class PropertyWithExtensionHandler : IHandler
+	{
 		public BamlRecordType Type => BamlRecordType.PropertyWithExtension;
 
-		public BamlElement Translate(XamlContext ctx, BamlNode node, BamlElement parent) {
+		public BamlElement Translate(XamlContext ctx, BamlNode node, BamlElement parent)
+		{
 			var record = (PropertyWithExtensionRecord)((BamlRecordNode)node).Record;
 			var extTypeId = ((short)record.Flags & 0xfff);
 			bool valTypeExt = ((short)record.Flags & 0x4000) == 0x4000;
@@ -40,11 +44,18 @@ namespace ILSpy.BamlDecompiler.Handlers {
 			extType.ResolveNamespace(parent.Xaml, ctx);
 
 			var ext = new XamlExtension(extType);
-			if (valTypeExt || extTypeId == (short)KnownTypes.TypeExtension) {
+			if (valTypeExt || extTypeId == (short)KnownTypes.TypeExtension)
+			{
 				var value = ctx.ResolveType(record.ValueId);
-				ext.Initializer = new object[] { ctx.ToString(parent.Xaml, value) };
+
+				object[] initializer = new object[] { ctx.ToString(parent.Xaml, value) };
+				if (valTypeExt)
+					initializer = new object[] { new XamlExtension(ctx.ResolveType(0xfd4d)) { Initializer = initializer } }; // Known type - TypeExtension
+
+				ext.Initializer = initializer;
 			}
-			else if (extTypeId == (short)KnownTypes.TemplateBindingExtension) {
+			else if (extTypeId == (short)KnownTypes.TemplateBindingExtension)
+			{
 				var value = ctx.ResolveProperty(record.ValueId);
 
 				value.DeclaringType.ResolveNamespace(parent.Xaml, ctx);
@@ -52,19 +63,24 @@ namespace ILSpy.BamlDecompiler.Handlers {
 
 				ext.Initializer = new object[] { ctx.ToString(parent.Xaml, xName) };
 			}
-			else if (valStaticExt || extTypeId == (short)KnownTypes.StaticExtension) {
+			else if (valStaticExt || extTypeId == (short)KnownTypes.StaticExtension)
+			{
 				string attrName;
-				if (record.ValueId > 0x7fff) {
+				if (record.ValueId > 0x7fff)
+				{
 					bool isKey = true;
 					short bamlId = unchecked((short)-record.ValueId);
-					if (bamlId > 232 && bamlId < 464) {
+					if (bamlId > 232 && bamlId < 464)
+					{
 						bamlId -= 232;
 						isKey = false;
 					}
-					else if (bamlId > 464 && bamlId < 467) {
+					else if (bamlId > 464 && bamlId < 467)
+					{
 						bamlId -= 231;
 					}
-					else if (bamlId > 467 && bamlId < 470) {
+					else if (bamlId > 467 && bamlId < 470)
+					{
 						bamlId -= 234;
 						isKey = false;
 					}
@@ -74,10 +90,11 @@ namespace ILSpy.BamlDecompiler.Handlers {
 						name = res.Item1 + "." + res.Item2;
 					else
 						name = res.Item1 + "." + res.Item3;
-					var xmlns = ctx.GetXmlNamespace("http://schemas.microsoft.com/winfx/2006/xaml/presentation");
+					var xmlns = ctx.GetXmlNamespace(XamlContext.KnownNamespace_Presentation);
 					attrName = ctx.ToString(parent.Xaml, xmlns.GetName(name));
 				}
-				else {
+				else
+				{
 					var value = ctx.ResolveProperty(record.ValueId);
 
 					value.DeclaringType.ResolveNamespace(parent.Xaml, ctx);
@@ -85,9 +102,15 @@ namespace ILSpy.BamlDecompiler.Handlers {
 
 					attrName = ctx.ToString(parent.Xaml, xName);
 				}
-				ext.Initializer = new object[] { attrName };
+
+				object[] initializer = new object[] { attrName };
+				if (valStaticExt)
+					initializer = new object[] { new XamlExtension(ctx.ResolveType(0xfda6)) { Initializer = initializer } }; // Known type - StaticExtension
+
+				ext.Initializer = initializer;
 			}
-			else {
+			else
+			{
 				ext.Initializer = new object[] { XamlUtils.Escape(ctx.ResolveString(record.ValueId)) };
 			}
 

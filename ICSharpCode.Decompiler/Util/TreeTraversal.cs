@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+﻿#nullable enable
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -32,69 +33,82 @@ namespace ICSharpCode.Decompiler.Util
 		/// <param name="root">The root element of the tree.</param>
 		/// <param name="recursion">The function that gets the children of an element.</param>
 		/// <returns>Iterator that enumerates the tree structure in pre-order.</returns>
-		public static IEnumerable<T> PreOrder<T>(T root, Func<T, IEnumerable<T>> recursion)
+		public static IEnumerable<T> PreOrder<T>(T root, Func<T, IEnumerable<T>?> recursion)
 		{
 			return PreOrder(new T[] { root }, recursion);
 		}
-		
+
 		/// <summary>
 		/// Converts a tree data structure into a flat list by traversing it in pre-order.
 		/// </summary>
 		/// <param name="input">The root elements of the forest.</param>
 		/// <param name="recursion">The function that gets the children of an element.</param>
 		/// <returns>Iterator that enumerates the tree structure in pre-order.</returns>
-		public static IEnumerable<T> PreOrder<T>(IEnumerable<T> input, Func<T, IEnumerable<T>> recursion)
+		public static IEnumerable<T> PreOrder<T>(IEnumerable<T> input, Func<T, IEnumerable<T>?> recursion)
 		{
 			Stack<IEnumerator<T>> stack = new Stack<IEnumerator<T>>();
-			try {
+			try
+			{
 				stack.Push(input.GetEnumerator());
-				while (stack.Count > 0) {
-					while (stack.Peek().MoveNext()) {
+				while (stack.Count > 0)
+				{
+					while (stack.Peek().MoveNext())
+					{
 						T element = stack.Peek().Current;
 						yield return element;
-						IEnumerable<T> children = recursion(element);
-						if (children != null) {
+						IEnumerable<T>? children = recursion(element);
+						if (children != null)
+						{
 							stack.Push(children.GetEnumerator());
 						}
 					}
 					stack.Pop().Dispose();
 				}
-			} finally {
-				while (stack.Count > 0) {
+			}
+			finally
+			{
+				while (stack.Count > 0)
+				{
 					stack.Pop().Dispose();
 				}
 			}
 		}
-		
+
 		/// <summary>
 		/// Converts a tree data structure into a flat list by traversing it in post-order.
 		/// </summary>
 		/// <param name="root">The root element of the tree.</param>
 		/// <param name="recursion">The function that gets the children of an element.</param>
 		/// <returns>Iterator that enumerates the tree structure in post-order.</returns>
-		public static IEnumerable<T> PostOrder<T>(T root, Func<T, IEnumerable<T>> recursion)
+		public static IEnumerable<T> PostOrder<T>(T root, Func<T, IEnumerable<T>?> recursion)
 		{
 			return PostOrder(new T[] { root }, recursion);
 		}
-		
+
 		/// <summary>
 		/// Converts a tree data structure into a flat list by traversing it in post-order.
 		/// </summary>
 		/// <param name="input">The root elements of the forest.</param>
 		/// <param name="recursion">The function that gets the children of an element.</param>
 		/// <returns>Iterator that enumerates the tree structure in post-order.</returns>
-		public static IEnumerable<T> PostOrder<T>(IEnumerable<T> input, Func<T, IEnumerable<T>> recursion)
+		public static IEnumerable<T> PostOrder<T>(IEnumerable<T> input, Func<T, IEnumerable<T>?> recursion)
 		{
 			Stack<IEnumerator<T>> stack = new Stack<IEnumerator<T>>();
-			try {
+			try
+			{
 				stack.Push(input.GetEnumerator());
-				while (stack.Count > 0) {
-					while (stack.Peek().MoveNext()) {
+				while (stack.Count > 0)
+				{
+					while (stack.Peek().MoveNext())
+					{
 						T element = stack.Peek().Current;
-						IEnumerable<T> children = recursion(element);
-						if (children != null) {
+						IEnumerable<T>? children = recursion(element);
+						if (children != null)
+						{
 							stack.Push(children.GetEnumerator());
-						} else {
+						}
+						else
+						{
 							yield return element;
 						}
 					}
@@ -102,8 +116,11 @@ namespace ICSharpCode.Decompiler.Util
 					if (stack.Count > 0)
 						yield return stack.Peek().Current;
 				}
-			} finally {
-				while (stack.Count > 0) {
+			}
+			finally
+			{
+				while (stack.Count > 0)
+				{
 					stack.Pop().Dispose();
 				}
 			}

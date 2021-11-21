@@ -18,8 +18,11 @@
 
 using System;
 using System.IO;
+
 using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.TextView;
+
 using Microsoft.Win32;
 
 namespace ICSharpCode.ILSpy.TreeNodes
@@ -30,41 +33,47 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	public class ResourceEntryNode : ILSpyTreeNode
 	{
 		private readonly string key;
-		private readonly Stream data;
+		private readonly Func<Stream> openStream;
 
 		public override object Text => this.key;
 
 		public override object Icon => Images.Resource;
 
-		protected Stream Data => data;
+		protected Stream OpenStream()
+		{
+			return openStream();
+		}
 
-		public ResourceEntryNode(string key, Stream data)
+		public ResourceEntryNode(string key, Func<Stream> openStream)
 		{
 			if (key == null)
 				throw new ArgumentNullException(nameof(key));
-			if (data == null)
-				throw new ArgumentNullException(nameof(data));
+			if (openStream == null)
+				throw new ArgumentNullException(nameof(openStream));
 			this.key = key;
-			this.data = data;
+			this.openStream = openStream;
 		}
 
-		public static ILSpyTreeNode Create(string key, object data)
+		public static ILSpyTreeNode Create(Resource resource)
 		{
 			ILSpyTreeNode result = null;
-			foreach (var factory in App.ExportProvider.GetExportedValues<IResourceNodeFactory>()) {
-				result = factory.CreateNode(key, data);
+			foreach (var factory in App.ExportProvider.GetExportedValues<IResourceNodeFactory>())
+			{
+				result = factory.CreateNode(resource);
 				if (result != null)
-					return result;
+					break;
 			}
-			var streamData = data as Stream;
-			if(streamData !=null)
-				result =  new ResourceEntryNode(key, data as Stream);
+			return result ?? new ResourceTreeNode(resource);
+		}
 
-			return result;
+		public static ILSpyTreeNode Create(string name, byte[] data)
+		{
+			return Create(new ByteArrayResource(name, data));
 		}
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
+			using var data = OpenStream();
 			language.WriteCommentLine(output, string.Format("{0} = {1}", key, data));
 		}
 
@@ -72,11 +81,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		{
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.FileName = Path.GetFileName(DecompilerTextView.CleanUpName(key));
-			if (dlg.ShowDialog() == true) {
-				data.Position = 0;
-				using (var fs = dlg.OpenFile()) {
-					data.CopyTo(fs);
-				}
+			if (dlg.ShowDialog() == true)
+			{
+				using var data = OpenStream();
+				using var fs = dlg.OpenFile();
+				data.CopyTo(fs);
 			}
 			return true;
 		}

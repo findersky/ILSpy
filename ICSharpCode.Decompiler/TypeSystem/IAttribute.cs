@@ -16,10 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Generic;
+#nullable enable
+
 using System.Collections.Immutable;
 using System.Reflection.Metadata;
-using ICSharpCode.Decompiler.Semantics;
 
 namespace ICSharpCode.Decompiler.TypeSystem
 {
@@ -33,12 +33,12 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the type of the attribute.
 		/// </summary>
 		IType AttributeType { get; }
-		
+
 		/// <summary>
 		/// Gets the constructor being used.
 		/// This property may return null if no matching constructor was found.
 		/// </summary>
-		IMethod Constructor { get; }
+		IMethod? Constructor { get; }
 
 		/// <summary>
 		/// Gets whether there were errors decoding the attribute.

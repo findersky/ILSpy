@@ -45,27 +45,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public bool HasIndex;
 			public int Field;
 		}
-		
+
 		public class MutableClass
 		{
 			public int Field;
 			public short ShortField;
-			
-			public int Property {
-				get;
-				set;
-			}
 
-			public byte ByteProperty {
-				get;
-				set;
-			}
+			public int Property { get; set; }
 
-			public bool BoolProperty {
-				get;
-				set;
-			}
-			
+			public byte ByteProperty { get; set; }
+
+			public bool BoolProperty { get; set; }
+
 			public uint this[string name] {
 				get {
 					return 0u;
@@ -93,51 +84,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public CustomClass CustomClassField;
 			public CustomStruct CustomStructField;
 
-			public byte ByteProp {
-				get;
-				set;
-			}
-			public sbyte SbyteProp {
-				get;
-				set;
-			}
-			public short ShortProp {
-				get;
-				set;
-			}
-			public ushort UshortProp {
-				get;
-				set;
-			}
-			public int IntProp {
-				get;
-				set;
-			}
-			public uint UintProp {
-				get;
-				set;
-			}
-			public long LongProp {
-				get;
-				set;
-			}
-			public ulong UlongProp {
-				get;
-				set;
-			}
-			public string StringProp {
-				get;
-				set;
-			}
+			public byte ByteProp { get; set; }
+			public sbyte SbyteProp { get; set; }
+			public short ShortProp { get; set; }
+			public ushort UshortProp { get; set; }
+			public int IntProp { get; set; }
+			public uint UintProp { get; set; }
+			public long LongProp { get; set; }
+			public ulong UlongProp { get; set; }
+			public string StringProp { get; set; }
 
-			public CustomClass CustomClassProp {
-				get;
-				set;
-			}
-			public CustomStruct CustomStructProp {
-				get;
-				set;
-			}
+			public CustomClass CustomClassProp { get; set; }
+			public CustomStruct CustomStructProp { get; set; }
 
 			public static CustomClass operator +(CustomClass lhs, CustomClass rhs)
 			{
@@ -205,42 +163,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public ulong UlongField;
 			public CustomClass CustomClassField;
 
-			public CustomClass CustomClassProp {
-				get;
-				set;
-			}
-			public byte ByteProp {
-				get;
-				set;
-			}
-			public sbyte SbyteProp {
-				get;
-				set;
-			}
-			public short ShortProp {
-				get;
-				set;
-			}
-			public ushort UshortProp {
-				get;
-				set;
-			}
-			public int IntProp {
-				get;
-				set;
-			}
-			public uint UintProp {
-				get;
-				set;
-			}
-			public long LongProp {
-				get;
-				set;
-			}
-			public ulong UlongProp {
-				get;
-				set;
-			}
+			public CustomClass CustomClassProp { get; set; }
+			public byte ByteProp { get; set; }
+			public sbyte SbyteProp { get; set; }
+			public short ShortProp { get; set; }
+			public ushort UshortProp { get; set; }
+			public int IntProp { get; set; }
+			public uint UintProp { get; set; }
+			public long LongProp { get; set; }
+			public ulong UlongProp { get; set; }
 
 			public static CustomStruct operator +(CustomStruct lhs, CustomStruct rhs)
 			{
@@ -306,46 +237,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public long LongField;
 			public ulong UlongField;
 
-			public CustomClass CustomClassProp {
-				get;
-				set;
-			}
-			public CustomStruct CustomStructProp {
-				get;
-				set;
-			}
-			public byte ByteProp {
-				get;
-				set;
-			}
-			public sbyte SbyteProp {
-				get;
-				set;
-			}
-			public short ShortProp {
-				get;
-				set;
-			}
-			public ushort UshortProp {
-				get;
-				set;
-			}
-			public int IntProp {
-				get;
-				set;
-			}
-			public uint UintProp {
-				get;
-				set;
-			}
-			public long LongProp {
-				get;
-				set;
-			}
-			public ulong UlongProp {
-				get;
-				set;
-			}
+			public CustomClass CustomClassProp { get; set; }
+			public CustomStruct CustomStructProp { get; set; }
+			public byte ByteProp { get; set; }
+			public sbyte SbyteProp { get; set; }
+			public short ShortProp { get; set; }
+			public ushort UshortProp { get; set; }
+			public int IntProp { get; set; }
+			public uint UintProp { get; set; }
+			public long LongProp { get; set; }
+			public ulong UlongProp { get; set; }
 		}
 
 		private int test1;
@@ -369,61 +270,22 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static long longField;
 		private static ulong ulongField;
 
-		private static CustomClass CustomClassProp {
-			get;
-			set;
-		}
-		private static CustomStruct CustomStructProp {
-			get;
-			set;
-		}
-		private static byte ByteProp {
-			get;
-			set;
-		}
-		private static sbyte SbyteProp {
-			get;
-			set;
-		}
-		private static short ShortProp {
-			get;
-			set;
-		}
-		private static ushort UshortProp {
-			get;
-			set;
-		}
-		private static int IntProp {
-			get;
-			set;
-		}
-		private static uint UintProp {
-			get;
-			set;
-		}
-		private static long LongProp {
-			get;
-			set;
-		}
-		private static ulong UlongProp {
-			get;
-			set;
-		}
+		private static CustomClass CustomClassProp { get; set; }
+		private static CustomStruct CustomStructProp { get; set; }
+		private static byte ByteProp { get; set; }
+		private static sbyte SbyteProp { get; set; }
+		private static short ShortProp { get; set; }
+		private static ushort UshortProp { get; set; }
+		private static int IntProp { get; set; }
+		private static uint UintProp { get; set; }
+		private static long LongProp { get; set; }
+		private static ulong UlongProp { get; set; }
 
-		public static int StaticProperty {
-			get;
-			set;
-		}
+		public static int StaticProperty { get; set; }
 
-		public static ShortEnum StaticShortProperty {
-			get;
-			set;
-		}
+		public static ShortEnum StaticShortProperty { get; set; }
 
-		public static string StaticStringProperty {
-			get;
-			set;
-		}
+		public static string StaticStringProperty { get; set; }
 
 		private static CustomStruct2 GetStruct()
 		{
@@ -500,27 +362,27 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return new MutableClass();
 		}
-		
+
 		private int[,] Array()
 		{
 			return null;
 		}
-		
+
 		private unsafe int* GetPointer()
 		{
 			return null;
 		}
-		
+
 		public int GetIndex()
 		{
 			return new Random().Next(0, 100);
 		}
-		
+
 		public int[] GetArray()
 		{
 			throw new NotImplementedException();
 		}
-		
+
 		public int GetValue(int value)
 		{
 			return value;
@@ -530,7 +392,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return a == 'A';
 		}
-		
+
 		public void Int32_Local_Add(int i)
 		{
 			i++;
@@ -539,7 +401,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			i += 5;
 			Console.WriteLine(i += 5);
 		}
-		
+
 		public void Int32_Local_Sub(int i)
 		{
 			i--;
@@ -548,61 +410,61 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			i -= 5;
 			Console.WriteLine(i -= 5);
 		}
-		
+
 		public void Int32_Local_Mul(int i)
 		{
 			i *= 5;
 			Console.WriteLine(i *= 5);
 		}
-		
+
 		public void Int32_Local_Div(int i)
 		{
 			i /= 5;
 			Console.WriteLine(i /= 5);
 		}
-		
+
 		public void Int32_Local_Rem(int i)
 		{
 			i %= 5;
 			Console.WriteLine(i %= 5);
 		}
-		
+
 		public void Int32_Local_BitAnd(int i)
 		{
 			i &= 5;
 			Console.WriteLine(i &= 5);
 		}
-		
+
 		public void Int32_Local_BitOr(int i)
 		{
 			i |= 5;
 			Console.WriteLine(i |= 5);
 		}
-		
+
 		public void Int32_Local_BitXor(int i)
 		{
 			i ^= 5;
 			Console.WriteLine(i ^= 5);
 		}
-		
+
 		public void Int32_Local_ShiftLeft(int i)
 		{
 			i <<= 5;
 			Console.WriteLine(i <<= 5);
 		}
-		
+
 		public void Int32_Local_ShiftRight(int i)
 		{
 			i >>= 5;
 			Console.WriteLine(i >>= 5);
 		}
-		
+
 		public void IntegerWithInline(int i)
 		{
 			Console.WriteLine(i += 5);
 			Console.WriteLine(i);
 		}
-		
+
 		public void IntegerField(int i)
 		{
 			Console.WriteLine(test1 += i);
@@ -610,27 +472,28 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(test1 -= i);
 			Console.WriteLine(test1);
 		}
-		
+
 		public void Array(int i)
 		{
 			Console.WriteLine(array1[i] += i);
 			Console.WriteLine(array1[i * 2] += i * 2);
 		}
-		
+
 		public int ArrayUsageWithMethods()
 		{
 			return GetArray()[GetIndex()]++;
 		}
-		
+
 		public void NestedField()
 		{
-			if (field1.HasIndex) {
+			if (field1.HasIndex)
+			{
 				Console.WriteLine(field1.Field *= 2);
 				field1.Field++;
 				Console.WriteLine(field1.Field++);
 			}
 		}
-		
+
 		public void Enum()
 		{
 			enumField |= MyEnum.Two;
@@ -651,7 +514,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return i + ++j;
 		}
-		
+
 		public int PreIncrementArrayElement(int[] array, int pos)
 		{
 			return --array[pos];
@@ -706,7 +569,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return ++M().Field;
 		}
-		
+
 		public int PostIncrementInstanceField()
 		{
 			return M().Field++;
@@ -731,7 +594,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return ++m.Field;
 		}
-		
+
 		public int PostIncrementInstanceField2(MutableClass m)
 		{
 			return m.Field++;
@@ -4587,9 +4450,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			// The 'chars[i]' result is stored in a temporary, and both branches use the
 			// same temporary. In order to inline the generated value-type temporary, we
 			// need to split it, even though it has the address taken for the ToString() call.
-			if (flag) {
+			if (flag)
+			{
 				strings[1] += chars[i];
-			} else {
+			}
+			else
+			{
 				strings[0] += chars[i];
 			}
 		}
@@ -4663,7 +4529,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return M()[name] -= 2u;
 		}
 
-		public uint CompoundAssignIndexerComplexIndex(string name)
+		public uint CompoundAssignIndexerComplexIndex()
 		{
 			return M()[ToString()] -= 2u;
 		}
@@ -4771,10 +4637,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void Issue1552StmtUseLater(CustomStruct a, CustomStruct b)
 		{
-			CustomStruct lhs = a + b;
-			++lhs;
+			CustomStruct customStruct = a + b;
+			++customStruct;
 			Console.WriteLine();
-			Console.WriteLine(lhs * b);
+			Console.WriteLine(customStruct * b);
 		}
 
 		public void Issue1552Decimal(decimal a)

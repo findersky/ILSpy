@@ -26,12 +26,16 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Navigation;
 using System.Windows.Threading;
+
+using AvalonDock;
+using AvalonDock.Layout;
+using AvalonDock.Layout.Serialization;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.ViewModels;
-using Xceed.Wpf.AvalonDock.Layout;
-using Xceed.Wpf.AvalonDock.Layout.Serialization;
 
 namespace ICSharpCode.ILSpy.Docking
 {
@@ -52,7 +56,8 @@ namespace ICSharpCode.ILSpy.Docking
 		{
 			var collection = (PaneCollection<TabPageModel>)sender;
 			bool canClose = collection.Count > 1;
-			foreach (var item in collection) {
+			foreach (var item in collection)
+			{
 				item.IsCloseable = canClose;
 			}
 		}
@@ -64,7 +69,8 @@ namespace ICSharpCode.ILSpy.Docking
 		public bool ShowToolPane(string contentId)
 		{
 			var pane = ToolPanes.FirstOrDefault(p => p.ContentId == contentId);
-			if (pane != null) {
+			if (pane != null)
+			{
 				pane.Show();
 				return true;
 			}
@@ -85,38 +91,55 @@ namespace ICSharpCode.ILSpy.Docking
 				return _activeTabPage;
 			}
 			set {
-				if (_activeTabPage != value) {
+				if (_activeTabPage != value)
+				{
 					_activeTabPage = value;
 					this.sessionSettings.FilterSettings.Language = value.Language;
 					this.sessionSettings.FilterSettings.LanguageVersion = value.LanguageVersion;
 					var state = value.GetState();
 					if (state != null)
-						MainWindow.Instance.SelectNodes(state.DecompiledNodes);
+					{
+						if (state.DecompiledNodes != null)
+						{
+							MainWindow.Instance.SelectNodes(state.DecompiledNodes,
+								inNewTabPage: false, setFocus: true, changingActiveTab: true);
+						}
+						else
+						{
+							MainWindow.Instance.NavigateTo(new RequestNavigateEventArgs(state.ViewedUri, null));
+						}
+					}
+
 					RaisePropertyChanged(nameof(ActiveTabPage));
 				}
 			}
 		}
 
-		public void InitializeLayout(Xceed.Wpf.AvalonDock.DockingManager manager)
+		public void InitializeLayout(DockingManager manager)
 		{
 			manager.LayoutUpdateStrategy = this;
 			XmlLayoutSerializer serializer = new XmlLayoutSerializer(manager);
 			serializer.LayoutSerializationCallback += LayoutSerializationCallback;
-			try {
+			try
+			{
 				sessionSettings.DockLayout.Deserialize(serializer);
-			} finally {
+			}
+			finally
+			{
 				serializer.LayoutSerializationCallback -= LayoutSerializationCallback;
 			}
 		}
 
 		void LayoutSerializationCallback(object sender, LayoutSerializationCallbackEventArgs e)
 		{
-			switch (e.Model) {
+			switch (e.Model)
+			{
 				case LayoutAnchorable la:
 					e.Content = ToolPanes.FirstOrDefault(p => p.ContentId == la.ContentId);
 					e.Cancel = e.Content == null;
 					la.CanDockAsTabbedDocument = false;
-					if (!e.Cancel) {
+					if (!e.Cancel)
+					{
 						e.Cancel = ((ToolPaneModel)e.Content).IsVisible;
 						((ToolPaneModel)e.Content).IsVisible = true;
 					}
@@ -155,19 +178,24 @@ namespace ICSharpCode.ILSpy.Docking
 
 		private void FilterSettings_PropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
-			if (e.PropertyName == "Language") {
+			if (e.PropertyName == "Language")
+			{
 				ActiveTabPage.Language = sessionSettings.FilterSettings.Language;
-				if (sessionSettings.FilterSettings.Language.HasLanguageVersions) {
+				if (sessionSettings.FilterSettings.Language.HasLanguageVersions)
+				{
 					sessionSettings.FilterSettings.LanguageVersion = ActiveTabPage.LanguageVersion;
 				}
-			} else if (e.PropertyName == "LanguageVersion") {
+			}
+			else if (e.PropertyName == "LanguageVersion")
+			{
 				ActiveTabPage.LanguageVersion = sessionSettings.FilterSettings.LanguageVersion;
 			}
 		}
 
 		internal void CloseAllTabs()
 		{
-			foreach (var doc in TabPages.ToArray()) {
+			foreach (var doc in TabPages.ToArray())
+			{
 				if (doc.IsCloseable)
 					TabPages.Remove(doc);
 			}
@@ -175,7 +203,8 @@ namespace ICSharpCode.ILSpy.Docking
 
 		internal void ResetLayout()
 		{
-			foreach (var pane in ToolPanes) {
+			foreach (var pane in ToolPanes)
+			{
 				pane.IsVisible = false;
 			}
 			CloseAllTabs();
@@ -193,7 +222,8 @@ namespace ICSharpCode.ILSpy.Docking
 			anchorableToShow.CanDockAsTabbedDocument = false;
 
 			LayoutAnchorablePane previousContainer;
-			switch (legacyContent.Location) {
+			switch (legacyContent.Location)
+			{
 				case LegacyToolPaneLocation.Top:
 					previousContainer = GetContainer<SearchPaneModel>();
 					previousContainer.Children.Add(anchorableToShow);

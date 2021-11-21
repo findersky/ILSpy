@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Diagnostics;
+
 using NUnit.Framework;
 
 namespace ICSharpCode.Decompiler.Tests
@@ -27,15 +28,15 @@ namespace ICSharpCode.Decompiler.Tests
 		[OneTimeSetUp]
 		public void RunBeforeAnyTests()
 		{
-			Debug.Listeners.Insert(0, this);
+			Trace.Listeners.Insert(0, this);
 		}
-		
+
 		[OneTimeTearDown]
 		public void RunAfterAnyTests()
 		{
-			Debug.Listeners.Remove(this);
+			Trace.Listeners.Remove(this);
 		}
-		
+
 		public override void Fail(string message, string detailMessage)
 		{
 			Assert.Fail(message + " " + detailMessage);

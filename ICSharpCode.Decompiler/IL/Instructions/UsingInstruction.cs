@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+﻿#nullable enable
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -38,12 +39,19 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public bool IsAsync { get; set; }
 
+		public bool IsRefStruct { get; set; }
+
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("using");
-			if (IsAsync) {
+			if (IsAsync)
+			{
 				output.Write(".async");
+			}
+			if (IsRefStruct)
+			{
+				output.Write(".ref");
 			}
 			output.Write(" (");
 			Variable.WriteTo(output);

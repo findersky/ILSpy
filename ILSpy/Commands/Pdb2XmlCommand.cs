@@ -22,15 +22,18 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler;
+using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
+
 using Microsoft.DiaSymReader.Tools;
 
 namespace ICSharpCode.ILSpy
 {
-	[ExportMainMenuCommand(Menu = "_File", Header = "DEBUG -- Dump PDB as XML", MenuCategory = "Open", MenuOrder = 2.6)]
+	[ExportMainMenuCommand(Menu = nameof(Resources._File), Header = nameof(Resources.DEBUGDumpPDBAsXML), MenuCategory = nameof(Resources.Open), MenuOrder = 2.6)]
 	sealed class Pdb2XmlCommand : SimpleCommand
 	{
 		public override bool CanExecute(object parameter)
@@ -52,9 +55,11 @@ namespace ICSharpCode.ILSpy
 			Docking.DockWorkspace.Instance.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
 				var writer = new TextOutputWriter(output);
-				foreach (var node in nodes) {
+				foreach (var node in nodes)
+				{
 					string pdbFileName = Path.ChangeExtension(node.LoadedAssembly.FileName, ".pdb");
-					if (!File.Exists(pdbFileName)) continue;
+					if (!File.Exists(pdbFileName))
+						continue;
 					using (var pdbStream = File.OpenRead(pdbFileName))
 					using (var peStream = File.OpenRead(node.LoadedAssembly.FileName))
 						PdbToXmlConverter.ToXml(writer, pdbStream, peStream, options);
@@ -64,7 +69,7 @@ namespace ICSharpCode.ILSpy
 		}
 	}
 
-	[ExportContextMenuEntry(Header = "DEBUG -- Dump PDB as XML")]
+	[ExportContextMenuEntry(Header = nameof(Resources.DEBUGDumpPDBAsXML))]
 	class Pdb2XmlCommandContextMenuEntry : IContextMenuEntry
 	{
 		public void Execute(TextViewContext context)
@@ -78,7 +83,7 @@ namespace ICSharpCode.ILSpy
 		{
 			var selectedNodes = context.SelectedTreeNodes;
 			return selectedNodes?.Any() == true
-				&& selectedNodes.All(n => n is AssemblyTreeNode asm && !asm.LoadedAssembly.HasLoadError);
+				&& selectedNodes.All(n => n is AssemblyTreeNode asm && asm.LoadedAssembly.IsLoadedAsValidAssembly);
 		}
 	}
 

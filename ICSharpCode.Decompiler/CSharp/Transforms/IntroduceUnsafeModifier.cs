@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Linq;
+
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -34,24 +35,26 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			return node.AcceptVisitor(new IntroduceUnsafeModifier());
 		}
-		
+
 		protected override bool VisitChildren(AstNode node)
 		{
 			bool result = false;
 			AstNode next;
-			for (AstNode child = node.FirstChild; child != null; child = next) {
+			for (AstNode child = node.FirstChild; child != null; child = next)
+			{
 				// Store next to allow the loop to continue
 				// if the visitor removes/replaces child.
 				next = child.NextSibling;
 				result |= child.AcceptVisitor(this);
 			}
-			if (result && node is EntityDeclaration && !(node is Accessor)) {
+			if (result && node is EntityDeclaration && !(node is Accessor))
+			{
 				((EntityDeclaration)node).Modifiers |= Modifiers.Unsafe;
 				return false;
 			}
 			return result;
 		}
-		
+
 		public override bool VisitPointerReferenceExpression(PointerReferenceExpression pointerReferenceExpression)
 		{
 			base.VisitPointerReferenceExpression(pointerReferenceExpression);
@@ -73,13 +76,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			else
 				return base.VisitComposedType(composedType);
 		}
-		
+
+		public override bool VisitFunctionPointerType(FunctionPointerAstType functionPointerType)
+		{
+			return true;
+		}
+
 		public override bool VisitUnaryOperatorExpression(UnaryOperatorExpression unaryOperatorExpression)
 		{
 			bool result = base.VisitUnaryOperatorExpression(unaryOperatorExpression);
-			if (unaryOperatorExpression.Operator == UnaryOperatorType.Dereference) {
+			if (unaryOperatorExpression.Operator == UnaryOperatorType.Dereference)
+			{
 				var bop = unaryOperatorExpression.Expression as BinaryOperatorExpression;
-				if (bop != null && bop.Operator == BinaryOperatorType.Add 
+				if (bop != null && bop.Operator == BinaryOperatorType.Add
 					&& bop.GetResolveResult() is OperatorResolveResult orr
 					&& orr.Operands.FirstOrDefault()?.Type.Kind == TypeKind.Pointer)
 				{
@@ -92,18 +101,23 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					unaryOperatorExpression.ReplaceWith(indexer);
 				}
 				return true;
-			} else if (unaryOperatorExpression.Operator == UnaryOperatorType.AddressOf) {
+			}
+			else if (unaryOperatorExpression.Operator == UnaryOperatorType.AddressOf)
+			{
 				return true;
-			} else {
+			}
+			else
+			{
 				return result;
 			}
 		}
-		
+
 		public override bool VisitMemberReferenceExpression(MemberReferenceExpression memberReferenceExpression)
 		{
 			bool result = base.VisitMemberReferenceExpression(memberReferenceExpression);
 			UnaryOperatorExpression uoe = memberReferenceExpression.Target as UnaryOperatorExpression;
-			if (uoe != null && uoe.Operator == UnaryOperatorType.Dereference) {
+			if (uoe != null && uoe.Operator == UnaryOperatorType.Dereference)
+			{
 				PointerReferenceExpression pre = new PointerReferenceExpression();
 				pre.Target = uoe.Expression.Detach();
 				pre.MemberName = memberReferenceExpression.MemberName;
@@ -114,14 +128,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				memberReferenceExpression.ReplaceWith(pre);
 			}
 			var rr = memberReferenceExpression.GetResolveResult();
-			if (rr != null) {
-				if (rr.Type is PointerType)
+			if (rr != null)
+			{
+				if (IsUnsafeType(rr.Type))
 					return true;
-				if (rr is MemberResolveResult mrr && mrr.Member.ReturnType.Kind == TypeKind.Delegate) {
-					var method = mrr.Member.ReturnType.GetDefinition()?.GetDelegateInvokeMethod();
-					if (method != null && (method.ReturnType is PointerType || method.Parameters.Any(p => p.Type is PointerType)))
-						return true;
-				}
 			}
 
 			return result;
@@ -131,14 +141,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			bool result = base.VisitIdentifierExpression(identifierExpression);
 			var rr = identifierExpression.GetResolveResult();
-			if (rr != null) {
-				if (rr.Type is PointerType)
+			if (rr != null)
+			{
+				if (IsUnsafeType(rr.Type))
 					return true;
-				if (rr is MemberResolveResult mrr && mrr.Member.ReturnType.Kind == TypeKind.Delegate) {
-					var method = mrr.Member.ReturnType.GetDefinition()?.GetDelegateInvokeMethod();
-					if (method != null && (method.ReturnType is PointerType || method.Parameters.Any(p => p.Type is PointerType)))
-						return true;
-				}
 			}
 
 			return result;
@@ -148,17 +154,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			bool result = base.VisitStackAllocExpression(stackAllocExpression);
 			var rr = stackAllocExpression.GetResolveResult();
-			if (rr?.Type is PointerType)
+			if (IsUnsafeType(rr?.Type))
 				return true;
 			return result;
 		}
-		
+
 		public override bool VisitInvocationExpression(InvocationExpression invocationExpression)
 		{
 			bool result = base.VisitInvocationExpression(invocationExpression);
 			var rr = invocationExpression.GetResolveResult();
-			if (rr != null && rr.Type is PointerType)
+			if (IsUnsafeType(rr?.Type))
 				return true;
+			if ((rr as MemberResolveResult)?.Member is IParameterizedMember pm)
+			{
+				if (pm.Parameters.Any(p => IsUnsafeType(p.Type)))
+					return true;
+			}
 			return result;
 		}
 
@@ -166,6 +177,34 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			base.VisitFixedVariableInitializer(fixedVariableInitializer);
 			return true;
+		}
+
+		private bool IsUnsafeType(IType type)
+		{
+			if (type?.Kind == TypeKind.Delegate)
+			{
+				// Using a delegate which involves pointers in its signature needs the unsafe modifier
+				// https://github.com/icsharpcode/ILSpy/issues/949
+				IMethod invoke = type.GetDelegateInvokeMethod();
+				if (invoke != null && (ContainsPointer(invoke.ReturnType) || invoke.Parameters.Any(p => ContainsPointer(p.Type))))
+					return true;
+			}
+			return ContainsPointer(type);
+		}
+
+		private bool ContainsPointer(IType type)
+		{
+			switch (type?.Kind)
+			{
+				case TypeKind.Pointer:
+				case TypeKind.FunctionPointer:
+					return true;
+				case TypeKind.ByReference:
+				case TypeKind.Array:
+					return IsUnsafeType(((Decompiler.TypeSystem.Implementation.TypeWithElementType)type).ElementType);
+				default:
+					return false;
+			}
 		}
 	}
 }

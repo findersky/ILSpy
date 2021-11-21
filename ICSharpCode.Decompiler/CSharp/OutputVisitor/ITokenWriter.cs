@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+
 using ICSharpCode.Decompiler.CSharp.Syntax;
 
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
@@ -94,7 +95,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 
 	public abstract class DecoratingTokenWriter : TokenWriter
 	{
-		TokenWriter decoratedWriter;
+		readonly TokenWriter decoratedWriter;
 
 		protected DecoratingTokenWriter(TokenWriter decoratedWriter)
 		{

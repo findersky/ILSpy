@@ -41,10 +41,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public struct GenericStruct<T>
 		{
 			public T Field;
-			public T Property {
-				get;
-				set;
-			}
+			public T Property { get; set; }
 		}
 
 		public ValueTuple VT0;
@@ -92,10 +89,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public (int, int) AccessRest => (1, 2, 3, 4, 5, 6, 7, 8, 9).Rest;
 
 		public (string, object, Action) TargetTyping => (null, 1, delegate {
+#pragma warning disable format
 		});
+#pragma warning restore format
 
 		public object NotTargetTyping => ((string)null, (object)1, (Action)delegate {
+#pragma warning disable format
 		});
+#pragma warning restore format
 
 		public void UnnamedTupleOut(out (int, string, Action, dynamic) tuple)
 		{
@@ -129,7 +130,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void UseDict()
 		{
-			if (TupleDict.Count > 10) {
+			if (TupleDict.Count > 10)
+			{
 				TupleDict.Clear();
 			}
 			// TODO: it would be nice if we could infer the name 'c' for the local
@@ -146,28 +148,31 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public void LocalVariables((int, int) a)
 		{
-			(int, int) valueTuple = (a.Item1 + a.Item2, a.Item1 * a.Item2);
-			Console.WriteLine(valueTuple.ToString());
-			Console.WriteLine(valueTuple.GetType().FullName);
+			(int, int) tuple = (a.Item1 + a.Item2, a.Item1 * a.Item2);
+			Console.WriteLine(tuple.ToString());
+			Console.WriteLine(tuple.GetType().FullName);
 		}
 
 		public void Foreach(IEnumerable<(int, string)> input)
 		{
-			foreach (var item in input) {
+			foreach (var item in input)
+			{
 				Console.WriteLine($"{item.Item1}: {item.Item2}");
 			}
 		}
 
 		public void ForeachNamedElements(IEnumerable<(int Index, string Data)> input)
 		{
-			foreach (var item in input) {
+			foreach (var item in input)
+			{
 				Console.WriteLine($"{item.Index}: {item.Data}");
 			}
 		}
 
 		public void NonGenericForeach(IEnumerable input)
 		{
-			foreach ((string, int) item in input) {
+			foreach ((string, int) item in input)
+			{
 				Console.WriteLine($"{item.Item1}: {item.Item2}");
 			}
 		}

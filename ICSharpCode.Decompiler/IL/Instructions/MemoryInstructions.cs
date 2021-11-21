@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -39,8 +40,10 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			if (options.UseFieldSugar) {
-				if (this.MatchLdFld(out var target, out var field)) {
+			if (options.UseFieldSugar)
+			{
+				if (this.MatchLdFld(out var target, out var field))
+				{
 					WriteILRange(output, options);
 					output.Write("ldfld ");
 					field.WriteTo(output);
@@ -48,7 +51,9 @@ namespace ICSharpCode.Decompiler.IL
 					target.WriteTo(output, options);
 					output.Write(')');
 					return;
-				} else if (this.MatchLdsFld(out field)) {
+				}
+				else if (this.MatchLdsFld(out field))
+				{
 					WriteILRange(output, options);
 					output.Write("ldsfld ");
 					field.WriteTo(output);
@@ -63,8 +68,10 @@ namespace ICSharpCode.Decompiler.IL
 	{
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
-			if (options.UseFieldSugar) {
-				if (this.MatchStFld(out var target, out var field, out var value)) {
+			if (options.UseFieldSugar)
+			{
+				if (this.MatchStFld(out var target, out var field, out var value))
+				{
 					WriteILRange(output, options);
 					output.Write("stfld ");
 					field.WriteTo(output);
@@ -74,7 +81,9 @@ namespace ICSharpCode.Decompiler.IL
 					value.WriteTo(output, options);
 					output.Write(')');
 					return;
-				} else if (this.MatchStsFld(out field, out value)) {
+				}
+				else if (this.MatchStsFld(out field, out value))
+				{
 					WriteILRange(output, options);
 					output.Write("stsfld ");
 					field.WriteTo(output);

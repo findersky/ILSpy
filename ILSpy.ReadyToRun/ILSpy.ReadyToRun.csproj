@@ -1,15 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project>
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
     <AssemblyName>ILSpy.ReadyToRun.Plugin</AssemblyName>
-    <LangVersion>7.2</LangVersion>
-
+    <LangVersion>8.0</LangVersion>
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
-
-    <EnableDefaultItems>false</EnableDefaultItems>
+    <NeutralResourcesLanguage>en-US</NeutralResourcesLanguage>
+    <UseWpf>true</UseWpf>
+  </PropertyGroup>
+  
+  <Import Project="..\multitargeting.props" Condition="Exists('..\multitargeting.props')" />
+  <PropertyGroup Condition="!Exists('..\multitargeting.props')">
+    <TargetFramework>net472</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -28,44 +30,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ICSharpCode.Decompiler\ICSharpCode.Decompiler.csproj">
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\ILSpy\ILSpy.csproj">
-      <Private>False</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\SharpTreeView\ICSharpCode.TreeView.csproj">
-      <Private>False</Private>
-    </ProjectReference>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="WindowsBase" />
+    <ProjectReference Include="..\ILSpy\ILSpy.csproj" />
+    <ProjectReference Include="..\ICSharpCode.Decompiler\ICSharpCode.Decompiler.csproj" />
+    <ProjectReference Include="..\SharpTreeView\ICSharpCode.TreeView.csproj" />
   </ItemGroup>
+
+  <Import Project="../packages.props" />
 
   <ItemGroup>
-    <Compile Include="ReadyToRunLanguage.cs" />
-    <Compile Include="ReadyToRunOptionPage.xaml.cs">
-      <DependentUpon>ReadyToRunOptionPage.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="ReadyToRunOptions.cs" />
+    <PackageReference Include="Iced" Version="1.13.0" />
+    <PackageReference Include="ILCompiler.Reflection.ReadyToRun.Experimental" Version="6.0.0-rc.2.21424.11" />
+    <!-- ILCompiler.Reflection.ReadyToRun has dependencies on System.Reflection.Metadata and
+         System.Runtime.CompilerServices.Unsafe. Because the AddIn compiles into ILSpy's output
+         directory, we're at risk of overwriting our dependencies with different versions.
+         So ensure NuGet uses consistent versions (from our packages.props) for these.
+         -->
+    <PackageReference Include="System.Reflection.Metadata" Version="$(SystemReflectionMetadataVersion)" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="$(SystemCompilerServicesUnsafeVersion)" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Page Include="ReadyToRunOptionPage.xaml" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Iced" Version="1.6.0" />
-    <PackageReference Include="ILCompiler.Reflection.ReadyToRun" Version="1.0.8-alpha" />
-  </ItemGroup>
-
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
-
-  <Target Name="RemoveTransitiveProjectReferences" AfterTargets="IncludeTransitiveProjectReferences">
-    <ItemGroup>
-      <ProjectReference Remove="@(_TransitiveProjectReferences)" />
-    </ItemGroup>
-  </Target>
 
 </Project>

@@ -32,10 +32,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public readonly MyStruct ReadonlyStructField;
 			public string Text;
 			public MyClass Field;
-			public MyClass Property {
-				get;
-				set;
-			}
+			public MyClass Property { get; set; }
 			public MyClass this[int index] => null;
 			public MyClass Method(int arg)
 			{
@@ -68,7 +65,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			{
 			}
 		}
-		
+
 		private class Container<T1, T2>
 		{
 			public GenericStruct<T1, T2> Other;
@@ -84,7 +81,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			{
 				return "(" + Field1?.ToString() + ", " + Field2?.ToString() + ")";
 			}
-			
+
 			public int? GetTextLength()
 			{
 				return Field1?.ToString().Length + Field2?.ToString().Length + 4;
@@ -250,10 +247,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private void NotNullPropagation(MyClass c)
 		{
 			// don't decompile this to "(c?.IntVal ?? 0) != 0"
-			if (c != null && c.IntVal != 0) {
+			if (c != null && c.IntVal != 0)
+			{
 				Console.WriteLine("non-zero");
 			}
-			if (c == null || c.IntVal == 0) {
+			if (c == null || c.IntVal == 0)
+			{
 				Console.WriteLine("null or zero");
 			}
 			Console.WriteLine("end of method");
@@ -261,11 +260,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void Setter(MyClass c)
 		{
-			if (c != null) {
+			if (c != null)
+			{
 				c.IntVal = 1;
 			}
 			Console.WriteLine();
-			if (c != null) {
+			if (c != null)
+			{
 				c.Property = null;
 			}
 		}
@@ -310,7 +311,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(setsOfNumbers?[0]?[1].ToString() == "2");
 			Console.WriteLine(setsOfNumbers?[1]?[1].ToString() == null);
 		}
-	
+
 		private static dynamic DynamicNullProp(dynamic a)
 		{
 			return a?.b.c(1)?.d[10];

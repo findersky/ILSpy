@@ -16,7 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -27,7 +28,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the declaring type reference for the member.
 		/// </summary>
 		ITypeReference DeclaringTypeReference { get; }
-		
+
 		/// <summary>
 		/// Resolves the member.
 		/// </summary>
@@ -40,9 +41,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <returns>
 		/// Returns the resolved member, or <c>null</c> if the member could not be found.
 		/// </returns>
-		IMember Resolve(ITypeResolveContext context);
+		IMember? Resolve(ITypeResolveContext context);
 	}
-	
+
 	/// <summary>
 	/// Method/field/property/event.
 	/// </summary>
@@ -54,12 +55,18 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Specialized members are the result of overload resolution with type substitution.
 		/// </summary>
 		IMember MemberDefinition { get; }
-		
+
 		/// <summary>
 		/// Gets the return type of this member.
 		/// This property never returns <c>null</c>.
 		/// </summary>
 		IType ReturnType { get; }
+
+		/// <summary>
+		/// Gets/Sets the declaring type (incl. type arguments, if any).
+		/// If this is not a specialized member, the value returned is equal to <see cref="IEntity.DeclaringTypeDefinition"/>.
+		/// </summary>
+		new IType DeclaringType { get; }
 
 		/// <summary>
 		/// Gets the interface members explicitly implemented by this member.
@@ -80,28 +87,28 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// so use (C).GetInterfaceImplementations() instead to handle this case.
 		/// </remarks>
 		IEnumerable<IMember> ExplicitlyImplementedInterfaceMembers { get; }
-		
+
 		/// <summary>
 		/// Gets whether this member is explicitly implementing an interface.
 		/// </summary>
 		bool IsExplicitInterfaceImplementation { get; }
-		
+
 		/// <summary>
 		/// Gets if the member is virtual. Is true only if the "virtual" modifier was used, but non-virtual
 		/// members can be overridden, too; if they are abstract or overriding a method.
 		/// </summary>
 		bool IsVirtual { get; }
-		
+
 		/// <summary>
 		/// Gets whether this member is overriding another member.
 		/// </summary>
 		bool IsOverride { get; }
-		
+
 		/// <summary>
 		/// Gets if the member can be overridden. Returns true when the member is "abstract", "virtual" or "override" but not "sealed".
 		/// </summary>
 		bool IsOverridable { get; }
-		
+
 		/// <summary>
 		/// Gets the substitution belonging to this specialized member.
 		/// Returns TypeParameterSubstitution.Identity for not specialized members.
@@ -119,6 +126,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// <summary>
 		/// Gets whether the members are considered equal when applying the specified type normalization.
 		/// </summary>
-		bool Equals(IMember obj, TypeVisitor typeNormalization);
+		bool Equals(IMember? obj, TypeVisitor typeNormalization);
 	}
 }

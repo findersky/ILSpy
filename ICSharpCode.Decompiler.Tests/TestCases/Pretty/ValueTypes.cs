@@ -101,7 +101,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 #endif
 
-#if ROSLYN && OPT
+#if ROSLYN
 		// Roslyn optimizes out the explicit default-initialization
 		private static readonly S ReadOnlyS;
 		private static S MutableS;
@@ -154,7 +154,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			return new S(10);
 		}
-		
+
 		public static S Copy1(S p)
 		{
 			return p;
@@ -228,21 +228,24 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void UseRefBoolInCondition(ref bool x)
 		{
-			if (x) {
+			if (x)
+			{
 				Console.WriteLine("true");
 			}
 		}
 
 		public static void CompareNotEqual0IsReallyNotEqual(IComparable<int> a)
 		{
-			if (a.CompareTo(0) != 0) {
+			if (a.CompareTo(0) != 0)
+			{
 				Console.WriteLine("true");
 			}
 		}
 
 		public static void CompareEqual0IsReallyEqual(IComparable<int> a)
 		{
-			if (a.CompareTo(0) == 0) {
+			if (a.CompareTo(0) == 0)
+			{
 				Console.WriteLine("true");
 			}
 		}
@@ -277,6 +280,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static string CallOnIntegerConstant()
 		{
 			return ulong.MaxValue.ToString();
+		}
+
+		public static void InliningDefaultValue()
+		{
+			Test(default(DateTime).GetType());
+			Test(default(DateTime).ToString());
+		}
+
+		public static void Test(object x)
+		{
 		}
 	}
 }

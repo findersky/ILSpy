@@ -17,7 +17,10 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
@@ -26,7 +29,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	{
 		public void Run(ILFunction function, ILTransformContext context)
 		{
-			foreach (var catchBlock in function.Descendants.OfType<TryCatchHandler>()) {
+			foreach (var catchBlock in function.Descendants.OfType<TryCatchHandler>())
+			{
 				if (catchBlock.Filter is BlockContainer container
 					&& MatchCatchWhenEntryPoint(catchBlock.Variable, container, container.EntryPoint,
 						out var exceptionType, out var exceptionSlot, out var whenConditionBlock)
@@ -45,23 +49,110 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					//   br whenConditionBlock
 					// }
 					var instructions = container.EntryPoint.Instructions;
-					if (instructions.Count == 3) {
+					if (instructions.Count == 3)
+					{
 						// stloc temp(isinst exceptionType(ldloc exceptionVar))
 						// if (comp(ldloc temp != ldnull)) br whenConditionBlock
 						// br falseBlock
+						context.Step($"Detected catch-when for {catchBlock.Variable.Name} (extra store)", instructions[0]);
 						((StLoc)instructions[0]).Value = exceptionSlot;
 						instructions[1].ReplaceWith(new Branch(whenConditionBlock));
 						instructions.RemoveAt(2);
 						container.SortBlocks(deleteUnreachableBlocks: true);
-					} else if (instructions.Count == 2) {
+					}
+					else if (instructions.Count == 2)
+					{
 						// if (comp(isinst exceptionType(ldloc exceptionVar) != ldnull)) br whenConditionBlock
 						// br falseBlock
+						context.Step($"Detected catch-when for {catchBlock.Variable.Name}", instructions[0]);
 						instructions[0].ReplaceWith(new Branch(whenConditionBlock));
 						instructions.RemoveAt(1);
 						container.SortBlocks(deleteUnreachableBlocks: true);
 					}
+
+					PropagateExceptionVariable(context, catchBlock);
 				}
 			}
+		}
+
+		/// <summary>
+		/// catch E_189 : 0200007C System.Exception when (BlockContainer {
+		/// 	Block IL_0079 (incoming: 1) {
+		/// 		stloc S_30(ldloc E_189)
+		/// 		br IL_0085
+		/// 	}
+		/// 
+		/// 	Block IL_0085 (incoming: 1) {
+		/// 		stloc I_1(ldloc S_30)
+		/// where S_30 and I_1 are single definition
+		/// =>
+		/// copy-propagate E_189 to replace all uses of S_30 and I_1
+		/// </summary>
+		static void PropagateExceptionVariable(ILTransformContext context, TryCatchHandler handler)
+		{
+			var exceptionVariable = handler.Variable;
+			if (!exceptionVariable.IsSingleDefinition)
+				return;
+			context.StepStartGroup(nameof(PropagateExceptionVariable));
+			int i = 0;
+			while (i < exceptionVariable.LoadInstructions.Count)
+			{
+				var load = exceptionVariable.LoadInstructions[i];
+
+				if (!load.IsDescendantOf(handler))
+				{
+					i++;
+					continue;
+				}
+
+				// We are only interested in store "statements" copying the exception variable
+				// without modifying it.
+				var statement = LocalFunctionDecompiler.GetStatement(load);
+				if (!(statement is StLoc stloc))
+				{
+					i++;
+					continue;
+				}
+				// simple copy case:
+				// stloc b(ldloc a)
+				if (stloc.Value == load)
+				{
+					PropagateExceptionInstance(stloc);
+				}
+				// if the type of the cast-class instruction matches the exceptionType,
+				// this cast can be removed without losing any side-effects.
+				// Note: this would also hold true iff exceptionType were an exception derived
+				// from cc.Type, however, we are more restrictive to match the pattern exactly.
+				// stloc b(castclass exceptionType(ldloc a))
+				else if (stloc.Value is CastClass cc && cc.Type.Equals(exceptionVariable.Type) && cc.Argument == load)
+				{
+					stloc.Value = load;
+					PropagateExceptionInstance(stloc);
+				}
+				else
+				{
+					i++;
+				}
+
+				void PropagateExceptionInstance(StLoc store)
+				{
+					foreach (var load in store.Variable.LoadInstructions.ToArray())
+					{
+						if (!load.IsDescendantOf(handler))
+							continue;
+						load.ReplaceWith(new LdLoc(exceptionVariable).WithILRange(load));
+					}
+					if (store.Variable.LoadCount == 0 && store.Parent is Block block)
+					{
+						block.Instructions.RemoveAt(store.ChildIndex);
+					}
+					else
+					{
+						i++;
+					}
+				}
+			}
+			context.StepEndGroup(keepIfEmpty: false);
 		}
 
 		/// <summary>
@@ -78,7 +169,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			whenConditionBlock = null;
 			if (entryPoint == null || entryPoint.IncomingEdgeCount != 1)
 				return false;
-			if (entryPoint.Instructions.Count == 3) {
+			if (entryPoint.Instructions.Count == 3)
+			{
 				// stloc temp(isinst exceptionType(ldloc exceptionVar))
 				// if (comp(ldloc temp != ldnull)) br whenConditionBlock
 				// br falseBlock
@@ -93,10 +185,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return false;
 				if (!entryPoint.Instructions[2].MatchBranch(out var falseBlock) || !MatchFalseBlock(container, falseBlock, out var returnVar, out var exitBlock))
 					return false;
-				if ((left.MatchLdNull() && right.MatchLdLoc(temp)) || (right.MatchLdNull() && left.MatchLdLoc(temp))) {
+				if ((left.MatchLdNull() && right.MatchLdLoc(temp)) || (right.MatchLdNull() && left.MatchLdLoc(temp)))
+				{
 					return branch.MatchBranch(out whenConditionBlock);
 				}
-			} else if (entryPoint.Instructions.Count == 2) {
+			}
+			else if (entryPoint.Instructions.Count == 2)
+			{
 				// if (comp(isinst exceptionType(ldloc exceptionVar) != ldnull)) br whenConditionBlock
 				// br falseBlock
 				if (!entryPoint.Instructions[0].MatchIfInstruction(out var condition, out var branch))
@@ -109,7 +204,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					return false;
 				if (!exceptionSlot.MatchLdLoc(exceptionVar))
 					return false;
-				if (right.MatchLdNull()) {
+				if (right.MatchLdNull())
+				{
 					return branch.MatchBranch(out whenConditionBlock);
 				}
 			}

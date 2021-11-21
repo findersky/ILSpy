@@ -25,7 +25,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Xml.Linq;
+
 using ICSharpCode.ILSpy.Docking;
+using ICSharpCode.ILSpy.Themes;
 
 namespace ICSharpCode.ILSpy
 {
@@ -40,14 +42,16 @@ namespace ICSharpCode.ILSpy
 			XElement doc = spySettings["SessionSettings"];
 
 			XElement filterSettings = doc.Element("FilterSettings");
-			if (filterSettings == null) filterSettings = new XElement("FilterSettings");
+			if (filterSettings == null)
+				filterSettings = new XElement("FilterSettings");
 
 			this.FilterSettings = new FilterSettings(filterSettings);
 
 			this.ActiveAssemblyList = (string)doc.Element("ActiveAssemblyList");
 
 			XElement activeTreeViewPath = doc.Element("ActiveTreeViewPath");
-			if (activeTreeViewPath != null) {
+			if (activeTreeViewPath != null)
+			{
 				this.ActiveTreeViewPath = activeTreeViewPath.Elements().Select(e => Unescape((string)e)).ToArray();
 			}
 			this.ActiveAutoLoadedAssembly = (string)doc.Element("ActiveAutoLoadedAssembly");
@@ -58,6 +62,9 @@ namespace ICSharpCode.ILSpy
 			this.TopPaneSplitterPosition = FromString((string)doc.Element("TopPaneSplitterPosition"), 0.3);
 			this.BottomPaneSplitterPosition = FromString((string)doc.Element("BottomPaneSplitterPosition"), 0.3);
 			this.SelectedSearchMode = FromString((string)doc.Element("SelectedSearchMode"), SearchMode.TypeAndMember);
+			this.IsDarkMode = FromString((string)doc.Element(nameof(IsDarkMode)), false);
+			string currentCulture = (string)doc.Element(nameof(CurrentCulture));
+			this.CurrentCulture = string.IsNullOrEmpty(currentCulture) ? null : currentCulture;
 
 			this.DockLayout = new DockLayoutSettings(doc.Element("DockLayout"));
 		}
@@ -72,13 +79,35 @@ namespace ICSharpCode.ILSpy
 		public FilterSettings FilterSettings { get; private set; }
 		public SearchMode SelectedSearchMode { get; set; }
 
+		public bool IsDarkMode {
+			get => ThemeManager.Current.IsDarkMode;
+			set {
+				ThemeManager.Current.IsDarkMode = value;
+				OnPropertyChanged();
+			}
+		}
+
 		public string[] ActiveTreeViewPath;
 		public string ActiveAutoLoadedAssembly;
+
+		string currentCulture;
+
+		public string CurrentCulture {
+			get { return currentCulture; }
+			set {
+				if (currentCulture != value)
+				{
+					currentCulture = value;
+					OnPropertyChanged();
+				}
+			}
+		}
 
 		public string ActiveAssemblyList {
 			get => activeAssemblyList;
 			set {
-				if (value != activeAssemblyList) {
+				if (value != null && value != activeAssemblyList)
+				{
 					activeAssemblyList = value;
 					OnPropertyChanged();
 				}
@@ -100,13 +129,16 @@ namespace ICSharpCode.ILSpy
 		{
 			XElement doc = new XElement("SessionSettings");
 			doc.Add(this.FilterSettings.SaveAsXml());
-			if (this.ActiveAssemblyList != null) {
+			if (this.ActiveAssemblyList != null)
+			{
 				doc.Add(new XElement("ActiveAssemblyList", this.ActiveAssemblyList));
 			}
-			if (this.ActiveTreeViewPath != null) {
+			if (this.ActiveTreeViewPath != null)
+			{
 				doc.Add(new XElement("ActiveTreeViewPath", ActiveTreeViewPath.Select(p => new XElement("Node", Escape(p)))));
 			}
-			if (this.ActiveAutoLoadedAssembly != null) {
+			if (this.ActiveAutoLoadedAssembly != null)
+			{
 				doc.Add(new XElement("ActiveAutoLoadedAssembly", this.ActiveAutoLoadedAssembly));
 			}
 			doc.Add(new XElement("WindowState", ToString(this.WindowState)));
@@ -115,9 +147,15 @@ namespace ICSharpCode.ILSpy
 			doc.Add(new XElement("TopPaneSplitterPosition", ToString(this.TopPaneSplitterPosition)));
 			doc.Add(new XElement("BottomPaneSplitterPosition", ToString(this.BottomPaneSplitterPosition)));
 			doc.Add(new XElement("SelectedSearchMode", ToString(this.SelectedSearchMode)));
+			doc.Add(new XElement(nameof(IsDarkMode), ToString(this.IsDarkMode)));
+			if (this.CurrentCulture != null)
+			{
+				doc.Add(new XElement(nameof(CurrentCulture), this.CurrentCulture));
+			}
 
 			var dockLayoutElement = new XElement("DockLayout");
-			if (DockLayout.Valid) {
+			if (DockLayout.Valid)
+			{
 				dockLayoutElement.Add(DockLayout.SaveAsXml());
 			}
 			doc.Add(dockLayoutElement);
@@ -131,7 +169,8 @@ namespace ICSharpCode.ILSpy
 		static string Escape(string p)
 		{
 			StringBuilder sb = new StringBuilder();
-			foreach (char ch in p) {
+			foreach (char ch in p)
+			{
 				if (char.IsLetterOrDigit(ch))
 					sb.Append(ch);
 				else
@@ -149,10 +188,13 @@ namespace ICSharpCode.ILSpy
 		{
 			if (s == null)
 				return defaultValue;
-			try {
+			try
+			{
 				TypeConverter c = TypeDescriptor.GetConverter(typeof(T));
 				return (T)c.ConvertFromInvariantString(s);
-			} catch (FormatException) {
+			}
+			catch (FormatException)
+			{
 				return defaultValue;
 			}
 		}

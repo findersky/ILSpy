@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2018 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2018 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -18,6 +19,7 @@
 
 using System.Diagnostics;
 using System.Linq;
+
 using ICSharpCode.Decompiler.IL.Transforms;
 
 namespace ICSharpCode.Decompiler.IL
@@ -63,12 +65,13 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public bool RefOutput { get => ResultType == StackType.Ref; }
 
-		public NullableUnwrap(StackType unwrappedType, ILInstruction argument, bool refInput=false)
+		public NullableUnwrap(StackType unwrappedType, ILInstruction argument, bool refInput = false)
 			: base(OpCode.NullableUnwrap, argument)
 		{
 			this.ResultType = unwrappedType;
 			this.RefInput = refInput;
-			if (unwrappedType == StackType.Ref) {
+			if (unwrappedType == StackType.Ref)
+			{
 				Debug.Assert(refInput);
 			}
 		}
@@ -76,9 +79,12 @@ namespace ICSharpCode.Decompiler.IL
 		internal override void CheckInvariant(ILPhase phase)
 		{
 			base.CheckInvariant(phase);
-			if (this.RefInput) {
+			if (this.RefInput)
+			{
 				Debug.Assert(Argument.ResultType == StackType.Ref, "nullable.unwrap expects reference to nullable type as input");
-			} else {
+			}
+			else
+			{
 				Debug.Assert(Argument.ResultType == StackType.O, "nullable.unwrap expects nullable type as input");
 			}
 			Debug.Assert(Ancestors.Any(a => a is NullableRewrap));
@@ -87,7 +93,8 @@ namespace ICSharpCode.Decompiler.IL
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			output.Write("nullable.unwrap.");
-			if (RefInput) {
+			if (RefInput)
+			{
 				output.Write("refinput.");
 			}
 			output.Write(ResultType);
@@ -131,6 +138,14 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			return base.PrepareExtract(childIndex, ctx)
 				&& (ctx.FlagsBeingMoved & InstructionFlags.MayUnwrapNull) == 0;
+		}
+
+		internal override bool CanInlineIntoSlot(int childIndex, ILInstruction expressionBeingMoved)
+		{
+			// Inlining into nullable.rewrap is OK unless the expression being inlined
+			// contains a nullable.wrap that isn't being re-wrapped within the expression being inlined.
+			return base.CanInlineIntoSlot(childIndex, expressionBeingMoved)
+				&& !expressionBeingMoved.HasFlag(InstructionFlags.MayUnwrapNull);
 		}
 	}
 }

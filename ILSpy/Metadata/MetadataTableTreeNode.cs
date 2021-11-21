@@ -21,6 +21,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Windows.Controls;
 using System.Windows.Threading;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
@@ -44,7 +45,7 @@ namespace ICSharpCode.ILSpy.Metadata
 
 		internal void ScrollTo(Handle handle)
 		{
-			this.scrollTarget = MetadataTokens.GetRowNumber((EntityHandle)handle);
+			this.scrollTarget = module.Metadata.GetRowNumber((EntityHandle)handle);
 		}
 
 		protected void ScrollItemIntoView(DataGrid view, object item)

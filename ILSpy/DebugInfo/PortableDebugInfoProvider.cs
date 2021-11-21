@@ -18,7 +18,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection.Metadata;
+
 using ICSharpCode.Decompiler.DebugInfo;
 
 namespace ICSharpCode.Decompiler.PdbProvider
@@ -26,32 +28,77 @@ namespace ICSharpCode.Decompiler.PdbProvider
 	class PortableDebugInfoProvider : IDebugInfoProvider
 	{
 		string pdbFileName;
-
-		internal MetadataReaderProvider Provider { get; }
+		string moduleFileName;
+		readonly MetadataReaderProvider provider;
+		bool hasError;
 
 		internal bool IsEmbedded => pdbFileName == null;
 
-		public PortableDebugInfoProvider(string pdbFileName, MetadataReaderProvider provider)
+		public PortableDebugInfoProvider(string pdbFileName, MetadataReaderProvider provider,
+			string moduleFileName)
 		{
 			this.pdbFileName = pdbFileName;
-			this.Provider = provider;
+			this.moduleFileName = moduleFileName;
+			this.provider = provider ?? throw new ArgumentNullException(nameof(provider));
 		}
 
-		public string Description => pdbFileName == null ? "Embedded in this assembly" : $"Loaded from portable PDB: {pdbFileName}";
+		public string Description {
+			get {
+				if (pdbFileName == null)
+				{
+					if (hasError)
+						return "Error while loading the PDB stream embedded in this assembly";
+					return "Embedded in this assembly";
+				}
+				else
+				{
+					if (hasError)
+						return $"Error while loading portable PDB: {pdbFileName}";
+					return $"Loaded from portable PDB: {pdbFileName}";
+				}
+			}
+		}
 
-		public IList<Decompiler.DebugInfo.SequencePoint> GetSequencePoints(MethodDefinitionHandle method)
+		internal MetadataReader GetMetadataReader()
 		{
-			var metadata = Provider.GetMetadataReader();
-			var debugInfo = metadata.GetMethodDebugInformation(method);
-			var sequencePoints = new List<Decompiler.DebugInfo.SequencePoint>();
+			try
+			{
+				hasError = false;
+				return provider.GetMetadataReader();
+			}
+			catch (BadImageFormatException)
+			{
+				hasError = true;
+				return null;
+			}
+			catch (IOException)
+			{
+				hasError = true;
+				return null;
+			}
+		}
 
-			foreach (var point in debugInfo.GetSequencePoints()) {
+		public string SourceFileName => pdbFileName ?? moduleFileName;
+
+		public IList<DebugInfo.SequencePoint> GetSequencePoints(MethodDefinitionHandle method)
+		{
+			var metadata = GetMetadataReader();
+			var debugInfo = metadata.GetMethodDebugInformation(method);
+			var sequencePoints = new List<DebugInfo.SequencePoint>();
+			if (metadata == null)
+				return sequencePoints;
+
+			foreach (var point in debugInfo.GetSequencePoints())
+			{
 				string documentFileName;
 
-				if (!point.Document.IsNil) {
+				if (!point.Document.IsNil)
+				{
 					var document = metadata.GetDocument(point.Document);
 					documentFileName = metadata.GetString(document.Name);
-				} else {
+				}
+				else
+				{
 					documentFileName = "";
 				}
 
@@ -70,12 +117,16 @@ namespace ICSharpCode.Decompiler.PdbProvider
 
 		public IList<Variable> GetVariables(MethodDefinitionHandle method)
 		{
-			var metadata = Provider.GetMetadataReader();
+			var metadata = GetMetadataReader();
 			var variables = new List<Variable>();
+			if (metadata == null)
+				return variables;
 
-			foreach (var h in metadata.GetLocalScopes(method)) {
+			foreach (var h in metadata.GetLocalScopes(method))
+			{
 				var scope = metadata.GetLocalScope(h);
-				foreach (var v in scope.GetLocalVariables()) {
+				foreach (var v in scope.GetLocalVariables())
+				{
 					var var = metadata.GetLocalVariable(v);
 					variables.Add(new Variable(var.Index, metadata.GetString(var.Name)));
 				}
@@ -86,14 +137,19 @@ namespace ICSharpCode.Decompiler.PdbProvider
 
 		public bool TryGetName(MethodDefinitionHandle method, int index, out string name)
 		{
-			var metadata = Provider.GetMetadataReader();
+			var metadata = GetMetadataReader();
 			name = null;
+			if (metadata == null)
+				return false;
 
-			foreach (var h in metadata.GetLocalScopes(method)) {
+			foreach (var h in metadata.GetLocalScopes(method))
+			{
 				var scope = metadata.GetLocalScope(h);
-				foreach (var v in scope.GetLocalVariables()) {
+				foreach (var v in scope.GetLocalVariables())
+				{
 					var var = metadata.GetLocalVariable(v);
-					if (var.Index == index) {
+					if (var.Index == index)
+					{
 						name = metadata.GetString(var.Name);
 						return true;
 					}

@@ -16,9 +16,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
@@ -111,7 +111,8 @@ namespace ICSharpCode.ILSpy
 		public override void WriteKeyword(Role role, string keyword)
 		{
 			HighlightingColor color = null;
-			switch (keyword) {
+			switch (keyword)
+			{
 				case "namespace":
 				case "using":
 					if (role == UsingStatement.UsingKeywordRole)
@@ -143,7 +144,6 @@ namespace ICSharpCode.ILSpy
 				case "for":
 				case "foreach":
 				case "lock":
-				case "global":
 				case "await":
 					color = structureKeywordsColor;
 					break;
@@ -170,6 +170,10 @@ namespace ICSharpCode.ILSpy
 				case "stackalloc":
 					color = typeKeywordsColor;
 					break;
+				case "with":
+					if (role == WithInitializerExpression.WithKeywordRole)
+						color = typeKeywordsColor;
+					break;
 				case "try":
 				case "throw":
 				case "catch":
@@ -184,8 +188,10 @@ namespace ICSharpCode.ILSpy
 				case "set":
 				case "add":
 				case "remove":
+				case "init":
 					if (role == PropertyDeclaration.GetKeywordRole ||
 						role == PropertyDeclaration.SetKeywordRole ||
+						role == PropertyDeclaration.InitKeywordRole ||
 						role == CustomEventDeclaration.AddKeywordRole ||
 						role == CustomEventDeclaration.RemoveKeywordRole)
 						color = accessorKeywordsColor;
@@ -224,6 +230,7 @@ namespace ICSharpCode.ILSpy
 				case "class":
 				case "interface":
 				case "delegate":
+				case "record":
 					color = referenceTypeKeywordsColor;
 					break;
 				case "select":
@@ -264,11 +271,13 @@ namespace ICSharpCode.ILSpy
 			}
 			if (nodeStack.PeekOrDefault() is AttributeSection)
 				color = attributeKeywordsColor;
-			if (color != null) {
+			if (color != null)
+			{
 				BeginSpan(color);
 			}
 			base.WriteKeyword(role, keyword);
-			if (color != null) {
+			if (color != null)
+			{
 				EndSpan();
 			}
 		}
@@ -276,7 +285,8 @@ namespace ICSharpCode.ILSpy
 		public override void WritePrimitiveType(string type)
 		{
 			HighlightingColor color = null;
-			switch (type) {
+			switch (type)
+			{
 				case "new":
 				case "notnull":
 					// Not sure if reference type or value type
@@ -298,20 +308,25 @@ namespace ICSharpCode.ILSpy
 				case "ushort":
 				case "ulong":
 				case "unmanaged":
+				case "nint":
+				case "nuint":
 					color = valueTypeKeywordsColor;
 					break;
 				case "class":
 				case "object":
 				case "string":
 				case "void":
+				case "dynamic":
 					color = referenceTypeKeywordsColor;
 					break;
 			}
-			if (color != null) {
+			if (color != null)
+			{
 				BeginSpan(color);
 			}
 			base.WritePrimitiveType(type);
-			if (color != null) {
+			if (color != null)
+			{
 				EndSpan();
 			}
 		}
@@ -327,11 +342,23 @@ namespace ICSharpCode.ILSpy
 			{
 				color = valueKeywordColor;
 			}
-			if ((identifier.Name == "dynamic" || identifier.Name == "var") && identifier.Parent is AstType)
-				color = queryKeywordsColor;
-			switch (GetCurrentDefinition()) {
+			if (identifier.Parent is AstType)
+			{
+				switch (identifier.Name)
+				{
+					case "var":
+						color = queryKeywordsColor;
+						break;
+					case "global":
+						color = structureKeywordsColor;
+						break;
+				}
+			}
+			switch (GetCurrentDefinition())
+			{
 				case ITypeDefinition t:
-					switch (t.Kind) {
+					switch (t.Kind)
+					{
 						case TypeKind.Delegate:
 							color = delegateTypeColor;
 							break;
@@ -356,9 +383,11 @@ namespace ICSharpCode.ILSpy
 					color = fieldDeclarationColor;
 					break;
 			}
-			switch (GetCurrentMemberReference()) {
+			switch (GetCurrentMemberReference())
+			{
 				case IType t:
-					switch (t.Kind) {
+					switch (t.Kind)
+					{
 						case TypeKind.Delegate:
 							color = delegateTypeColor;
 							break;
@@ -383,11 +412,13 @@ namespace ICSharpCode.ILSpy
 					color = fieldAccessColor;
 					break;
 			}
-			if (color != null) {
+			if (color != null)
+			{
 				BeginSpan(color);
 			}
 			base.WriteIdentifier(identifier);
-			if (color != null) {
+			if (color != null)
+			{
 				EndSpan();
 			}
 		}
@@ -395,17 +426,21 @@ namespace ICSharpCode.ILSpy
 		public override void WritePrimitiveValue(object value, Decompiler.CSharp.Syntax.LiteralFormat format)
 		{
 			HighlightingColor color = null;
-			if (value is null) {
+			if (value is null)
+			{
 				color = valueKeywordColor;
 			}
-			if (value is true || value is false) {
+			if (value is true || value is false)
+			{
 				color = trueKeywordColor;
 			}
-			if (color != null) {
+			if (color != null)
+			{
 				BeginSpan(color);
 			}
 			base.WritePrimitiveValue(value, format);
-			if (color != null) {
+			if (color != null)
+			{
 				EndSpan();
 			}
 		}
@@ -431,13 +466,16 @@ namespace ICSharpCode.ILSpy
 
 			AstNode node = nodeStack.Peek();
 			var symbol = node.GetSymbol();
-			if (symbol == null && node.Role == Roles.TargetExpression && node.Parent is InvocationExpression) {
+			if (symbol == null && node.Role == Roles.TargetExpression && node.Parent is InvocationExpression)
+			{
 				symbol = node.Parent.GetSymbol();
 			}
-			if (symbol != null && node.Parent is ObjectCreateExpression) {
+			if (symbol != null && node.Parent is ObjectCreateExpression)
+			{
 				symbol = node.Parent.GetSymbol();
 			}
-			if (node is IdentifierExpression && node.Role == Roles.TargetExpression && node.Parent is InvocationExpression && symbol is IMember member) {
+			if (node is IdentifierExpression && node.Role == Roles.TargetExpression && node.Parent is InvocationExpression && symbol is IMember member)
+			{
 				var declaringType = member.DeclaringType;
 				if (declaringType != null && declaringType.Kind == TypeKind.Delegate)
 					return null;
@@ -467,7 +505,8 @@ namespace ICSharpCode.ILSpy
 
 		private void BeginSpan(HighlightingColor highlightingColor)
 		{
-			if (textOutput != null) {
+			if (textOutput != null)
+			{
 				textOutput.BeginSpan(highlightingColor);
 				return;
 			}
@@ -483,7 +522,8 @@ namespace ICSharpCode.ILSpy
 
 		private void EndSpan()
 		{
-			if (textOutput != null) {
+			if (textOutput != null)
+			{
 				textOutput.EndSpan();
 				return;
 			}

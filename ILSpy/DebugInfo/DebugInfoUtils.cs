@@ -22,6 +22,7 @@ using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
+
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.Metadata;
 
@@ -31,18 +32,28 @@ namespace ICSharpCode.Decompiler.PdbProvider
 	{
 		public static IDebugInfoProvider LoadSymbols(PEFile module)
 		{
-			try {
+			try
+			{
 				// try to open portable pdb file/embedded pdb info:
-				if (TryOpenPortablePdb(module, out var provider, out var pdbFileName)) {
-					return new PortableDebugInfoProvider(pdbFileName, provider);
-				} else {
+				if (TryOpenPortablePdb(module, out var provider, out var pdbFileName))
+				{
+					return new PortableDebugInfoProvider(pdbFileName, provider, module.FileName);
+				}
+				else
+				{
 					// search for pdb in same directory as dll
-					pdbFileName = Path.Combine(Path.GetDirectoryName(module.FileName), Path.GetFileNameWithoutExtension(module.FileName) + ".pdb");
-					if (File.Exists(pdbFileName)) {
+					pdbFileName = Path.Combine(
+						Path.GetDirectoryName(module.FileName),
+						Path.GetFileNameWithoutExtension(module.FileName) + ".pdb"
+					);
+					if (File.Exists(pdbFileName))
+					{
 						return new MonoCecilDebugInfoProvider(module, pdbFileName);
 					}
 				}
-			} catch (Exception ex) when (ex is BadImageFormatException || ex is COMException) {
+			}
+			catch (Exception ex) when (ex is BadImageFormatException || ex is COMException)
+			{
 				// Ignore PDB load errors
 			}
 			return null;
@@ -58,35 +69,46 @@ namespace ICSharpCode.Decompiler.PdbProvider
 				return null;
 
 			if (stream.Read(buffer, 0, buffer.Length) == LegacyPDBPrefix.Length
-				&& System.Text.Encoding.ASCII.GetString(buffer) == LegacyPDBPrefix) {
+				&& System.Text.Encoding.ASCII.GetString(buffer) == LegacyPDBPrefix)
+			{
 				stream.Position = 0;
 				return new MonoCecilDebugInfoProvider(module, pdbFileName);
-			} else {
+			}
+			else
+			{
 				stream.Position = 0;
 				var provider = MetadataReaderProvider.FromPortablePdbStream(stream);
-				return new PortableDebugInfoProvider(pdbFileName, provider);
+				return new PortableDebugInfoProvider(pdbFileName, provider, module.FileName);
 			}
 		}
 
 		const string LegacyPDBPrefix = "Microsoft C/C++ MSF 7.00";
 		static readonly byte[] buffer = new byte[LegacyPDBPrefix.Length];
 
-		static bool TryOpenPortablePdb(PEFile module, out MetadataReaderProvider provider, out string pdbFileName)
+		static bool TryOpenPortablePdb(PEFile module,
+			out MetadataReaderProvider provider, out string pdbFileName)
 		{
 			provider = null;
 			pdbFileName = null;
 			var reader = module.Reader;
-			foreach (var entry in reader.ReadDebugDirectory()) {
-				if (entry.IsPortableCodeView) {
-					return reader.TryOpenAssociatedPortablePdb(module.FileName, OpenStream, out provider, out pdbFileName);
+			foreach (var entry in reader.ReadDebugDirectory())
+			{
+				if (entry.IsPortableCodeView)
+				{
+					return reader.TryOpenAssociatedPortablePdb(module.FileName, OpenStream,
+						out provider, out pdbFileName);
 				}
-				if (entry.Type == DebugDirectoryEntryType.CodeView) {
+				if (entry.Type == DebugDirectoryEntryType.CodeView)
+				{
 					string pdbDirectory = Path.GetDirectoryName(module.FileName);
-					pdbFileName = Path.Combine(pdbDirectory, Path.GetFileNameWithoutExtension(module.FileName) + ".pdb");
-					if (File.Exists(pdbFileName)) {
+					pdbFileName = Path.Combine(
+						pdbDirectory, Path.GetFileNameWithoutExtension(module.FileName) + ".pdb");
+					if (File.Exists(pdbFileName))
+					{
 						Stream stream = OpenStream(pdbFileName);
 						if (stream.Read(buffer, 0, buffer.Length) == LegacyPDBPrefix.Length
-							&& System.Text.Encoding.ASCII.GetString(buffer) == LegacyPDBPrefix) {
+							&& System.Text.Encoding.ASCII.GetString(buffer) == LegacyPDBPrefix)
+						{
 							return false;
 						}
 						stream.Position = 0;

@@ -1,4 +1,5 @@
-﻿// 
+﻿#nullable enable
+// 
 // AstNode.cs
 //
 // Author:
@@ -29,6 +30,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -38,7 +40,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	public abstract class AstNode : AbstractAnnotatable, IFreezable, INode, ICloneable
 	{
 		// the Root role must be available when creating the null nodes, so we can't put it in the Roles class
-		internal static readonly Role<AstNode> RootRole = new Role<AstNode>("Root");
+		internal static readonly Role<AstNode?> RootRole = new Role<AstNode?>("Root", null);
 
 		#region Null
 		public static readonly AstNode Null = new NullAstNode();
@@ -72,7 +74,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return visitor.VisitNullNode(this, data);
 			}
 
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
+			protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
 			{
 				return other == null || other.IsNull;
 			}
@@ -80,7 +82,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		#endregion
 
 		#region PatternPlaceholder
-		public static implicit operator AstNode(PatternMatching.Pattern pattern)
+		public static implicit operator AstNode?(PatternMatching.Pattern? pattern)
 		{
 			return pattern != null ? new PatternPlaceholder(pattern) : null;
 		}
@@ -113,23 +115,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return visitor.VisitPatternPlaceholder(this, child, data);
 			}
 
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
+			protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
 			{
 				return child.DoMatch(other, match);
 			}
 
-			bool PatternMatching.INode.DoMatchCollection(Role role, PatternMatching.INode pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
+			bool PatternMatching.INode.DoMatchCollection(Role? role, PatternMatching.INode? pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
 			{
 				return child.DoMatchCollection(role, pos, match, backtrackingInfo);
 			}
 		}
 		#endregion
 
-		AstNode parent;
-		AstNode prevSibling;
-		AstNode nextSibling;
-		AstNode firstChild;
-		AstNode lastChild;
+		AstNode? parent;
+		AstNode? prevSibling;
+		AstNode? nextSibling;
+		AstNode? firstChild;
+		AstNode? lastChild;
 
 		// Flags, from least significant to most significant bits:
 		// - Role.RoleIndexBits: role index
@@ -154,8 +156,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public void Freeze()
 		{
-			if (!IsFrozen) {
-				for (AstNode child = firstChild; child != null; child = child.nextSibling)
+			if (!IsFrozen)
+			{
+				for (AstNode? child = firstChild; child != null; child = child.nextSibling)
 					child.Freeze();
 				flags |= frozenBit;
 			}
@@ -195,7 +198,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 		}
 
-		public AstNode Parent {
+		public AstNode? Parent {
 			get { return parent; }
 		}
 
@@ -222,19 +225,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			flags = (flags & ~roleIndexMask) | role.Index;
 		}
 
-		public AstNode NextSibling {
+		public AstNode? NextSibling {
 			get { return nextSibling; }
 		}
 
-		public AstNode PrevSibling {
+		public AstNode? PrevSibling {
 			get { return prevSibling; }
 		}
 
-		public AstNode FirstChild {
+		public AstNode? FirstChild {
 			get { return firstChild; }
 		}
 
-		public AstNode LastChild {
+		public AstNode? LastChild {
 			get { return lastChild; }
 		}
 
@@ -246,8 +249,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public IEnumerable<AstNode> Children {
 			get {
-				AstNode next;
-				for (AstNode cur = firstChild; cur != null; cur = next) {
+				AstNode? next;
+				for (AstNode? cur = firstChild; cur != null; cur = next)
+				{
 					Debug.Assert(cur.parent == this);
 					// Remember next before yielding cur.
 					// This allows removing/replacing nodes while iterating through the list.
@@ -262,7 +266,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public IEnumerable<AstNode> Ancestors {
 			get {
-				for (AstNode cur = parent; cur != null; cur = cur.parent) {
+				for (AstNode? cur = parent; cur != null; cur = cur.parent)
+				{
 					yield return cur;
 				}
 			}
@@ -273,7 +278,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public IEnumerable<AstNode> AncestorsAndSelf {
 			get {
-				for (AstNode cur = this; cur != null; cur = cur.parent) {
+				for (AstNode? cur = this; cur != null; cur = cur.parent)
+				{
 					yield return cur;
 				}
 			}
@@ -293,29 +299,31 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			get { return GetDescendantsImpl(true); }
 		}
 
-		public IEnumerable<AstNode> DescendantNodes(Func<AstNode, bool> descendIntoChildren = null)
+		public IEnumerable<AstNode> DescendantNodes(Func<AstNode, bool>? descendIntoChildren = null)
 		{
 			return GetDescendantsImpl(false, descendIntoChildren);
 		}
 
-		public IEnumerable<AstNode> DescendantNodesAndSelf(Func<AstNode, bool> descendIntoChildren = null)
+		public IEnumerable<AstNode> DescendantNodesAndSelf(Func<AstNode, bool>? descendIntoChildren = null)
 		{
 			return GetDescendantsImpl(true, descendIntoChildren);
 		}
 
 
-		IEnumerable<AstNode> GetDescendantsImpl(bool includeSelf, Func<AstNode, bool> descendIntoChildren = null)
+		IEnumerable<AstNode> GetDescendantsImpl(bool includeSelf, Func<AstNode, bool>? descendIntoChildren = null)
 		{
-			if (includeSelf) {
+			if (includeSelf)
+			{
 				yield return this;
 				if (descendIntoChildren != null && !descendIntoChildren(this))
 					yield break;
 			}
 
-			Stack<AstNode> nextStack = new Stack<AstNode>();
+			Stack<AstNode?> nextStack = new Stack<AstNode?>();
 			nextStack.Push(null);
-			AstNode pos = firstChild;
-			while (pos != null) {
+			AstNode? pos = firstChild;
+			while (pos != null)
+			{
 				// Remember next before yielding pos.
 				// This allows removing/replacing nodes while iterating through the list.
 				if (pos.nextSibling != null)
@@ -332,24 +340,25 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// Gets the first child with the specified role.
 		/// Returns the role's null object if the child is not found.
 		/// </summary>
-		public T GetChildByRole<T>(Role<T> role) where T : AstNode
+		public T GetChildByRole<T>(Role<T> role) where T : AstNode?
 		{
 			if (role == null)
 				throw new ArgumentNullException(nameof(role));
 			uint roleIndex = role.Index;
-			for (var cur = firstChild; cur != null; cur = cur.nextSibling) {
+			for (var cur = firstChild; cur != null; cur = cur.nextSibling)
+			{
 				if ((cur.flags & roleIndexMask) == roleIndex)
 					return (T)cur;
 			}
 			return role.NullObject;
 		}
 
-		public T GetParent<T>() where T : AstNode
+		public T? GetParent<T>() where T : AstNode
 		{
 			return Ancestors.OfType<T>().FirstOrDefault();
 		}
 
-		public AstNode GetParent(Func<AstNode, bool> pred)
+		public AstNode GetParent(Func<AstNode, bool>? pred)
 		{
 			return Ancestors.FirstOrDefault(pred);
 		}
@@ -384,7 +393,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			AddChildUnsafe(child, role);
 		}
 
-		public void AddChildWithExistingRole(AstNode child)
+		public void AddChildWithExistingRole(AstNode? child)
 		{
 			if (child == null || child.IsNull)
 				return;
@@ -405,20 +414,24 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			child.parent = this;
 			child.SetRole(role);
-			if (firstChild == null) {
+			if (firstChild == null)
+			{
 				lastChild = firstChild = child;
-			} else {
-				lastChild.nextSibling = child;
+			}
+			else
+			{
+				lastChild!.nextSibling = child;
 				child.prevSibling = lastChild;
 				lastChild = child;
 			}
 		}
 
-		public void InsertChildBefore<T>(AstNode nextSibling, T child, Role<T> role) where T : AstNode
+		public void InsertChildBefore<T>(AstNode? nextSibling, T child, Role<T> role) where T : AstNode
 		{
 			if (role == null)
 				throw new ArgumentNullException(nameof(role));
-			if (nextSibling == null || nextSibling.IsNull) {
+			if (nextSibling == null || nextSibling.IsNull)
+			{
 				AddChild(child, role);
 				return;
 			}
@@ -444,17 +457,20 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			child.nextSibling = nextSibling;
 			child.prevSibling = nextSibling.prevSibling;
 
-			if (nextSibling.prevSibling != null) {
+			if (nextSibling.prevSibling != null)
+			{
 				Debug.Assert(nextSibling.prevSibling.nextSibling == nextSibling);
 				nextSibling.prevSibling.nextSibling = child;
-			} else {
+			}
+			else
+			{
 				Debug.Assert(firstChild == nextSibling);
 				firstChild = child;
 			}
 			nextSibling.prevSibling = child;
 		}
 
-		public void InsertChildAfter<T>(AstNode prevSibling, T child, Role<T> role) where T : AstNode
+		public void InsertChildAfter<T>(AstNode? prevSibling, T child, Role<T> role) where T : AstNode
 		{
 			InsertChildBefore((prevSibling == null || prevSibling.IsNull) ? firstChild : prevSibling.nextSibling, child, role);
 		}
@@ -464,19 +480,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public void Remove()
 		{
-			if (parent != null) {
+			if (parent != null)
+			{
 				ThrowIfFrozen();
-				if (prevSibling != null) {
+				if (prevSibling != null)
+				{
 					Debug.Assert(prevSibling.nextSibling == this);
 					prevSibling.nextSibling = nextSibling;
-				} else {
+				}
+				else
+				{
 					Debug.Assert(parent.firstChild == this);
 					parent.firstChild = nextSibling;
 				}
-				if (nextSibling != null) {
+				if (nextSibling != null)
+				{
 					Debug.Assert(nextSibling.prevSibling == this);
 					nextSibling.prevSibling = prevSibling;
-				} else {
+				}
+				else
+				{
 					Debug.Assert(parent.lastChild == this);
 					parent.lastChild = prevSibling;
 				}
@@ -489,30 +512,37 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// <summary>
 		/// Replaces this node with the new node.
 		/// </summary>
-		public void ReplaceWith(AstNode newNode)
+		public void ReplaceWith(AstNode? newNode)
 		{
-			if (newNode == null || newNode.IsNull) {
+			if (newNode == null || newNode.IsNull)
+			{
 				Remove();
 				return;
 			}
 			if (newNode == this)
 				return; // nothing to do...
-			if (parent == null) {
+			if (parent == null)
+			{
 				throw new InvalidOperationException(this.IsNull ? "Cannot replace the null nodes" : "Cannot replace the root node");
 			}
 			ThrowIfFrozen();
 			// Because this method doesn't statically check the new node's type with the role,
 			// we perform a runtime test:
-			if (!this.Role.IsValid(newNode)) {
+			if (!this.Role.IsValid(newNode))
+			{
 				throw new ArgumentException(string.Format("The new node '{0}' is not valid in the role {1}", newNode.GetType().Name, this.Role.ToString()), nameof(newNode));
 			}
-			if (newNode.parent != null) {
+			if (newNode.parent != null)
+			{
 				// newNode is used within this tree?
-				if (newNode.Ancestors.Contains(this)) {
+				if (newNode.Ancestors.Contains(this))
+				{
 					// e.g. "parenthesizedExpr.ReplaceWith(parenthesizedExpr.Expression);"
 					// enable automatic removal
 					newNode.Remove();
-				} else {
+				}
+				else
+				{
 					throw new ArgumentException("Node is already used in another tree.", nameof(newNode));
 				}
 			}
@@ -524,17 +554,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			newNode.prevSibling = prevSibling;
 			newNode.nextSibling = nextSibling;
 
-			if (prevSibling != null) {
+			if (prevSibling != null)
+			{
 				Debug.Assert(prevSibling.nextSibling == this);
 				prevSibling.nextSibling = newNode;
-			} else {
+			}
+			else
+			{
 				Debug.Assert(parent.firstChild == this);
 				parent.firstChild = newNode;
 			}
-			if (nextSibling != null) {
+			if (nextSibling != null)
+			{
 				Debug.Assert(nextSibling.prevSibling == this);
 				nextSibling.prevSibling = newNode;
-			} else {
+			}
+			else
+			{
 				Debug.Assert(parent.lastChild == this);
 				parent.lastChild = newNode;
 			}
@@ -543,24 +579,27 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			nextSibling = null;
 		}
 
-		public AstNode ReplaceWith(Func<AstNode, AstNode> replaceFunction)
+		public AstNode? ReplaceWith(Func<AstNode, AstNode?> replaceFunction)
 		{
 			if (replaceFunction == null)
 				throw new ArgumentNullException(nameof(replaceFunction));
-			if (parent == null) {
+			if (parent == null)
+			{
 				throw new InvalidOperationException(this.IsNull ? "Cannot replace the null nodes" : "Cannot replace the root node");
 			}
 			AstNode oldParent = parent;
-			AstNode oldSuccessor = nextSibling;
+			AstNode? oldSuccessor = nextSibling;
 			Role oldRole = this.Role;
 			Remove();
-			AstNode replacement = replaceFunction(this);
+			AstNode? replacement = replaceFunction(this);
 			if (oldSuccessor != null && oldSuccessor.parent != oldParent)
 				throw new InvalidOperationException("replace function changed nextSibling of node being replaced?");
-			if (!(replacement == null || replacement.IsNull)) {
+			if (!(replacement == null || replacement.IsNull))
+			{
 				if (replacement.parent != null)
 					throw new InvalidOperationException("replace function must return the root of a tree");
-				if (!oldRole.IsValid(replacement)) {
+				if (!oldRole.IsValid(replacement))
+				{
 					throw new InvalidOperationException(string.Format("The new node '{0}' is not valid in the role {1}", replacement.GetType().Name, oldRole.ToString()));
 				}
 
@@ -588,7 +627,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			copy.flags &= ~frozenBit; // unfreeze the copy
 
 			// Then perform a deep copy:
-			for (AstNode cur = firstChild; cur != null; cur = cur.nextSibling) {
+			for (AstNode? cur = firstChild; cur != null; cur = cur.nextSibling)
+			{
 				copy.AddChildUnsafe(cur.Clone(), cur.Role);
 			}
 
@@ -610,37 +650,37 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public abstract S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data);
 
 		#region Pattern Matching
-		protected static bool MatchString(string pattern, string text)
+		protected static bool MatchString(string? pattern, string? text)
 		{
 			return PatternMatching.Pattern.MatchString(pattern, text);
 		}
 
-		protected internal abstract bool DoMatch(AstNode other, PatternMatching.Match match);
+		protected internal abstract bool DoMatch(AstNode? other, PatternMatching.Match match);
 
-		bool PatternMatching.INode.DoMatch(PatternMatching.INode other, PatternMatching.Match match)
+		bool PatternMatching.INode.DoMatch(PatternMatching.INode? other, PatternMatching.Match match)
 		{
-			AstNode o = other as AstNode;
+			AstNode? o = other as AstNode;
 			// try matching if other is null, or if other is an AstNode
 			return (other == null || o != null) && DoMatch(o, match);
 		}
 
-		bool PatternMatching.INode.DoMatchCollection(Role role, PatternMatching.INode pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
+		bool PatternMatching.INode.DoMatchCollection(Role? role, PatternMatching.INode? pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo? backtrackingInfo)
 		{
-			AstNode o = pos as AstNode;
+			AstNode? o = pos as AstNode;
 			return (pos == null || o != null) && DoMatch(o, match);
 		}
 
-		PatternMatching.INode PatternMatching.INode.NextSibling {
+		PatternMatching.INode? PatternMatching.INode.NextSibling {
 			get { return nextSibling; }
 		}
 
-		PatternMatching.INode PatternMatching.INode.FirstChild {
+		PatternMatching.INode? PatternMatching.INode.FirstChild {
 			get { return firstChild; }
 		}
 
 		#endregion
 
-		public AstNode GetNextNode()
+		public AstNode? GetNextNode()
 		{
 			if (NextSibling != null)
 				return NextSibling;
@@ -654,7 +694,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		/// <returns>The next node.</returns>
 		/// <param name="pred">The predicate.</param>
-		public AstNode GetNextNode(Func<AstNode, bool> pred)
+		public AstNode? GetNextNode(Func<AstNode, bool> pred)
 		{
 			var next = GetNextNode();
 			while (next != null && !pred(next))
@@ -662,7 +702,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return next;
 		}
 
-		public AstNode GetPrevNode()
+		public AstNode? GetPrevNode()
 		{
 			if (PrevSibling != null)
 				return PrevSibling;
@@ -676,7 +716,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		/// <returns>The next node.</returns>
 		/// <param name="pred">The predicate.</param>
-		public AstNode GetPrevNode(Func<AstNode, bool> pred)
+		public AstNode? GetPrevNode(Func<AstNode, bool> pred)
 		{
 			var prev = GetPrevNode();
 			while (prev != null && !pred(prev))
@@ -684,10 +724,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return prev;
 		}
 		// filters all non c# nodes (comments, white spaces or pre processor directives)
-		public AstNode GetCSharpNodeBefore(AstNode node)
+		public AstNode? GetCSharpNodeBefore(AstNode node)
 		{
 			var n = node.PrevSibling;
-			while (n != null) {
+			while (n != null)
+			{
 				if (n.Role != Roles.Comment)
 					return n;
 				n = n.GetPrevNode();
@@ -700,7 +741,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		/// <returns>The next node.</returns>
 		/// <param name="pred">The predicate.</param>
-		public AstNode GetNextSibling(Func<AstNode, bool> pred)
+		public AstNode? GetNextSibling(Func<AstNode, bool> pred)
 		{
 			var next = NextSibling;
 			while (next != null && !pred(next))
@@ -713,7 +754,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		/// <returns>The next node.</returns>
 		/// <param name="pred">The predicate.</param>
-		public AstNode GetPrevSibling(Func<AstNode, bool> pred)
+		public AstNode? GetPrevSibling(Func<AstNode, bool> pred)
 		{
 			var prev = PrevSibling;
 			while (prev != null && !pred(prev))
@@ -727,7 +768,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End exclusive)
 		/// </summary>
-		public AstNode GetNodeAt(int line, int column, Predicate<AstNode> pred = null)
+		public AstNode? GetNodeAt(int line, int column, Predicate<AstNode>? pred = null)
 		{
 			return GetNodeAt(new TextLocation(line, column), pred);
 		}
@@ -737,19 +778,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End exclusive)
 		/// </summary>
-		public AstNode GetNodeAt(TextLocation location, Predicate<AstNode> pred = null)
+		public AstNode? GetNodeAt(TextLocation location, Predicate<AstNode>? pred = null)
 		{
-			AstNode result = null;
+			AstNode? result = null;
 			AstNode node = this;
-			while (node.LastChild != null) {
+			while (node.LastChild != null)
+			{
 				var child = node.LastChild;
 				while (child != null && child.StartLocation > location)
 					child = child.prevSibling;
-				if (child != null && location < child.EndLocation) {
+				if (child != null && location < child.EndLocation)
+				{
 					if (pred == null || pred(child))
 						result = child;
 					node = child;
-				} else {
+				}
+				else
+				{
 					// found no better child node - therefore the parent is the right one.
 					break;
 				}
@@ -762,7 +807,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End exclusive)
 		/// </summary>
-		public T GetNodeAt<T>(int line, int column) where T : AstNode
+		public T? GetNodeAt<T>(int line, int column) where T : AstNode
 		{
 			return GetNodeAt<T>(new TextLocation(line, column));
 		}
@@ -772,19 +817,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End exclusive)
 		/// </summary>
-		public T GetNodeAt<T>(TextLocation location) where T : AstNode
+		public T? GetNodeAt<T>(TextLocation location) where T : AstNode
 		{
-			T result = null;
+			T? result = null;
 			AstNode node = this;
-			while (node.LastChild != null) {
+			while (node.LastChild != null)
+			{
 				var child = node.LastChild;
 				while (child != null && child.StartLocation > location)
 					child = child.prevSibling;
-				if (child != null && location < child.EndLocation) {
+				if (child != null && location < child.EndLocation)
+				{
 					if (child is T)
 						result = (T)child;
 					node = child;
-				} else {
+				}
+				else
+				{
 					// found no better child node - therefore the parent is the right one.
 					break;
 				}
@@ -800,7 +849,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End inclusive)
 		/// </summary>
-		public AstNode GetAdjacentNodeAt(int line, int column, Predicate<AstNode> pred = null)
+		public AstNode? GetAdjacentNodeAt(int line, int column, Predicate<AstNode>? pred = null)
 		{
 			return GetAdjacentNodeAt(new TextLocation(line, column), pred);
 		}
@@ -810,19 +859,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End inclusive)
 		/// </summary>
-		public AstNode GetAdjacentNodeAt(TextLocation location, Predicate<AstNode> pred = null)
+		public AstNode? GetAdjacentNodeAt(TextLocation location, Predicate<AstNode>? pred = null)
 		{
-			AstNode result = null;
+			AstNode? result = null;
 			AstNode node = this;
-			while (node.LastChild != null) {
+			while (node.LastChild != null)
+			{
 				var child = node.LastChild;
 				while (child != null && child.StartLocation > location)
 					child = child.prevSibling;
-				if (child != null && location <= child.EndLocation) {
+				if (child != null && location <= child.EndLocation)
+				{
 					if (pred == null || pred(child))
 						result = child;
 					node = child;
-				} else {
+				}
+				else
+				{
 					// found no better child node - therefore the parent is the right one.
 					break;
 				}
@@ -835,7 +888,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End inclusive)
 		/// </summary>
-		public T GetAdjacentNodeAt<T>(int line, int column) where T : AstNode
+		public T? GetAdjacentNodeAt<T>(int line, int column) where T : AstNode
 		{
 			return GetAdjacentNodeAt<T>(new TextLocation(line, column));
 		}
@@ -845,19 +898,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// the current method declaration.
 		/// (End inclusive)
 		/// </summary>
-		public T GetAdjacentNodeAt<T>(TextLocation location) where T : AstNode
+		public T? GetAdjacentNodeAt<T>(TextLocation location) where T : AstNode
 		{
-			T result = null;
+			T? result = null;
 			AstNode node = this;
-			while (node.LastChild != null) {
+			while (node.LastChild != null)
+			{
 				var child = node.LastChild;
 				while (child != null && child.StartLocation > location)
 					child = child.prevSibling;
-				if (child != null && location <= child.EndLocation) {
-					if (child is T)
-						result = (T)child;
+				if (child != null && location <= child.EndLocation)
+				{
+					if (child is T t)
+						result = t;
 					node = child;
-				} else {
+				}
+				else
+				{
 					// found no better child node - therefore the parent is the right one.
 					break;
 				}
@@ -872,7 +929,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public AstNode GetNodeContaining(TextLocation startLocation, TextLocation endLocation)
 		{
-			for (AstNode child = firstChild; child != null; child = child.nextSibling) {
+			for (AstNode? child = firstChild; child != null; child = child.nextSibling)
+			{
 				if (child.StartLocation <= startLocation && endLocation <= child.EndLocation)
 					return child.GetNodeContaining(startLocation, endLocation);
 			}
@@ -892,18 +950,25 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public IEnumerable<AstNode> GetNodesBetween(TextLocation start, TextLocation end)
 		{
-			AstNode node = this;
-			while (node != null) {
-				AstNode next;
-				if (start <= node.StartLocation && node.EndLocation <= end) {
+			AstNode? node = this;
+			while (node != null)
+			{
+				AstNode? next;
+				if (start <= node.StartLocation && node.EndLocation <= end)
+				{
 					// Remember next before yielding node.
 					// This allows iteration to continue when the caller removes/replaces the node.
 					next = node.GetNextNode();
 					yield return node;
-				} else {
-					if (node.EndLocation <= start) {
+				}
+				else
+				{
+					if (node.EndLocation <= start)
+					{
 						next = node.GetNextNode();
-					} else {
+					}
+					else
+					{
 						next = node.FirstChild;
 					}
 				}
@@ -920,7 +985,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// <param name='formattingOptions'>
 		/// Formatting options.
 		/// </param>
-		public virtual string ToString(CSharpFormattingOptions formattingOptions)
+		public virtual string ToString(CSharpFormattingOptions? formattingOptions)
 		{
 			if (IsNull)
 				return "";

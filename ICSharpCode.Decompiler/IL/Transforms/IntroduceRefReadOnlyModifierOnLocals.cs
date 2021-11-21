@@ -20,20 +20,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
-	class IntroduceRefReadOnlyModifierOnLocals : IILTransform
+	public class IntroduceRefReadOnlyModifierOnLocals : IILTransform
 	{
 		public void Run(ILFunction function, ILTransformContext context)
 		{
-			foreach (var variable in function.Variables) {
+			foreach (var variable in function.Variables)
+			{
 				if (variable.Type.Kind != TypeKind.ByReference || variable.Kind == VariableKind.Parameter)
 					continue;
 				// ref readonly
-				if (IsUsedAsRefReadonly(variable)) {
+				if (IsUsedAsRefReadonly(variable))
+				{
 					variable.IsRefReadOnly = true;
 					continue;
 				}
@@ -47,7 +50,8 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		bool IsUsedAsRefReadonly(ILVariable variable)
 		{
-			foreach (var store in variable.StoreInstructions.OfType<StLoc>()) {
+			foreach (var store in variable.StoreInstructions.OfType<StLoc>())
+			{
 				if (ILInlining.IsReadonlyReference(store.Value))
 					return true;
 			}

@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Text;
+
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Utils;
 using ICSharpCode.Decompiler;
@@ -27,6 +28,7 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.ViewModels;
+
 using Microsoft.Win32;
 
 namespace ICSharpCode.ILSpy.TreeNodes
@@ -39,7 +41,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	{
 		public ResourceTreeNode(Resource r)
 		{
-			if (r.IsNil)
+			if (r == null)
 				throw new ArgumentNullException(nameof(r));
 			this.Resource = r;
 		}
@@ -65,7 +67,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			language.WriteCommentLine(output, string.Format("{0} ({1}, {2})", Resource.Name, Resource.ResourceType, Resource.Attributes));
 
 			ISmartTextOutput smartOutput = output as ISmartTextOutput;
-			if (smartOutput != null) {
+			if (smartOutput != null)
+			{
 				smartOutput.AddButton(Images.Save, Resources.Save, delegate { Save(Docking.DockWorkspace.Instance.ActiveTabPage); });
 				output.WriteLine();
 			}
@@ -74,12 +77,15 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		public override bool View(TabPageModel tabPage)
 		{
 			Stream s = Resource.TryOpenStream();
-			if (s != null && s.Length < DecompilerTextView.DefaultOutputLengthLimit) {
+			if (s != null && s.Length < DecompilerTextView.DefaultOutputLengthLimit)
+			{
 				s.Position = 0;
 				FileType type = GuessFileType.DetectFileType(s);
-				if (type != FileType.Binary) {
+				if (type != FileType.Binary)
+				{
 					s.Position = 0;
 					AvalonEditTextOutput output = new AvalonEditTextOutput();
+					output.Title = Resource.Name;
 					output.Write(FileReader.OpenStream(s, Encoding.UTF8).ReadToEnd());
 					string ext;
 					if (type == FileType.Xml)
@@ -101,9 +107,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				return false;
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.FileName = DecompilerTextView.CleanUpName(Resource.Name);
-			if (dlg.ShowDialog() == true) {
+			if (dlg.ShowDialog() == true)
+			{
 				s.Position = 0;
-				using (var fs = dlg.OpenFile()) {
+				using (var fs = dlg.OpenFile())
+				{
 					s.CopyTo(fs);
 				}
 			}
@@ -112,13 +120,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public static ILSpyTreeNode Create(Resource resource)
 		{
-			ILSpyTreeNode result = null;
-			foreach (var factory in App.ExportProvider.GetExportedValues<IResourceNodeFactory>()) {
-				result = factory.CreateNode(resource);
-				if (result != null)
-					break;
-			}
-			return result ?? new ResourceTreeNode(resource);
+			return ResourceEntryNode.Create(resource);
 		}
 	}
 }

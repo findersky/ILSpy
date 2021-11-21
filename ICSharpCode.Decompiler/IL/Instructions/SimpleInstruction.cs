@@ -1,4 +1,5 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+﻿#nullable enable
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -37,10 +38,10 @@ namespace ICSharpCode.Decompiler.IL
 		Normal,
 		Pop
 	}
-	
+
 	partial class Nop
 	{
-		public string Comment;
+		public string? Comment;
 
 		public NopKind Kind;
 
@@ -48,10 +49,12 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
-			if (Kind != NopKind.Normal) {
+			if (Kind != NopKind.Normal)
+			{
 				output.Write("." + Kind.ToString().ToLowerInvariant());
 			}
-			if (!string.IsNullOrEmpty(Comment)) {
+			if (!string.IsNullOrEmpty(Comment))
+			{
 				output.Write(" // " + Comment);
 			}
 		}
@@ -59,23 +62,24 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class InvalidBranch : SimpleInstruction
 	{
-		public string Message;
+		public string? Message;
 		public StackType ExpectedResultType = StackType.Void;
-		
-		public InvalidBranch(string message) : this()
+
+		public InvalidBranch(string? message) : this()
 		{
 			this.Message = message;
 		}
-		
+
 		public override StackType ResultType {
 			get { return ExpectedResultType; }
 		}
-		
+
 		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
-			if (!string.IsNullOrEmpty(Message)) {
+			if (!string.IsNullOrEmpty(Message))
+			{
 				output.Write("(\"");
 				output.Write(Message);
 				output.Write("\")");
@@ -85,16 +89,15 @@ namespace ICSharpCode.Decompiler.IL
 
 	partial class InvalidExpression : SimpleInstruction
 	{
-		public string Message;
+		public string? Message;
 		public StackType ExpectedResultType = StackType.Unknown;
 
-		public InvalidExpression(string message) : this()
+		public InvalidExpression(string? message) : this()
 		{
 			this.Message = message;
 		}
 
-		public override StackType ResultType
-		{
+		public override StackType ResultType {
 			get { return ExpectedResultType; }
 		}
 
@@ -102,7 +105,8 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
-			if (!string.IsNullOrEmpty(Message)) {
+			if (!string.IsNullOrEmpty(Message))
+			{
 				output.Write("(\"");
 				output.Write(Message);
 				output.Write("\")");

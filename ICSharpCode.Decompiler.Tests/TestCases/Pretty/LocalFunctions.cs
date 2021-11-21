@@ -18,28 +18,45 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if CS90
+using System.Runtime.InteropServices;
+#endif
 
 namespace LocalFunctions
 {
 	internal class LocalFunctions
 	{
+		[AttributeUsage(AttributeTargets.All)]
+		internal class MyAttribute : Attribute
+		{
+
+		}
+
 		public class Generic<T1> where T1 : struct, ICloneable, IConvertible
 		{
 			public int MixedLocalFunction<T2>() where T2 : ICloneable, IConvertible
 			{
+#pragma warning disable CS0219
 				T2 t2 = default(T2);
 				object z = this;
-				for (int j = 0; j < 10; j++) {
+				for (int j = 0; j < 10; j++)
+				{
 					int i = 0;
-					i += NonStaticMethod6<object>();
-					int NonStaticMethod6<T3>()
+					i += NonStaticMethod6<object>(0);
+#if CS90
+					[My]
+					[return: My]
+					int NonStaticMethod6<[My] T3>([My] int unused)
+#else
+					int NonStaticMethod6<T3>(int unused)
+#endif
 					{
 						t2 = default(T2);
 						int l = 0;
 						return NonStaticMethod6_1<T1>() + NonStaticMethod6_1<T2>() + z.GetHashCode();
 						int NonStaticMethod6_1<T4>()
 						{
-							return i + l + NonStaticMethod6<T4>() + StaticMethod1<decimal>();
+							return i + l + NonStaticMethod6<T4>(0) + StaticMethod1<decimal>();
 						}
 					}
 				}
@@ -95,13 +112,15 @@ namespace LocalFunctions
 						return k;
 					}
 				}
+#pragma warning restore CS0219
 			}
 
 			public int MixedLocalFunction2Delegate<T2>() where T2 : ICloneable, IConvertible
 			{
 				T2 t2 = default(T2);
 				object z = this;
-				for (int j = 0; j < 10; j++) {
+				for (int j = 0; j < 10; j++)
+				{
 					int i = 0;
 					i += StaticInvokeAsFunc(NonStaticMethod6<object>);
 					int NonStaticMethod6<T3>()
@@ -115,6 +134,7 @@ namespace LocalFunctions
 						}
 					}
 				}
+				Console.WriteLine(t2);
 				return StaticInvokeAsFunc(MixedLocalFunction2Delegate<T1>) + StaticInvokeAsFunc(MixedLocalFunction2Delegate<T2>) + StaticInvokeAsFunc(StaticMethod1<decimal>) + StaticInvokeAsFunc(StaticMethod1<int>) + StaticInvokeAsFunc(NonStaticMethod3) + StaticInvokeAsFunc(StaticMethod5<T1>) + new Func<object, int>(StaticMethod4<object>)(null) + StaticInvokeAsFunc2<object>(StaticMethod4<object>) + new Func<Func<object, int>, int>(StaticInvokeAsFunc2<object>)(StaticMethod4<object>);
 				int NonStaticMethod3()
 				{
@@ -187,6 +207,7 @@ namespace LocalFunctions
 
 			public static void Test_CaptureT<T2>()
 			{
+#pragma warning disable CS0219
 				T2 t2 = default(T2);
 				Method1<int>();
 				void Method1<T3>()
@@ -202,6 +223,7 @@ namespace LocalFunctions
 						t3 = default(T3);
 					}
 				}
+#pragma warning restore CS0219
 			}
 
 			public void TestGenericArgs<T2>() where T2 : List<T2>
@@ -350,7 +372,8 @@ namespace LocalFunctions
 
 		public static void StaticContextNoCapture(int length)
 		{
-			for (int i = 0; i < length; i++) {
+			for (int i = 0; i < length; i++)
+			{
 				LocalWrite("Hello " + i);
 			}
 
@@ -366,7 +389,8 @@ namespace LocalFunctions
 
 		public static void StaticContextSimpleCapture(int length)
 		{
-			for (int i = 0; i < length; i++) {
+			for (int i = 0; i < length; i++)
+			{
 				LocalWrite();
 			}
 
@@ -379,7 +403,8 @@ namespace LocalFunctions
 		public static void StaticContextCaptureForLoopVariable(int length)
 		{
 			int i;
-			for (i = 0; i < length; i++) {
+			for (i = 0; i < length; i++)
+			{
 				LocalWrite();
 			}
 			void LocalWrite()
@@ -390,7 +415,8 @@ namespace LocalFunctions
 
 		public void ContextNoCapture()
 		{
-			for (int i = 0; i < field; i++) {
+			for (int i = 0; i < field; i++)
+			{
 				LocalWrite("Hello " + i);
 			}
 
@@ -406,7 +432,8 @@ namespace LocalFunctions
 
 		public void ContextSimpleCapture()
 		{
-			for (int i = 0; i < field; i++) {
+			for (int i = 0; i < field; i++)
+			{
 				LocalWrite();
 			}
 
@@ -419,7 +446,8 @@ namespace LocalFunctions
 		public void ContextCaptureForLoopVariable()
 		{
 			int i;
-			for (i = 0; i < field; i++) {
+			for (i = 0; i < field; i++)
+			{
 				LocalWrite();
 			}
 			void LocalWrite()
@@ -431,7 +459,8 @@ namespace LocalFunctions
 		public void CapturedOutsideLoop()
 		{
 			int i = 0;
-			while (i < field) {
+			while (i < field)
+			{
 				i = GetInt("asdf");
 				LocalWrite();
 			}
@@ -444,7 +473,8 @@ namespace LocalFunctions
 
 		public void CapturedInForeachLoop(IEnumerable<string> args)
 		{
-			foreach (string arg2 in args) {
+			foreach (string arg2 in args)
+			{
 				string arg = arg2;
 				LocalWrite();
 				void LocalWrite()
@@ -547,7 +577,8 @@ namespace LocalFunctions
 			int FibHelper(int n)
 #endif
 			{
-				if (n <= 0) {
+				if (n <= 0)
+				{
 					return 0;
 				}
 
@@ -564,7 +595,8 @@ namespace LocalFunctions
 			int A(int i)
 #endif
 			{
-				if (i > 0) {
+				if (i > 0)
+				{
 					return A(i - 1) + 2 * B(i - 1) + 3 * C(i - 1);
 				}
 				return 1;
@@ -576,7 +608,8 @@ namespace LocalFunctions
 			int B(int i)
 #endif
 			{
-				if (i > 0) {
+				if (i > 0)
+				{
 					return 3 * A(i - 1) + B(i - 1);
 				}
 				return 1;
@@ -588,7 +621,8 @@ namespace LocalFunctions
 			int C(int i)
 #endif
 			{
-				if (i > 0) {
+				if (i > 0)
+				{
 					return 2 * A(i - 1) + C(i - 1);
 				}
 				return 1;
@@ -613,7 +647,7 @@ namespace LocalFunctions
 
 		public static int LocalFunctionInLambda(IEnumerable<int> xs)
 		{
-			return xs.First(delegate(int x) {
+			return xs.First(delegate (int x) {
 				return Do();
 
 				bool Do()
@@ -629,7 +663,8 @@ namespace LocalFunctions
 
 			IEnumerable<int> GetNumbers()
 			{
-				for (int i = 0; i < n; i++) {
+				for (int i = 0; i < n; i++)
+				{
 					yield return i;
 				}
 			}
@@ -805,5 +840,15 @@ namespace LocalFunctions
 				}
 			}
 		}
+
+#if CS90
+		public void Issue2196()
+		{
+			EnumWindows(IntPtr.Zero, IntPtr.Zero);
+
+			[DllImport("user32.dll", CallingConvention = CallingConvention.StdCall, EntryPoint = "EnumWindows")]
+			static extern int EnumWindows(IntPtr hWnd, IntPtr lParam);
+		}
+#endif
 	}
 }

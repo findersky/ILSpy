@@ -16,10 +16,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.IL.Transforms
@@ -57,8 +60,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		public class Node
 		{
-			public string Description { get; set; }
-			public ILInstruction Position { get; set; }
+			public string Description { get; }
+			public ILInstruction? Position { get; set; }
 			/// <summary>
 			/// BeginStep is inclusive.
 			/// </summary>
@@ -69,6 +72,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			public int EndStep { get; set; }
 
 			public IList<Node> Children { get; } = new List<Node>();
+
+			public Node(string description)
+			{
+				Description = description;
+			}
 		}
 
 		readonly Stack<Node> groups;
@@ -80,28 +88,28 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			steps = new List<Node>();
 			groups = new Stack<Node>();
 		}
-		
+
 		/// <summary>
 		/// Call this method immediately before performing a transform step.
 		/// Used for debugging the IL transforms. Has no effect in release mode.
 		/// 
 		/// May throw <see cref="StepLimitReachedException"/> in debug mode.
 		/// </summary>
-		public void Step(string description, ILInstruction near = null)
+		public void Step(string description, ILInstruction? near = null)
 		{
 			StepInternal(description, near);
 		}
 
-		private Node StepInternal(string description, ILInstruction near)
+		private Node StepInternal(string description, ILInstruction? near)
 		{
-			if (step == StepLimit) {
+			if (step == StepLimit)
+			{
 				if (IsDebug)
 					Debugger.Break();
 				else
 					throw new StepLimitReachedException();
 			}
-			var stepNode = new Node {
-				Description = $"{step}: {description}",
+			var stepNode = new Node($"{step}: {description}") {
 				Position = near,
 				BeginStep = step,
 				EndStep = step + 1
@@ -115,7 +123,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			return stepNode;
 		}
 
-		public void StartGroup(string description, ILInstruction near = null)
+		public void StartGroup(string description, ILInstruction? near = null)
 		{
 			groups.Push(StepInternal(description, near));
 		}
@@ -123,7 +131,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		public void EndGroup(bool keepIfEmpty = false)
 		{
 			var node = groups.Pop();
-			if (!keepIfEmpty && node.Children.Count == 0) {
+			if (!keepIfEmpty && node.Children.Count == 0)
+			{
 				var col = groups.PeekOrDefault()?.Children ?? steps;
 				Debug.Assert(col.Last() == node);
 				col.RemoveAt(col.Count - 1);

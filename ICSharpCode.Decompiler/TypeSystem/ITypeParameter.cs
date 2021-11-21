@@ -16,8 +16,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
+
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.TypeSystem
@@ -42,13 +45,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// inner.TypeParameters[0].Owner will be the outer class, because the same
 		/// ITypeParameter instance is used both on Outer`1 and Outer`1+Inner.
 		/// </remarks>
-		IEntity Owner { get; }
-		
+		IEntity? Owner { get; }
+
 		/// <summary>
 		/// Gets the index of the type parameter in the type parameter list of the owning method/class.
 		/// </summary>
 		int Index { get; }
-		
+
 		/// <summary>
 		/// Gets the name of the type parameter.
 		/// </summary>
@@ -58,32 +61,32 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets the attributes declared on this type parameter.
 		/// </summary>
 		IEnumerable<IAttribute> GetAttributes();
-		
+
 		/// <summary>
 		/// Gets the variance of this type parameter.
 		/// </summary>
 		VarianceModifier Variance { get; }
-		
+
 		/// <summary>
 		/// Gets the effective base class of this type parameter.
 		/// </summary>
 		IType EffectiveBaseClass { get; }
-		
+
 		/// <summary>
 		/// Gets the effective interface set of this type parameter.
 		/// </summary>
 		IReadOnlyCollection<IType> EffectiveInterfaceSet { get; }
-		
+
 		/// <summary>
 		/// Gets if the type parameter has the 'new()' constraint.
 		/// </summary>
 		bool HasDefaultConstructorConstraint { get; }
-		
+
 		/// <summary>
 		/// Gets if the type parameter has the 'class' constraint.
 		/// </summary>
 		bool HasReferenceTypeConstraint { get; }
-		
+
 		/// <summary>
 		/// Gets if the type parameter has the 'struct' or 'unmanaged' constraint.
 		/// </summary>
@@ -111,13 +114,13 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		public IType Type { get; }
 		public IReadOnlyList<IAttribute> Attributes { get; }
 
-		public TypeConstraint(IType type, IReadOnlyList<IAttribute> attributes = null)
+		public TypeConstraint(IType type, IReadOnlyList<IAttribute>? attributes = null)
 		{
 			this.Type = type ?? throw new ArgumentNullException(nameof(type));
 			this.Attributes = attributes ?? EmptyList<IAttribute>.Instance;
 		}
 	}
-	
+
 	/// <summary>
 	/// Represents the variance of a type parameter.
 	/// </summary>

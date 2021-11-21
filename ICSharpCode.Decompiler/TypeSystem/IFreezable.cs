@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.TypeSystem
 {
 	public interface IFreezable
@@ -24,7 +26,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		/// Gets if this instance is frozen. Frozen instances are immutable and thus thread-safe.
 		/// </summary>
 		bool IsFrozen { get; }
-		
+
 		/// <summary>
 		/// Freezes this instance.
 		/// </summary>

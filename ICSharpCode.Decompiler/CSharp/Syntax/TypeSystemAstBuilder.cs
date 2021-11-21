@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
+
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.Semantics;
@@ -36,7 +38,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	public class TypeSystemAstBuilder
 	{
 		readonly CSharpResolver resolver;
-		
+
 		#region Constructor
 		/// <summary>
 		/// Creates a new TypeSystemAstBuilder.
@@ -51,7 +53,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.resolver = resolver;
 			InitProperties();
 		}
-		
+
 		/// <summary>
 		/// Creates a new TypeSystemAstBuilder.
 		/// </summary>
@@ -60,7 +62,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			InitProperties();
 		}
 		#endregion
-		
+
 		#region Properties
 		void InitProperties()
 		{
@@ -76,37 +78,37 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.UseAliases = true;
 			this.UseSpecialConstants = true;
 		}
-		
+
 		/// <summary>
 		/// Specifies whether the ast builder should add annotations to type references.
 		/// The default value is <see langword="false" />.
 		/// </summary>
 		public bool AddTypeReferenceAnnotations { get; set; }
-		
+
 		/// <summary>
 		/// Specifies whether the ast builder should add ResolveResult annotations to AST nodes.
 		/// The default value is <see langword="false" />.
 		/// </summary>
 		public bool AddResolveResultAnnotations { get; set; }
-		
+
 		/// <summary>
 		/// Controls the accessibility modifiers are shown.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowAccessibility { get; set; }
-		
+
 		/// <summary>
 		/// Controls the non-accessibility modifiers are shown.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowModifiers { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether base type references are shown.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowBaseTypes { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether type parameter declarations are shown.
 		/// The default value is <see langword="true" />.
@@ -118,26 +120,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// The default value is <see langword="false" />.
 		/// </summary>
 		public bool ShowTypeParametersForUnboundTypes { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether constraints on type parameter declarations are shown.
 		/// Has no effect if ShowTypeParameters is false.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowTypeParameterConstraints { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether the names of parameters are shown.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowParameterNames { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether to show default values of optional parameters, and the values of constant fields.
 		/// The default value is <see langword="true" />.
 		/// </summary>
 		public bool ShowConstantValues { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether to show attributes.
 		/// The default value is <see langword="false" />.
@@ -169,13 +171,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// for use in expression context.
 		/// </summary>
 		public NameLookupMode NameLookupMode { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether to generate a body that throws a <c>System.NotImplementedException</c>.
 		/// The default value is <see langword="false" />.
 		/// </summary>
 		public bool GenerateBody { get; set; }
-		
+
 		/// <summary>
 		/// Controls whether to generate custom events.
 		/// The default value is <see langword="false" />.
@@ -186,7 +188,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// Controls whether unbound type argument names are inserted in the ast or not.
 		/// The default value is <see langword="false" />.
 		/// </summary>
-		public bool ConvertUnboundTypeArguments { get; set;}
+		public bool ConvertUnboundTypeArguments { get; set; }
 
 		/// <summary>
 		/// Controls whether aliases should be used inside the type name or not.
@@ -205,6 +207,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// The default value is <see langword="false" />.
 		/// </summary>
 		public bool PrintIntegralValuesAsHex { get; set; }
+
+		/// <summary>
+		/// Controls whether C# 9 "init;" accessors are supported.
+		/// If disabled, emits "set /*init*/;" instead.
+		/// </summary>
+		public bool SupportInitAccessors { get; set; }
+
+		/// <summary>
+		/// Controls whether C# 9 "record" class types are supported.
+		/// </summary>
+		public bool SupportRecordClasses { get; set; }
 		#endregion
 
 		#region Convert Type
@@ -225,22 +238,29 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public AstType ConvertType(FullTypeName fullTypeName)
 		{
-			if (resolver != null) {
-				foreach (var asm in resolver.Compilation.Modules) {
+			if (resolver != null)
+			{
+				foreach (var asm in resolver.Compilation.Modules)
+				{
 					var def = asm.GetTypeDefinition(fullTypeName);
-					if (def != null) {
+					if (def != null)
+					{
 						return ConvertType(def);
 					}
 				}
 			}
 			TopLevelTypeName top = fullTypeName.TopLevelTypeName;
 			AstType type;
-			if (string.IsNullOrEmpty(top.Namespace)) {
+			if (string.IsNullOrEmpty(top.Namespace))
+			{
 				type = MakeSimpleType(top.Name);
-			} else {
+			}
+			else
+			{
 				type = MakeMemberType(MakeSimpleType(top.Namespace), top.Name);
 			}
-			for (int i = 0; i < fullTypeName.NestingLevel; i++) {
+			for (int i = 0; i < fullTypeName.NestingLevel; i++)
+			{
 				type = MakeMemberType(type, fullTypeName.GetNestedTypeName(i));
 			}
 			return type;
@@ -248,114 +268,236 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		AstType ConvertTypeHelper(IType type)
 		{
-			if (type is TypeWithElementType typeWithElementType) {
-				if (typeWithElementType is PointerType) {
+			if (type is TypeWithElementType typeWithElementType)
+			{
+				if (typeWithElementType is PointerType)
+				{
 					return ConvertType(typeWithElementType.ElementType).MakePointerType();
-				} else if (typeWithElementType is ArrayType) {
+				}
+				else if (typeWithElementType is ArrayType)
+				{
 					var astType = ConvertType(typeWithElementType.ElementType).MakeArrayType(((ArrayType)type).Dimensions);
 					if (type.Nullability == Nullability.Nullable)
 						return astType.MakeNullableType();
 					else
 						return astType;
-				} else if (typeWithElementType is ByReferenceType) {
+				}
+				else if (typeWithElementType is ByReferenceType)
+				{
 					return ConvertType(typeWithElementType.ElementType).MakeRefType();
-				} else {
+				}
+				else
+				{
 					// not supported as type in C#
 					return ConvertType(typeWithElementType.ElementType);
 				}
-			} else if (type is NullabilityAnnotatedType nat) {
+			}
+			else if (type is NullabilityAnnotatedType nat)
+			{
 				var astType = ConvertType(nat.TypeWithoutAnnotation);
 				if (nat.Nullability == Nullability.Nullable)
 					astType = astType.MakeNullableType();
 				return astType;
-			} else if (type is TupleType tuple) {
+			}
+			else if (type is TupleType tuple)
+			{
 				var astType = new TupleAstType();
-				foreach (var (etype, ename) in tuple.ElementTypes.Zip(tuple.ElementNames)) {
+				foreach (var (etype, ename) in tuple.ElementTypes.Zip(tuple.ElementNames))
+				{
 					astType.Elements.Add(new TupleTypeElement {
 						Type = ConvertType(etype),
 						Name = ename
 					});
 				}
 				return astType;
-			} else {
+			}
+			else if (type is FunctionPointerType fpt)
+			{
+				var astType = new FunctionPointerAstType();
+				if (fpt.CallingConvention == System.Reflection.Metadata.SignatureCallingConvention.Unmanaged)
+				{
+					astType.HasUnmanagedCallingConvention = true;
+				}
+				else if (fpt.CallingConvention != System.Reflection.Metadata.SignatureCallingConvention.Default)
+				{
+					string callconvName = fpt.CallingConvention switch {
+						System.Reflection.Metadata.SignatureCallingConvention.CDecl => "Cdecl",
+						System.Reflection.Metadata.SignatureCallingConvention.StdCall => "Stdcall",
+						System.Reflection.Metadata.SignatureCallingConvention.ThisCall => "Thiscall",
+						System.Reflection.Metadata.SignatureCallingConvention.FastCall => "Fastcall",
+						System.Reflection.Metadata.SignatureCallingConvention.VarArgs => "Varargs",
+						_ => fpt.CallingConvention.ToString()
+					};
+					astType.HasUnmanagedCallingConvention = true;
+					astType.CallingConventions.Add(new PrimitiveType(callconvName));
+				}
+				foreach (var customCallConv in fpt.CustomCallingConventions)
+				{
+					AstType callConvSyntax;
+					if (customCallConv.Name.StartsWith("CallConv", StringComparison.Ordinal) && customCallConv.Name.Length > 8)
+					{
+						callConvSyntax = new PrimitiveType(customCallConv.Name.Substring(8));
+						if (AddResolveResultAnnotations)
+						{
+							callConvSyntax.AddAnnotation(new TypeResolveResult(customCallConv));
+						}
+					}
+					else
+					{
+						callConvSyntax = ConvertType(customCallConv);
+					}
+					astType.CallingConventions.Add(callConvSyntax);
+				}
+				for (int i = 0; i < fpt.ParameterTypes.Length; i++)
+				{
+					var paramDecl = new ParameterDeclaration();
+					paramDecl.ParameterModifier = fpt.ParameterReferenceKinds[i] switch {
+						ReferenceKind.In => ParameterModifier.In,
+						ReferenceKind.Ref => ParameterModifier.Ref,
+						ReferenceKind.Out => ParameterModifier.Out,
+						_ => ParameterModifier.None,
+					};
+					IType parameterType = fpt.ParameterTypes[i];
+					if (paramDecl.ParameterModifier != ParameterModifier.None && parameterType is ByReferenceType brt)
+					{
+						paramDecl.Type = ConvertType(brt.ElementType);
+					}
+					else
+					{
+						paramDecl.Type = ConvertType(parameterType);
+					}
+					astType.Parameters.Add(paramDecl);
+				}
+				astType.ReturnType = ConvertType(fpt.ReturnType);
+				if (fpt.ReturnIsRefReadOnly && astType.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+				{
+					ct.HasReadOnlySpecifier = true;
+				}
+				ITypeDefinition treatedAs = fpt.GetDefinition();
+				if (treatedAs != null)
+				{
+					var result = ConvertTypeHelper(treatedAs);
+					result.AddChild(new Comment(astType.ToString(), CommentType.MultiLine), Roles.Comment);
+					return result;
+				}
+				else
+				{
+					return astType;
+				}
+			}
+			else
+			{
 				AstType astType;
-				switch (type) {
+				switch (type)
+				{
 					case ITypeDefinition _:
 					case UnknownType _:
-						if (type.IsUnbound()) {
-							if (ShowTypeParametersForUnboundTypes) {
+						if (type.IsUnbound())
+						{
+							if (ShowTypeParametersForUnboundTypes)
+							{
 								astType = ConvertTypeHelper(type, type.TypeArguments);
-							} else {
+							}
+							else
+							{
 								IType[] typeArguments = new IType[type.TypeParameterCount];
-								for (int i = 0; i < typeArguments.Length; i++) {
+								for (int i = 0; i < typeArguments.Length; i++)
+								{
 									typeArguments[i] = SpecialType.UnboundTypeArgument;
 								}
 								astType = ConvertTypeHelper(type, typeArguments);
 							}
-						} else {
+						}
+						else
+						{
 							astType = ConvertTypeHelper(type, EmptyList<IType>.Instance);
 						}
 						break;
 					case ParameterizedType pt:
-						if (UseNullableSpecifierForValueTypes && pt.IsKnownType(KnownTypeCode.NullableOfT)) {
+						if (UseNullableSpecifierForValueTypes && pt.IsKnownType(KnownTypeCode.NullableOfT))
+						{
 							return ConvertType(pt.TypeArguments[0]).MakeNullableType();
 						}
 						astType = ConvertTypeHelper(pt.GenericType, pt.TypeArguments);
 						break;
 					default:
-						astType = MakeSimpleType(type.Name);
+						switch (type.Kind)
+						{
+							case TypeKind.Dynamic:
+							case TypeKind.NInt:
+							case TypeKind.NUInt:
+								astType = new PrimitiveType(type.Name);
+								break;
+							default:
+								astType = MakeSimpleType(type.Name);
+								break;
+						}
 						break;
 				}
-				if (type.Nullability == Nullability.Nullable) {
+				if (type.Nullability == Nullability.Nullable)
+				{
 					AddTypeAnnotation(astType, type.ChangeNullability(Nullability.Oblivious));
 					astType = astType.MakeNullableType();
 				}
 				return astType;
 			}
 		}
-		
+
 		AstType ConvertTypeHelper(IType genericType, IReadOnlyList<IType> typeArguments)
 		{
 			ITypeDefinition typeDef = genericType.GetDefinition();
 			Debug.Assert(typeDef != null || genericType.Kind == TypeKind.Unknown);
 			Debug.Assert(typeArguments.Count >= genericType.TypeParameterCount);
 
-			if (UseKeywordsForBuiltinTypes && typeDef != null) {
+			if (UseKeywordsForBuiltinTypes && typeDef != null)
+			{
 				string keyword = KnownTypeReference.GetCSharpNameByTypeCode(typeDef.KnownTypeCode);
-				if (keyword != null) {
+				if (keyword != null)
+				{
 					return new PrimitiveType(keyword);
 				}
 			}
-			
+
 			// The number of type parameters belonging to outer classes
 			int outerTypeParameterCount = genericType.DeclaringType?.TypeParameterCount ?? 0;
-			
-			if (resolver != null && typeDef != null) {
+
+			if (resolver != null && typeDef != null)
+			{
 				// Look if there's an alias to the target type
-				if (UseAliases) {
-					for (ResolvedUsingScope usingScope = resolver.CurrentUsingScope; usingScope != null; usingScope = usingScope.Parent) {
-						foreach (var pair in usingScope.UsingAliases) {
-							if (pair.Value is TypeResolveResult) {
+				if (UseAliases)
+				{
+					for (ResolvedUsingScope usingScope = resolver.CurrentUsingScope; usingScope != null; usingScope = usingScope.Parent)
+					{
+						foreach (var pair in usingScope.UsingAliases)
+						{
+							if (pair.Value is TypeResolveResult)
+							{
 								if (TypeMatches(pair.Value.Type, typeDef, typeArguments))
 									return MakeSimpleType(pair.Key);
 							}
 						}
 					}
 				}
-				
+
 				IType[] localTypeArguments;
-				if (typeDef.TypeParameterCount > outerTypeParameterCount) {
+				if (typeDef.TypeParameterCount > outerTypeParameterCount)
+				{
 					localTypeArguments = new IType[typeDef.TypeParameterCount - outerTypeParameterCount];
-					for (int i = 0; i < localTypeArguments.Length; i++) {
+					for (int i = 0; i < localTypeArguments.Length; i++)
+					{
 						localTypeArguments[i] = typeArguments[outerTypeParameterCount + i];
 					}
-				} else {
+				}
+				else
+				{
 					localTypeArguments = Empty<IType>.Array;
 				}
 				ResolveResult rr = resolver.LookupSimpleNameOrTypeName(typeDef.Name, localTypeArguments, NameLookupMode);
 				TypeResolveResult trr = rr as TypeResolveResult;
-				if (trr != null || (localTypeArguments.Length == 0 && resolver.IsVariableReferenceWithSameType(rr, typeDef.Name, out trr))) {
-					if (!trr.IsError && TypeMatches(trr.Type, typeDef, typeArguments)) {
+				if (trr != null || (localTypeArguments.Length == 0 && resolver.IsVariableReferenceWithSameType(rr, typeDef.Name, out trr)))
+				{
+					if (!trr.IsError && TypeMatches(trr.Type, typeDef, typeArguments))
+					{
 						// We can use the short type name
 						SimpleType shortResult = MakeSimpleType(typeDef.Name);
 						AddTypeArguments(shortResult, typeDef.TypeParameters, typeArguments, outerTypeParameterCount, typeDef.TypeParameterCount);
@@ -363,48 +505,59 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					}
 				}
 			}
-			
-			if (AlwaysUseShortTypeNames || (typeDef == null && genericType.DeclaringType == null)) {
+
+			if (AlwaysUseShortTypeNames || (typeDef == null && genericType.DeclaringType == null))
+			{
 				var shortResult = MakeSimpleType(genericType.Name);
 				AddTypeArguments(shortResult, genericType.TypeParameters, typeArguments, outerTypeParameterCount, genericType.TypeParameterCount);
 				return shortResult;
 			}
 			MemberType result = new MemberType();
-			if (genericType.DeclaringType != null) {
+			if (genericType.DeclaringType != null)
+			{
 				// Handle nested types
 				result.Target = ConvertTypeHelper(genericType.DeclaringType, typeArguments);
-			} else {
+			}
+			else
+			{
 				// Handle top-level types
-				if (string.IsNullOrEmpty(genericType.Namespace)) {
-					result.Target = new SimpleType("global");
-					if (AddResolveResultAnnotations && resolver != null)
-						result.Target.AddAnnotation(new NamespaceResolveResult(resolver.Compilation.RootNamespace));
+				if (string.IsNullOrEmpty(genericType.Namespace))
+				{
+					result.Target = MakeGlobal();
 					result.IsDoubleColon = true;
-				} else {
-					result.Target = ConvertNamespace(genericType.Namespace, out _);
+				}
+				else
+				{
+					result.Target = ConvertNamespace(genericType.Namespace,
+						out _, genericType.Namespace == genericType.Name);
 				}
 			}
 			result.MemberName = genericType.Name;
 			AddTypeArguments(result, genericType.TypeParameters, typeArguments, outerTypeParameterCount, genericType.TypeParameterCount);
 			return result;
 		}
-		
+
 		/// <summary>
 		/// Gets whether 'type' is the same as 'typeDef' parameterized with the given type arguments.
 		/// </summary>
 		bool TypeMatches(IType type, ITypeDefinition typeDef, IReadOnlyList<IType> typeArguments)
 		{
-			if (typeDef.TypeParameterCount == 0) {
+			if (typeDef.TypeParameterCount == 0)
+			{
 				return TypeDefMatches(typeDef, type);
-			} else {
+			}
+			else
+			{
 				if (!TypeDefMatches(typeDef, type.GetDefinition()))
 					return false;
 				ParameterizedType pt = type as ParameterizedType;
-				if (pt == null) {
+				if (pt == null)
+				{
 					return typeArguments.All(t => t.Kind == TypeKind.UnboundTypeArgument);
 				}
 				var ta = pt.TypeArguments;
-				for (int i = 0; i < ta.Count; i++) {
+				for (int i = 0; i < ta.Count; i++)
+				{
 					if (!ta[i].Equals(typeArguments[i]))
 						return false;
 				}
@@ -435,24 +588,38 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		void AddTypeArguments(AstType result, IReadOnlyList<ITypeParameter> typeParameters, IReadOnlyList<IType> typeArguments, int startIndex, int endIndex)
 		{
 			Debug.Assert(endIndex <= typeParameters.Count);
-			for (int i = startIndex; i < endIndex; i++) {
-				if (ConvertUnboundTypeArguments && typeArguments[i].Kind == TypeKind.UnboundTypeArgument) {
+			for (int i = startIndex; i < endIndex; i++)
+			{
+				if (ConvertUnboundTypeArguments && typeArguments[i].Kind == TypeKind.UnboundTypeArgument)
+				{
 					result.AddChild(MakeSimpleType(typeParameters[i].Name), Roles.TypeArgument);
-				} else {
+				}
+				else
+				{
 					result.AddChild(ConvertType(typeArguments[i]), Roles.TypeArgument);
 				}
 			}
 		}
-		
+
 		public AstType ConvertNamespace(string namespaceName, out NamespaceResolveResult nrr)
 		{
-			if (resolver != null) {
+			return ConvertNamespace(namespaceName, out nrr, requiresGlobalPrefix: false);
+		}
+
+		AstType ConvertNamespace(string namespaceName, out NamespaceResolveResult nrr, bool requiresGlobalPrefix)
+		{
+			if (resolver != null)
+			{
 				// Look if there's an alias to the target namespace
-				if (UseAliases) {
-					for (ResolvedUsingScope usingScope = resolver.CurrentUsingScope; usingScope != null; usingScope = usingScope.Parent) {
-						foreach (var pair in usingScope.UsingAliases) {
+				if (UseAliases)
+				{
+					for (ResolvedUsingScope usingScope = resolver.CurrentUsingScope; usingScope != null; usingScope = usingScope.Parent)
+					{
+						foreach (var pair in usingScope.UsingAliases)
+						{
 							nrr = pair.Value as NamespaceResolveResult;
-							if (nrr != null && nrr.NamespaceName == namespaceName) {
+							if (nrr != null && nrr.NamespaceName == namespaceName)
+							{
 								var ns = MakeSimpleType(pair.Key);
 								if (AddResolveResultAnnotations)
 									ns.AddAnnotation(nrr);
@@ -462,49 +629,67 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					}
 				}
 			}
-			
+
 			int pos = namespaceName.LastIndexOf('.');
-			if (pos < 0) {
-				if (IsValidNamespace(namespaceName, out nrr)) {
-					var ns = MakeSimpleType(namespaceName);
+			if (pos < 0)
+			{
+				if (IsValidNamespace(namespaceName, out nrr))
+				{
+					AstType ns;
+					if (requiresGlobalPrefix)
+					{
+						ns = new MemberType {
+							Target = MakeGlobal(),
+							IsDoubleColon = true,
+							MemberName = namespaceName
+						};
+					}
+					else
+					{
+						ns = MakeSimpleType(namespaceName);
+					}
 					if (AddResolveResultAnnotations && nrr != null)
 						ns.AddAnnotation(nrr);
 					return ns;
-				} else {
-					var target = new SimpleType("global");
-					if (AddResolveResultAnnotations)
-						target.AddAnnotation(new NamespaceResolveResult(resolver.Compilation.RootNamespace));
+				}
+				else
+				{
 					var ns = new MemberType {
-						Target = target,
+						Target = MakeGlobal(),
 						IsDoubleColon = true,
 						MemberName = namespaceName
 					};
-					if (AddResolveResultAnnotations) {
+					if (AddResolveResultAnnotations)
+					{
 						var @namespace = resolver.Compilation.RootNamespace.GetChildNamespace(namespaceName);
 						if (@namespace != null)
 							ns.AddAnnotation(nrr = new NamespaceResolveResult(@namespace));
 					}
 					return ns;
 				}
-			} else {
+			}
+			else
+			{
 				string parentNamespace = namespaceName.Substring(0, pos);
 				string localNamespace = namespaceName.Substring(pos + 1);
-				var parentNS = ConvertNamespace(parentNamespace, out var parentNRR);
+				var parentNS = ConvertNamespace(parentNamespace, out var parentNRR, requiresGlobalPrefix);
 				var ns = new MemberType {
 					Target = parentNS,
 					MemberName = localNamespace
 				};
 				nrr = null;
-				if (AddResolveResultAnnotations && parentNRR != null) {
+				if (AddResolveResultAnnotations && parentNRR != null)
+				{
 					var newNamespace = parentNRR.Namespace.GetChildNamespace(localNamespace);
-					if (newNamespace != null) {
+					if (newNamespace != null)
+					{
 						ns.AddAnnotation(nrr = new NamespaceResolveResult(newNamespace));
 					}
 				}
 				return ns;
 			}
 		}
-		
+
 		bool IsValidNamespace(string firstNamespacePart, out NamespaceResolveResult nrr)
 		{
 			nrr = null;
@@ -521,6 +706,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return new SimpleType(name);
 		}
 
+		SimpleType MakeGlobal()
+		{
+			var global = new SimpleType("global");
+			if (AddResolveResultAnnotations && resolver != null)
+				global.AddAnnotation(new NamespaceResolveResult(resolver.Compilation.RootNamespace));
+			return global;
+		}
+
 		static MemberType MakeMemberType(AstType target, string name)
 		{
 			if (name == "_")
@@ -534,7 +727,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			Attribute attr = new Attribute();
 			attr.Type = ConvertAttributeType(attribute.AttributeType);
-			switch (attr.Type) {
+			switch (attr.Type)
+			{
 				case SimpleType st:
 					if (st.Identifier.EndsWith("Attribute", StringComparison.Ordinal))
 						st.Identifier = st.Identifier.Substring(0, st.Identifier.Length - 9);
@@ -544,29 +738,36 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						mt.MemberName = mt.MemberName.Substring(0, mt.MemberName.Length - 9);
 					break;
 			}
-			if (AddResolveResultAnnotations && attribute.Constructor != null) {
+			if (AddResolveResultAnnotations && attribute.Constructor != null)
+			{
 				attr.AddAnnotation(new MemberResolveResult(null, attribute.Constructor));
 			}
 			var parameters = attribute.Constructor?.Parameters ?? EmptyList<IParameter>.Instance;
-			for (int i = 0; i < attribute.FixedArguments.Length; i++) {
+			for (int i = 0; i < attribute.FixedArguments.Length; i++)
+			{
 				var arg = attribute.FixedArguments[i];
 				var p = (i < parameters.Count) ? parameters[i] : null;
 				attr.Arguments.Add(ConvertConstantValue(p?.Type ?? arg.Type, arg.Type, arg.Value));
 			}
-			if (attribute.NamedArguments.Length > 0) {
+			if (attribute.NamedArguments.Length > 0)
+			{
 				InitializedObjectResolveResult targetResult = new InitializedObjectResolveResult(attribute.AttributeType);
-				foreach (var namedArg in attribute.NamedArguments) {
+				foreach (var namedArg in attribute.NamedArguments)
+				{
 					NamedExpression namedArgument = new NamedExpression(namedArg.Name, ConvertConstantValue(namedArg.Type, namedArg.Value));
-					if (AddResolveResultAnnotations) {
+					if (AddResolveResultAnnotations)
+					{
 						IMember member = CustomAttribute.MemberForNamedArgument(attribute.AttributeType, namedArg);
-						if (member != null) {
+						if (member != null)
+						{
 							namedArgument.AddAnnotation(new MemberResolveResult(targetResult, member));
 						}
 					}
 					attr.Arguments.Add(namedArgument);
 				}
 			}
-			if (attribute.HasDecodeErrors) {
+			if (attribute.HasDecodeErrors)
+			{
 				attr.HasArgumentList = true;
 				attr.AddChild(new Comment("Could not decode attribute arguments.", CommentType.MultiLine), Roles.Comment);
 				// insert explicit rpar token to make the comment appear within the parentheses
@@ -596,11 +797,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			AstType astType = ConvertTypeHelper(type);
 
 			string shortName = null;
-			if (type.Name.Length > 9 && type.Name.EndsWith("Attribute", StringComparison.Ordinal)) {
+			if (type.Name.Length > 9 && type.Name.EndsWith("Attribute", StringComparison.Ordinal))
+			{
 				shortName = type.Name.Remove(type.Name.Length - 9);
 			}
-			if (AlwaysUseShortTypeNames) {
-				switch (astType) {
+			if (AlwaysUseShortTypeNames)
+			{
+				switch (astType)
+				{
 					case SimpleType st:
 						st.Identifier = shortName;
 						break;
@@ -608,7 +812,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						mt.MemberName = shortName;
 						break;
 				}
-			} else if (resolver != null) {
+			}
+			else if (resolver != null)
+			{
 				ApplyShortAttributeNameIfPossible(type, astType, shortName);
 			}
 			AddTypeAnnotation(astType, type);
@@ -618,35 +824,50 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		private void ApplyShortAttributeNameIfPossible(IType type, AstType astType, string shortName)
 		{
-			switch (astType) {
+			switch (astType)
+			{
 				case SimpleType st:
 					ResolveResult shortRR = null;
 					ResolveResult withExtraAttrSuffix = resolver.LookupSimpleNameOrTypeName(type.Name + "Attribute", EmptyList<IType>.Instance, NameLookupMode.Type);
-					if (shortName != null) {
+					if (shortName != null)
+					{
 						shortRR = resolver.LookupSimpleNameOrTypeName(shortName, EmptyList<IType>.Instance, NameLookupMode.Type);
 					}
 					// short type is either unknown or not an attribute type -> we can use the short name.
-					if (shortRR != null && (shortRR is UnknownIdentifierResolveResult || !IsAttributeType(shortRR))) {
+					if (shortRR != null && (shortRR is UnknownIdentifierResolveResult || !IsAttributeType(shortRR)))
+					{
 						st.Identifier = shortName;
-					} else if (IsAttributeType(withExtraAttrSuffix)) {
+					}
+					else if (IsAttributeType(withExtraAttrSuffix))
+					{
 						// typeName + "Attribute" is an attribute type -> we cannot use long type name, add '@' to disable implicit "Attribute" suffix.
 						st.Identifier = '@' + st.Identifier;
 					}
 					break;
 				case MemberType mt:
-					if (type.DeclaringType != null) {
+					if (type.DeclaringType != null)
+					{
 						var declaringTypeDef = type.DeclaringType.GetDefinition();
-						if (declaringTypeDef != null) {
-							if (shortName != null && !declaringTypeDef.GetNestedTypes(t => t.TypeParameterCount == 0 && t.Name == shortName).Any(IsAttributeType)) {
+						if (declaringTypeDef != null)
+						{
+							if (shortName != null && !declaringTypeDef.GetNestedTypes(t => t.TypeParameterCount == 0 && t.Name == shortName).Any(IsAttributeType))
+							{
 								mt.MemberName = shortName;
-							} else if (declaringTypeDef.GetNestedTypes(t => t.TypeParameterCount == 0 && t.Name == type.Name + "Attribute").Any(IsAttributeType)) {
+							}
+							else if (declaringTypeDef.GetNestedTypes(t => t.TypeParameterCount == 0 && t.Name == type.Name + "Attribute").Any(IsAttributeType))
+							{
 								mt.MemberName = '@' + mt.MemberName;
 							}
 						}
-					} else if (mt.Target.GetResolveResult() is NamespaceResolveResult nrr) {
-						if (shortName != null && !IsAttributeType(nrr.Namespace.GetTypeDefinition(shortName, 0))) {
+					}
+					else if (mt.Target.GetResolveResult() is NamespaceResolveResult nrr)
+					{
+						if (shortName != null && !IsAttributeType(nrr.Namespace.GetTypeDefinition(shortName, 0)))
+						{
 							mt.MemberName = shortName;
-						} else if (IsAttributeType(nrr.Namespace.GetTypeDefinition(type.Name + "Attribute", 0))) {
+						}
+						else if (IsAttributeType(nrr.Namespace.GetTypeDefinition(type.Name + "Attribute", 0)))
+						{
 							mt.MemberName = '@' + mt.MemberName;
 						}
 					}
@@ -678,32 +899,39 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (rr == null)
 				throw new ArgumentNullException(nameof(rr));
 			bool isBoxing = false;
-			if (rr is ConversionResolveResult crr) {
+			if (rr is ConversionResolveResult crr)
+			{
 				// unpack ConversionResolveResult if necessary
 				// (e.g. a boxing conversion or string->object reference conversion)
 				rr = crr.Input;
 				isBoxing = crr.Conversion.IsBoxingConversion;
 			}
-			
-			if (rr is TypeOfResolveResult) {
+
+			if (rr is TypeOfResolveResult)
+			{
 				var expr = new TypeOfExpression(ConvertType(((TypeOfResolveResult)rr).ReferencedType));
 				if (AddResolveResultAnnotations)
 					expr.AddAnnotation(rr);
 				return expr;
-			} else if (rr is ArrayCreateResolveResult acrr) {
+			}
+			else if (rr is ArrayCreateResolveResult acrr)
+			{
 				ArrayCreateExpression ace = new ArrayCreateExpression();
 				ace.Type = ConvertType(acrr.Type);
-				if (ace.Type is ComposedType composedType) {
+				if (ace.Type is ComposedType composedType)
+				{
 					composedType.ArraySpecifiers.MoveTo(ace.AdditionalArraySpecifiers);
 					if (!composedType.HasNullableSpecifier && composedType.PointerRank == 0)
 						ace.Type = composedType.BaseType;
 				}
-				
-				if (acrr.SizeArguments != null && acrr.InitializerElements == null) {
+
+				if (acrr.SizeArguments != null && acrr.InitializerElements == null)
+				{
 					ace.AdditionalArraySpecifiers.FirstOrNullObject().Remove();
 					ace.Arguments.AddRange(acrr.SizeArguments.Select(ConvertConstantValue));
 				}
-				if (acrr.InitializerElements != null) {
+				if (acrr.InitializerElements != null)
+				{
 					ArrayInitializerExpression initializer = new ArrayInitializerExpression();
 					initializer.Elements.AddRange(acrr.InitializerElements.Select(ConvertConstantValue));
 					ace.Initializer = initializer;
@@ -711,9 +939,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				if (AddResolveResultAnnotations)
 					ace.AddAnnotation(rr);
 				return ace;
-			} else if (rr.IsCompileTimeConstant) {
+			}
+			else if (rr.IsCompileTimeConstant)
+			{
 				var expr = ConvertConstantValue(rr.Type, rr.ConstantValue);
-				if (isBoxing && rr.Type.IsCSharpSmallIntegerType()) {
+				if (isBoxing && (rr.Type.IsCSharpSmallIntegerType() || rr.Type.IsCSharpNativeIntegerType()))
+				{
 					// C# does not have small integer literal types.
 					// We need to add a cast so that the integer literal gets boxed as the correct type.
 					expr = new CastExpression(ConvertType(rr.Type), expr);
@@ -721,7 +952,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						expr.AddAnnotation(rr);
 				}
 				return expr;
-			} else {
+			}
+			else
+			{
 				return new ErrorExpression();
 			}
 		}
@@ -748,60 +981,86 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			if (type == null)
 				throw new ArgumentNullException(nameof(type));
-			if (constantValue == null) {
-				if (type.IsReferenceType == true || type.IsKnownType(KnownTypeCode.NullableOfT)) {
+			if (constantValue == null)
+			{
+				if (type.IsReferenceType == true || type.IsKnownType(KnownTypeCode.NullableOfT) || type.Kind.IsAnyPointer())
+				{
 					var expr = new NullReferenceExpression();
 					if (AddResolveResultAnnotations)
 						expr.AddAnnotation(new ConstantResolveResult(SpecialType.NullType, null));
 					return expr;
-				} else {
+				}
+				else
+				{
 					var expr = new DefaultValueExpression(ConvertType(type));
 					if (AddResolveResultAnnotations)
 						expr.AddAnnotation(new ConstantResolveResult(type, null));
 					return expr;
 				}
-			} else if (constantValue is IType typeofType) {
+			}
+			else if (constantValue is IType typeofType)
+			{
 				var expr = new TypeOfExpression(ConvertType(typeofType));
 				if (AddResolveResultAnnotations)
 					expr.AddAnnotation(new TypeOfResolveResult(type, typeofType));
 				return expr;
-			} else if (constantValue is ImmutableArray<System.Reflection.Metadata.CustomAttributeTypedArgument<IType>> arr) {
+			}
+			else if (constantValue is ImmutableArray<System.Reflection.Metadata.CustomAttributeTypedArgument<IType>> arr)
+			{
 				var elementType = (type as ArrayType)?.ElementType ?? SpecialType.UnknownType;
 				var expr = new ArrayCreateExpression();
 				expr.Type = ConvertType(type);
-				if (expr.Type is ComposedType composedType) {
+				if (expr.Type is ComposedType composedType)
+				{
 					composedType.ArraySpecifiers.MoveTo(expr.AdditionalArraySpecifiers);
 					if (!composedType.HasNullableSpecifier && composedType.PointerRank == 0)
 						expr.Type = composedType.BaseType;
 				}
 				expr.Initializer = new ArrayInitializerExpression(arr.Select(e => ConvertConstantValue(elementType, e.Type, e.Value)));
 				return expr;
-			} else if (type.Kind == TypeKind.Enum) {
-				return ConvertEnumValue(type, (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, false));
-			} else {
-				if (IsSpecialConstant(type, constantValue, out var expr))
+			}
+			else
+			{
+				IType underlyingType = NullableType.GetUnderlyingType(type);
+				if (underlyingType.Kind == TypeKind.Enum)
+				{
+					return ConvertEnumValue(underlyingType, (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, false));
+				}
+				else
+				{
+					if (!(PrintIntegralValuesAsHex && underlyingType.IsCSharpPrimitiveIntegerType())
+						&& IsSpecialConstant(underlyingType, constantValue, out var expr))
+					{
+						return expr;
+					}
+					if (underlyingType.IsKnownType(KnownTypeCode.Double) || underlyingType.IsKnownType(KnownTypeCode.Single))
+						return ConvertFloatingPointLiteral(underlyingType, constantValue);
+					IType literalType = underlyingType;
+					bool integerTypeMismatch = underlyingType.IsCSharpSmallIntegerType() || underlyingType.IsCSharpNativeIntegerType();
+					if (integerTypeMismatch)
+					{
+						// C# does not have integer literals of small integer types,
+						// use `int` literal instead.
+						// It also doesn't have native integer literals, those also use `int` (or `uint` for `nuint`).
+						bool unsigned = underlyingType.Kind == TypeKind.NUInt;
+						constantValue = CSharpPrimitiveCast.Cast(unsigned ? TypeCode.UInt32 : TypeCode.Int32, constantValue, false);
+						var compilation = resolver?.Compilation ?? expectedType.GetDefinition()?.Compilation;
+						literalType = compilation?.FindType(unsigned ? KnownTypeCode.UInt32 : KnownTypeCode.Int32);
+					}
+					LiteralFormat format = LiteralFormat.None;
+					if (PrintIntegralValuesAsHex)
+					{
+						format = LiteralFormat.HexadecimalNumber;
+					}
+					expr = new PrimitiveExpression(constantValue, format);
+					if (AddResolveResultAnnotations && literalType != null)
+						expr.AddAnnotation(new ConstantResolveResult(literalType, constantValue));
+					if (integerTypeMismatch && !type.Equals(expectedType))
+					{
+						expr = new CastExpression(ConvertType(type), expr);
+					}
 					return expr;
-				if (type.IsKnownType(KnownTypeCode.Double) || type.IsKnownType(KnownTypeCode.Single))
-					return ConvertFloatingPointLiteral(type, constantValue);
-				IType literalType = type;
-				bool smallInteger = type.IsCSharpSmallIntegerType();
-				if (smallInteger) { 
-					// C# does not have integer literals of small integer types,
-					// use `int` literal instead.
-					constantValue = CSharpPrimitiveCast.Cast(TypeCode.Int32, constantValue, false);
-					literalType = type.GetDefinition().Compilation.FindType(KnownTypeCode.Int32);
 				}
-				LiteralFormat format = LiteralFormat.None;
-				if (PrintIntegralValuesAsHex) {
-					format = LiteralFormat.HexadecimalNumber;
-				}
-				expr = new PrimitiveExpression(constantValue, format);
-				if (AddResolveResultAnnotations)
-					expr.AddAnnotation(new ConstantResolveResult(literalType, constantValue));
-				if (smallInteger && !type.Equals(expectedType)) {
-					expr = new CastExpression(ConvertType(type), expr);
-				}
-				return expr;
 			}
 		}
 
@@ -812,17 +1071,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return false;
 			// find IType of constant in compilation.
 			var constantType = expectedType;
-			if (!expectedType.IsKnownType(info.Type)) {
-				var compilation = expectedType.GetDefinition().Compilation;
+			if (!expectedType.IsKnownType(info.Type))
+			{
+				var compilation = resolver?.Compilation ?? expectedType.GetDefinition()?.Compilation;
+				if (compilation == null)
+					return false;
 				constantType = compilation.FindType(info.Type);
 			}
 			// if the field definition cannot be found, do not generate a reference to the field.
 			var field = constantType.GetFields(p => p.Name == info.Member).SingleOrDefault();
-			if (!UseSpecialConstants || field == null) {
+			if (!UseSpecialConstants || field == null)
+			{
 				// +Infty, -Infty and NaN, cannot be represented in their encoded form.
 				// Use an equivalent arithmetic expression instead.
-				if (info.Type == KnownTypeCode.Double) {
-					switch ((double)constant) {
+				if (info.Type == KnownTypeCode.Double)
+				{
+					switch ((double)constant)
+					{
 						case double.NegativeInfinity: // (-1.0 / 0.0)
 							var left = new PrimitiveExpression(-1.0).WithoutILInstruction().WithRR(new ConstantResolveResult(constantType, -1.0));
 							var right = new PrimitiveExpression(0.0).WithoutILInstruction().WithRR(new ConstantResolveResult(constantType, 0.0));
@@ -843,8 +1108,10 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 							return true;
 					}
 				}
-				if (info.Type == KnownTypeCode.Single) {
-					switch ((float)constant) {
+				if (info.Type == KnownTypeCode.Single)
+				{
+					switch ((float)constant)
+					{
 						case float.NegativeInfinity: // (-1.0f / 0.0f)
 							var left = new PrimitiveExpression(-1.0f).WithoutILInstruction().WithRR(new ConstantResolveResult(constantType, -1.0f));
 							var right = new PrimitiveExpression(0.0f).WithoutILInstruction().WithRR(new ConstantResolveResult(constantType, 0.0f));
@@ -925,28 +1192,33 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			return type.HasAttribute(KnownAttribute.Flags, inherit: false);
 		}
-		
+
 		Expression ConvertEnumValue(IType type, long val)
 		{
 			ITypeDefinition enumDefinition = type.GetDefinition();
 			TypeCode enumBaseTypeCode = ReflectionHelper.GetTypeCode(enumDefinition.EnumUnderlyingType);
-			foreach (IField field in enumDefinition.Fields.Where(fld => fld.IsConst)) {
-				object constantValue = field.GetConstantValue();
-				if (constantValue == null)
-					continue;
-				if (object.Equals(CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, false), val)) {
-					MemberReferenceExpression mre = new MemberReferenceExpression(new TypeReferenceExpression(ConvertType(type)), field.Name);
+			var fields = enumDefinition.Fields
+				.Select(PrepareConstant)
+				.Where(f => f.field != null)
+				.ToArray();
+			foreach (var (value, field) in fields)
+			{
+				if (value == val)
+				{
+					var mre = new MemberReferenceExpression(new TypeReferenceExpression(ConvertType(type)), field.Name);
 					if (AddResolveResultAnnotations)
 						mre.AddAnnotation(new MemberResolveResult(mre.Target.GetResolveResult(), field));
 					return mre;
 				}
 			}
-			if (IsFlagsEnum(enumDefinition)) {
+			if (IsFlagsEnum(enumDefinition))
+			{
 				long enumValue = val;
 				Expression expr = null;
 				long negatedEnumValue = ~val;
 				// limit negatedEnumValue to the appropriate range
-				switch (enumBaseTypeCode) {
+				switch (enumBaseTypeCode)
+				{
 					case TypeCode.Byte:
 					case TypeCode.SByte:
 						negatedEnumValue &= byte.MaxValue;
@@ -961,13 +1233,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						break;
 				}
 				Expression negatedExpr = null;
-				foreach (IField field in enumDefinition.Fields.Where(fld => fld.IsConst)) {
-					object constantValue = field.GetConstantValue();
-					long fieldValue = (long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, false);
+				foreach (var (fieldValue, field) in fields.OrderByDescending(f => CalculateHammingWeight(unchecked((ulong)f.value))))
+				{
 					if (fieldValue == 0)
-						continue;	// skip None enum value
+						continue;   // skip None enum value
 
-					if ((fieldValue & enumValue) == fieldValue) {
+					if ((fieldValue & enumValue) == fieldValue)
+					{
 						var fieldExpression = new MemberReferenceExpression(new TypeReferenceExpression(ConvertType(type)), field.Name);
 						if (expr == null)
 							expr = fieldExpression;
@@ -976,7 +1248,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 						enumValue &= ~fieldValue;
 					}
-					if ((fieldValue & negatedEnumValue) == fieldValue) {
+					if ((fieldValue & negatedEnumValue) == fieldValue)
+					{
 						var fieldExpression = new MemberReferenceExpression(new TypeReferenceExpression(ConvertType(type)), field.Name);
 						if (negatedExpr == null)
 							negatedExpr = fieldExpression;
@@ -986,16 +1259,42 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						negatedEnumValue &= ~fieldValue;
 					}
 				}
-				if (enumValue == 0 && expr != null) {
-					if (!(negatedEnumValue == 0 && negatedExpr != null && negatedExpr.Descendants.Count() < expr.Descendants.Count())) {
+				if (enumValue == 0 && expr != null)
+				{
+					if (!(negatedEnumValue == 0 && negatedExpr != null && negatedExpr.Descendants.Count() < expr.Descendants.Count()))
+					{
 						return expr;
 					}
 				}
-				if (negatedEnumValue == 0 && negatedExpr != null) {
+				if (negatedEnumValue == 0 && negatedExpr != null)
+				{
 					return new UnaryOperatorExpression(UnaryOperatorType.BitNot, negatedExpr);
 				}
 			}
 			return new CastExpression(ConvertType(type), new PrimitiveExpression(CSharpPrimitiveCast.Cast(enumBaseTypeCode, val, false)));
+
+			(long value, IField field) PrepareConstant(IField field)
+			{
+				if (!field.IsConst)
+					return (-1, null);
+				object constantValue = field.GetConstantValue();
+				if (constantValue == null)
+					return (-1, null);
+				return ((long)CSharpPrimitiveCast.Cast(TypeCode.Int64, constantValue, checkForOverflow: false), field);
+			}
+
+			// see https://en.wikipedia.org/wiki/Hamming_weight
+			int CalculateHammingWeight(ulong value)
+			{
+				const ulong m1 = 0x5555555555555555; //binary: 0101...
+				const ulong m2 = 0x3333333333333333; //binary: 00110011..
+				const ulong m4 = 0x0f0f0f0f0f0f0f0f; //binary:  4 zeros,  4 ones ...
+				const ulong h01 = 0x0101010101010101; //the sum of 256 to the power of 0,1,2,3...
+				ulong x = value - ((value >> 1) & m1); //put count of each 2 bits into those 2 bits
+				x = (x & m2) + ((x >> 2) & m2); //put count of each 4 bits into those 4 bits 
+				x = (x + (x >> 4)) & m4;        //put count of each 8 bits into those 8 bits 
+				return unchecked((int)((x * h01) >> 56));  //returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ... 
+			}
 		}
 
 		static bool IsValidFraction(long num, long den)
@@ -1010,9 +1309,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		static bool IsEqual(long num, long den, object constantValue, bool isDouble)
 		{
-			if (isDouble) {
+			if (isDouble)
+			{
 				return (double)constantValue == num / (double)den;
-			} else {
+			}
+			else
+			{
 				return (float)constantValue == num / (float)den;
 			}
 		}
@@ -1030,14 +1332,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			Expression expr = null;
 
 			string str;
-			if (isDouble) {
-				if (Math.Floor((double)constantValue) == (double)constantValue) {
+			if (isDouble)
+			{
+				if (Math.Floor((double)constantValue) == (double)constantValue)
+				{
 					expr = new PrimitiveExpression(constantValue);
 				}
 
 				str = ((double)constantValue).ToString("r");
-			} else {
-				if (Math.Floor((float)constantValue) == (float)constantValue) {
+			}
+			else
+			{
+				if (Math.Floor((float)constantValue) == (float)constantValue)
+				{
 					expr = new PrimitiveExpression(constantValue);
 				}
 
@@ -1046,11 +1353,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			bool useFraction = (str.Length - (str.StartsWith("-", StringComparison.OrdinalIgnoreCase) ? 2 : 1) > 5);
 
-			if (useFraction && expr == null && UseSpecialConstants) {
+			if (useFraction && expr == null && UseSpecialConstants)
+			{
 				IType mathType;
 				if (isDouble)
 					mathType = compilation.FindType(typeof(Math));
-				else {
+				else
+				{
 					mathType = compilation.FindType(new TopLevelTypeName("System", "MathF"));
 					var typeDef = mathType.GetDefinition();
 					if (typeDef == null
@@ -1065,12 +1374,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					?? TryExtractExpression(mathType, type, constantValue, "E", isDouble);
 			}
 
-			if (useFraction && expr == null) {
+			if (useFraction && expr == null)
+			{
 				(long num, long den) = isDouble
 					? FractionApprox((double)constantValue, MAX_DENOMINATOR)
 					: FractionApprox((float)constantValue, MAX_DENOMINATOR);
 
-				if (IsValidFraction(num, den) && IsEqual(num, den, constantValue, isDouble) && Math.Abs(num) != 1 && Math.Abs(den) != 1) {
+				if (IsValidFraction(num, den) && IsEqual(num, den, constantValue, isDouble) && Math.Abs(num) != 1 && Math.Abs(den) != 1)
+				{
 					var left = MakeConstant(type, num);
 					var right = MakeConstant(type, den);
 					return new BinaryOperatorExpression(left, BinaryOperatorType.Divide, right).WithoutILInstruction()
@@ -1101,9 +1412,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				AstType mathAstType = ConvertType(mathType);
 				var fieldRef = new MemberReferenceExpression(new TypeReferenceExpression(mathAstType), memberName);
-				if (AddResolveResultAnnotations) {
+				if (AddResolveResultAnnotations)
+				{
 					var field = mathType.GetFields(f => f.Name == memberName).FirstOrDefault();
-					if (field != null) {
+					if (field != null)
+					{
 						fieldRef.WithRR(new MemberResolveResult(mathAstType.GetResolveResult(), field));
 					}
 				}
@@ -1121,27 +1434,35 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				// Math.PI or Math.E or (float)Math.PI or (float)Math.E or MathF.PI or MathF.E
 				Expression expr = fieldReference;
 
-				if (n != 1) {
-					if (n == -1) {
+				if (n != 1)
+				{
+					if (n == -1)
+					{
 						// -field
 						expr = new UnaryOperatorExpression(UnaryOperatorType.Minus, expr);
-					} else {
+					}
+					else
+					{
 						// field * n
 						expr = new BinaryOperatorExpression(expr, BinaryOperatorType.Multiply, MakeConstant(type, n));
 					}
 				}
 
-				if (d != 1) {
+				if (d != 1)
+				{
 					// field * n / d or -field / d or field / d
 					expr = new BinaryOperatorExpression(expr, BinaryOperatorType.Divide, MakeConstant(type, d));
 				}
 
-				if (isDouble) {
+				if (isDouble)
+				{
 					double field = memberName == "PI" ? Math.PI : Math.E;
 					double approxValue = field * n / d;
 					if (approxValue == (double)literalValue)
 						return expr;
-				} else {
+				}
+				else
+				{
 					float field = memberName == "PI" ? MathF_PI : MathF_E;
 					float approxValue = field * n / d;
 					if (approxValue == (float)literalValue)
@@ -1151,21 +1472,27 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				// Math.PI or Math.E or (float)Math.PI or (float)Math.E or MathF.PI or MathF.E
 				expr = fieldReference.Detach();
 
-				if (d == 1) {
+				if (d == 1)
+				{
 					// n / field
 					expr = new BinaryOperatorExpression(MakeConstant(type, n), BinaryOperatorType.Divide, expr);
-				} else {
+				}
+				else
+				{
 					// n / (d * field)
 					expr = new BinaryOperatorExpression(MakeConstant(type, d), BinaryOperatorType.Multiply, expr);
 					expr = new BinaryOperatorExpression(MakeConstant(type, n), BinaryOperatorType.Divide, expr);
 				}
 
-				if (isDouble) {
+				if (isDouble)
+				{
 					double field = memberName == "PI" ? Math.PI : Math.E;
 					double approxValue = (double)n / ((double)d * field);
 					if (approxValue == (double)literalValue)
 						return expr;
-				} else {
+				}
+				else
+				{
 					float field = memberName == "PI" ? MathF_PI : MathF_E;
 					float approxValue = (float)n / ((float)d * field);
 					if (approxValue == (float)literalValue)
@@ -1179,7 +1506,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				? FractionApprox((double)literalValue / (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR)
 				: FractionApprox((float)literalValue / (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR);
 
-			if (IsValidFraction(num, den)) {
+			if (IsValidFraction(num, den))
+			{
 				return ExtractExpression(num, den);
 			}
 
@@ -1187,7 +1515,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				? FractionApprox((double)literalValue * (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR)
 				: FractionApprox((float)literalValue * (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR);
 
-			if (IsValidFraction(num, den)) {
+			if (IsValidFraction(num, den))
+			{
 				return ExtractExpression(num, den);
 			}
 
@@ -1231,16 +1560,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			double v = value;
 
-			while (m[1, 0] * (ai = (long)v) + m[1, 1] <= maxDenominator) {
+			while (m[1, 0] * (ai = (long)v) + m[1, 1] <= maxDenominator)
+			{
 				long t = m[0, 0] * ai + m[0, 1];
 				m[0, 1] = m[0, 0];
 				m[0, 0] = t;
 				t = m[1, 0] * ai + m[1, 1];
 				m[1, 1] = m[1, 0];
 				m[1, 0] = t;
-				if (v - ai == 0) break;
+				if (v - ai == 0)
+					break;
 				v = 1 / (v - ai);
-				if (Math.Abs(v) > long.MaxValue) break; // value cannot be stored in fraction without overflow
+				if (Math.Abs(v) > long.MaxValue)
+					break; // value cannot be stored in fraction without overflow
 			}
 
 			if (m[1, 0] == 0)
@@ -1268,46 +1600,63 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			if (parameter == null)
 				throw new ArgumentNullException(nameof(parameter));
 			ParameterDeclaration decl = new ParameterDeclaration();
-			if (parameter.IsRef) {
+			if (parameter.IsRef)
+			{
 				decl.ParameterModifier = ParameterModifier.Ref;
-			} else if (parameter.IsOut) {
+			}
+			else if (parameter.IsOut)
+			{
 				decl.ParameterModifier = ParameterModifier.Out;
-			} else if (parameter.IsIn) {
+			}
+			else if (parameter.IsIn)
+			{
 				decl.ParameterModifier = ParameterModifier.In;
-			} else if (parameter.IsParams) {
+			}
+			else if (parameter.IsParams)
+			{
 				decl.ParameterModifier = ParameterModifier.Params;
 			}
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(parameter.GetAttributes()));
 			}
 			IType parameterType;
-			if (parameter.Type.Kind == TypeKind.ByReference) {
+			if (parameter.Type.Kind == TypeKind.ByReference)
+			{
 				// avoid 'out ref'
 				parameterType = ((ByReferenceType)parameter.Type).ElementType;
-			} else {
+			}
+			else
+			{
 				parameterType = parameter.Type;
 			}
 			decl.Type = ConvertType(parameterType);
-			if (this.ShowParameterNames) {
+			if (this.ShowParameterNames)
+			{
 				decl.Name = parameter.Name;
 			}
-			if (parameter.IsOptional && parameter.HasConstantValueInSignature && this.ShowConstantValues) {
-				try {
+			if (parameter.IsOptional && parameter.HasConstantValueInSignature && this.ShowConstantValues)
+			{
+				try
+				{
 					decl.DefaultExpression = ConvertConstantValue(parameterType, parameter.GetConstantValue(throwOnInvalidMetadata: true));
-				} catch (BadImageFormatException ex) {
+				}
+				catch (BadImageFormatException ex)
+				{
 					decl.DefaultExpression = new ErrorExpression(ex.Message);
 				}
 			}
 			return decl;
 		}
 		#endregion
-		
+
 		#region Convert Entity
 		public AstNode ConvertSymbol(ISymbol symbol)
 		{
 			if (symbol == null)
 				throw new ArgumentNullException(nameof(symbol));
-			switch (symbol.SymbolKind) {
+			switch (symbol.SymbolKind)
+			{
 				case SymbolKind.Namespace:
 					return ConvertNamespaceDeclaration((INamespace)symbol);
 				case SymbolKind.Variable:
@@ -1323,12 +1672,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					throw new ArgumentException("Invalid value for SymbolKind: " + symbol.SymbolKind);
 			}
 		}
-		
+
 		public EntityDeclaration ConvertEntity(IEntity entity)
 		{
 			if (entity == null)
 				throw new ArgumentNullException(nameof(entity));
-			switch (entity.SymbolKind) {
+			switch (entity.SymbolKind)
+			{
 				case SymbolKind.TypeDefinition:
 					return ConvertTypeDefinition((ITypeDefinition)entity);
 				case SymbolKind.Field:
@@ -1349,39 +1699,51 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return ConvertDestructor((IMethod)entity);
 				case SymbolKind.Accessor:
 					IMethod accessor = (IMethod)entity;
-					return ConvertAccessor(accessor, accessor.AccessorOwner != null ? accessor.AccessorOwner.Accessibility : Accessibility.None, false);
+					Accessibility ownerAccessibility = accessor.AccessorOwner?.Accessibility ?? Accessibility.None;
+					return ConvertAccessor(accessor, accessor.AccessorKind, ownerAccessibility, false);
 				default:
 					throw new ArgumentException("Invalid value for SymbolKind: " + entity.SymbolKind);
 			}
 		}
-		
+
 		EntityDeclaration ConvertTypeDefinition(ITypeDefinition typeDefinition)
 		{
 			Modifiers modifiers = Modifiers.None;
-			if (this.ShowAccessibility) {
+			if (this.ShowAccessibility)
+			{
 				modifiers |= ModifierFromAccessibility(typeDefinition.Accessibility);
 			}
-			if (this.ShowModifiers) {
-				if (typeDefinition.IsStatic) {
+			if (this.ShowModifiers)
+			{
+				if (typeDefinition.IsStatic)
+				{
 					modifiers |= Modifiers.Static;
-				} else if (typeDefinition.IsAbstract) {
+				}
+				else if (typeDefinition.IsAbstract)
+				{
 					modifiers |= Modifiers.Abstract;
-				} else if (typeDefinition.IsSealed) {
+				}
+				else if (typeDefinition.IsSealed)
+				{
 					modifiers |= Modifiers.Sealed;
 				}
 			}
-			
+
 			ClassType classType;
-			switch (typeDefinition.Kind) {
+			switch (typeDefinition.Kind)
+			{
 				case TypeKind.Struct:
 				case TypeKind.Void:
 					classType = ClassType.Struct;
 					modifiers &= ~Modifiers.Sealed;
-					if (ShowModifiers) {
-						if (typeDefinition.IsReadOnly) {
+					if (ShowModifiers)
+					{
+						if (typeDefinition.IsReadOnly)
+						{
 							modifiers |= Modifiers.Readonly;
 						}
-						if (typeDefinition.IsByRefLike) {
+						if (typeDefinition.IsByRefLike)
+						{
 							modifiers |= Modifiers.Ref;
 						}
 					}
@@ -1396,56 +1758,87 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					break;
 				case TypeKind.Delegate:
 					IMethod invoke = typeDefinition.GetDelegateInvokeMethod();
-					if (invoke != null) {
+					if (invoke != null)
+					{
 						return ConvertDelegate(invoke, modifiers);
-					} else {
+					}
+					else
+					{
 						goto default;
 					}
 				default:
 					classType = ClassType.Class;
+					if (SupportRecordClasses && typeDefinition.IsRecord)
+					{
+						classType = ClassType.RecordClass;
+					}
 					break;
 			}
-			
+
 			var decl = new TypeDeclaration();
 			decl.ClassType = classType;
 			decl.Modifiers = modifiers;
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(typeDefinition.GetAttributes()));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new TypeResolveResult(typeDefinition));
 			}
 			decl.Name = typeDefinition.Name == "_" ? "@_" : typeDefinition.Name;
-			
+
 			int outerTypeParameterCount = (typeDefinition.DeclaringTypeDefinition == null) ? 0 : typeDefinition.DeclaringTypeDefinition.TypeParameterCount;
-			
-			if (this.ShowTypeParameters) {
-				foreach (ITypeParameter tp in typeDefinition.TypeParameters.Skip(outerTypeParameterCount)) {
+
+			if (this.ShowTypeParameters)
+			{
+				foreach (ITypeParameter tp in typeDefinition.TypeParameters.Skip(outerTypeParameterCount))
+				{
 					decl.TypeParameters.Add(ConvertTypeParameter(tp));
 				}
 			}
-			
-			if (this.ShowBaseTypes) {
-				foreach (IType baseType in typeDefinition.DirectBaseTypes) {
-					// if the declared type is an enum, replace all references to System.Enum with the enum-underlying type
-					if (typeDefinition.Kind == TypeKind.Enum && baseType.IsKnownType(KnownTypeCode.Enum)) {
-						if (!typeDefinition.EnumUnderlyingType.IsKnownType(KnownTypeCode.Int32)) {
+
+			if (this.ShowBaseTypes)
+			{
+				foreach (IType baseType in typeDefinition.DirectBaseTypes)
+				{
+					if (typeDefinition.Kind == TypeKind.Enum && baseType.IsKnownType(KnownTypeCode.Enum))
+					{
+						// if the declared type is an enum, replace all references to System.Enum with the enum-underlying type
+						if (!typeDefinition.EnumUnderlyingType.IsKnownType(KnownTypeCode.Int32))
+						{
 							decl.BaseTypes.Add(ConvertType(typeDefinition.EnumUnderlyingType));
 						}
-					// if the declared type is a struct, ignore System.ValueType
-					} else if ((typeDefinition.Kind == TypeKind.Struct || typeDefinition.Kind == TypeKind.Void) && baseType.IsKnownType(KnownTypeCode.ValueType)) {
+					}
+					else if ((typeDefinition.Kind == TypeKind.Struct || typeDefinition.Kind == TypeKind.Void) && baseType.IsKnownType(KnownTypeCode.ValueType))
+					{
+						// if the declared type is a struct, ignore System.ValueType
 						continue;
-					// always ignore System.Object
-					} else if (baseType.IsKnownType(KnownTypeCode.Object)) {
+					}
+					else if (baseType.IsKnownType(KnownTypeCode.Object))
+					{
+						// always ignore System.Object
 						continue;
-					} else {
+					}
+					else if (SupportRecordClasses && typeDefinition.IsRecord
+						&& baseType.Name == "IEquatable" && baseType.Namespace == "System"
+						&& baseType.TypeArguments.Count == 1
+						&& baseType.TypeArguments[0].Equals(typeDefinition.AsParameterizedType()))
+					{
+						// omit "IEquatable<R>" in records
+						continue;
+					}
+					else
+					{
 						decl.BaseTypes.Add(ConvertType(baseType));
 					}
 				}
 			}
-			
-			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints) {
-				foreach (ITypeParameter tp in typeDefinition.TypeParameters.Skip(outerTypeParameterCount)) {
+
+			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints)
+			{
+				foreach (ITypeParameter tp in typeDefinition.TypeParameters.Skip(outerTypeParameterCount))
+				{
 					var constraint = ConvertTypeParameterConstraint(tp);
 					if (constraint != null)
 						decl.Constraints.Add(constraint);
@@ -1457,36 +1850,44 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		DelegateDeclaration ConvertDelegate(IMethod invokeMethod, Modifiers modifiers)
 		{
 			ITypeDefinition d = invokeMethod.DeclaringTypeDefinition;
-			
+
 			DelegateDeclaration decl = new DelegateDeclaration();
 			decl.Modifiers = modifiers & ~Modifiers.Sealed;
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(d.GetAttributes()));
 				decl.Attributes.AddRange(ConvertAttributes(invokeMethod.GetReturnTypeAttributes(), "return"));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new TypeResolveResult(d));
 			}
 			decl.ReturnType = ConvertType(invokeMethod.ReturnType);
-			if (invokeMethod.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier) {
+			if (invokeMethod.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+			{
 				ct.HasReadOnlySpecifier = true;
 			}
 			decl.Name = d.Name;
-			
+
 			int outerTypeParameterCount = (d.DeclaringTypeDefinition == null) ? 0 : d.DeclaringTypeDefinition.TypeParameterCount;
-			
-			if (this.ShowTypeParameters) {
-				foreach (ITypeParameter tp in d.TypeParameters.Skip(outerTypeParameterCount)) {
+
+			if (this.ShowTypeParameters)
+			{
+				foreach (ITypeParameter tp in d.TypeParameters.Skip(outerTypeParameterCount))
+				{
 					decl.TypeParameters.Add(ConvertTypeParameter(tp));
 				}
 			}
-			
-			foreach (IParameter p in invokeMethod.Parameters) {
+
+			foreach (IParameter p in invokeMethod.Parameters)
+			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			
-			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints) {
-				foreach (ITypeParameter tp in d.TypeParameters.Skip(outerTypeParameterCount)) {
+
+			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints)
+			{
+				foreach (ITypeParameter tp in d.TypeParameters.Skip(outerTypeParameterCount))
+				{
 					var constraint = ConvertTypeParameterConstraint(tp);
 					if (constraint != null)
 						decl.Constraints.Add(constraint);
@@ -1494,154 +1895,219 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 			return decl;
 		}
-		
+
 		FieldDeclaration ConvertField(IField field)
 		{
 			FieldDeclaration decl = new FieldDeclaration();
-			if (ShowModifiers) {
+			if (ShowModifiers)
+			{
 				Modifiers m = GetMemberModifiers(field);
-				if (field.IsConst) {
+				if (field.IsConst)
+				{
 					m &= ~Modifiers.Static;
 					m |= Modifiers.Const;
-				} else if (field.IsReadOnly) {
+				}
+				else if (field.IsReadOnly)
+				{
 					m |= Modifiers.Readonly;
-				} else if (field.IsVolatile) {
+				}
+				else if (field.IsVolatile)
+				{
 					m |= Modifiers.Volatile;
 				}
 				decl.Modifiers = m;
 			}
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(field.GetAttributes()));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, field));
 			}
 			decl.ReturnType = ConvertType(field.ReturnType);
 			Expression initializer = null;
-			if (field.IsConst && this.ShowConstantValues) {
-				try {
+			if (field.IsConst && this.ShowConstantValues)
+			{
+				try
+				{
 					initializer = ConvertConstantValue(field.Type, field.GetConstantValue(throwOnInvalidMetadata: true));
-				} catch (BadImageFormatException ex) {
+				}
+				catch (BadImageFormatException ex)
+				{
 					initializer = new ErrorExpression(ex.Message);
 				}
 			}
 			decl.Variables.Add(new VariableInitializer(field.Name, initializer));
 			return decl;
 		}
-		
+
 		BlockStatement GenerateBodyBlock()
 		{
-			if (GenerateBody) {
+			if (GenerateBody)
+			{
 				return new BlockStatement {
 					new ThrowStatement(new ObjectCreateExpression(ConvertType(new TopLevelTypeName("System", "NotImplementedException", 0))))
 				};
-			} else {
+			}
+			else
+			{
 				return BlockStatement.Null;
 			}
 		}
-		
-		Accessor ConvertAccessor(IMethod accessor, Accessibility ownerAccessibility, bool addParameterAttribute)
+
+		Accessor ConvertAccessor(IMethod accessor, MethodSemanticsAttributes kind, Accessibility ownerAccessibility, bool addParameterAttribute)
 		{
 			if (accessor == null)
 				return Accessor.Null;
 			Accessor decl = new Accessor();
-			if (this.ShowAccessibility && accessor.Accessibility != ownerAccessibility)
-				decl.Modifiers = ModifierFromAccessibility(accessor.Accessibility);
-			if (accessor.HasReadonlyModifier())
-				decl.Modifiers |= Modifiers.Readonly;
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(accessor.GetAttributes()));
 				decl.Attributes.AddRange(ConvertAttributes(accessor.GetReturnTypeAttributes(), "return"));
-				if (addParameterAttribute && accessor.Parameters.Count > 0) {
+				if (addParameterAttribute && accessor.Parameters.Count > 0)
+				{
 					decl.Attributes.AddRange(ConvertAttributes(accessor.Parameters.Last().GetAttributes(), "param"));
 				}
 			}
-			if (AddResolveResultAnnotations) {
+			if (this.ShowAccessibility && accessor.Accessibility != ownerAccessibility)
+				decl.Modifiers = ModifierFromAccessibility(accessor.Accessibility);
+			if (this.ShowModifiers && accessor.HasReadonlyModifier())
+				decl.Modifiers |= Modifiers.Readonly;
+			TokenRole keywordRole = kind switch {
+				MethodSemanticsAttributes.Getter => PropertyDeclaration.GetKeywordRole,
+				MethodSemanticsAttributes.Setter => PropertyDeclaration.SetKeywordRole,
+				MethodSemanticsAttributes.Adder => CustomEventDeclaration.AddKeywordRole,
+				MethodSemanticsAttributes.Remover => CustomEventDeclaration.RemoveKeywordRole,
+				_ => null
+			};
+			if (kind == MethodSemanticsAttributes.Setter && SupportInitAccessors && accessor.IsInitOnly)
+			{
+				keywordRole = PropertyDeclaration.InitKeywordRole;
+			}
+			if (keywordRole != null)
+			{
+				decl.AddChild(new CSharpTokenNode(TextLocation.Empty, keywordRole), keywordRole);
+			}
+			if (accessor.IsInitOnly && keywordRole != PropertyDeclaration.InitKeywordRole)
+			{
+				decl.AddChild(new Comment("init", CommentType.MultiLine), Roles.Comment);
+			}
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, accessor));
 			}
-			decl.Body = GenerateBodyBlock();
+			if (GenerateBody)
+			{
+				decl.Body = GenerateBodyBlock();
+			}
+			else
+			{
+				decl.AddChild(new CSharpTokenNode(TextLocation.Empty, Roles.Semicolon), Roles.Semicolon);
+			}
 			return decl;
 		}
-		
+
 		PropertyDeclaration ConvertProperty(IProperty property)
 		{
 			PropertyDeclaration decl = new PropertyDeclaration();
 			decl.Modifiers = GetMemberModifiers(property);
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(property.GetAttributes()));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, property));
 			}
 			decl.ReturnType = ConvertType(property.ReturnType);
-			if (property.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier) {
+			if (property.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+			{
 				ct.HasReadOnlySpecifier = true;
 			}
 			decl.Name = property.Name;
-			decl.Getter = ConvertAccessor(property.Getter, property.Accessibility, false);
-			decl.Setter = ConvertAccessor(property.Setter, property.Accessibility, true);
-			decl.PrivateImplementationType = GetExplicitInterfaceType (property);
+			decl.Getter = ConvertAccessor(property.Getter, MethodSemanticsAttributes.Getter, property.Accessibility, false);
+			decl.Setter = ConvertAccessor(property.Setter, MethodSemanticsAttributes.Setter, property.Accessibility, true);
+			decl.PrivateImplementationType = GetExplicitInterfaceType(property);
 			MergeReadOnlyModifiers(decl, decl.Getter, decl.Setter);
 			return decl;
 		}
-		
+
 		static void MergeReadOnlyModifiers(EntityDeclaration decl, Accessor accessor1, Accessor accessor2)
 		{
-			if (accessor1.HasModifier(Modifiers.Readonly) && accessor2.HasModifier(Modifiers.Readonly)) {
+			if (accessor1.HasModifier(Modifiers.Readonly) && accessor2.IsNull)
+			{
+				accessor1.Modifiers &= ~Modifiers.Readonly;
+				decl.Modifiers |= Modifiers.Readonly;
+			}
+			else if (accessor1.HasModifier(Modifiers.Readonly) && accessor2.HasModifier(Modifiers.Readonly))
+			{
 				accessor1.Modifiers &= ~Modifiers.Readonly;
 				accessor2.Modifiers &= ~Modifiers.Readonly;
 				decl.Modifiers |= Modifiers.Readonly;
 			}
 		}
+
 		IndexerDeclaration ConvertIndexer(IProperty indexer)
 		{
 			IndexerDeclaration decl = new IndexerDeclaration();
 			decl.Modifiers = GetMemberModifiers(indexer);
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(indexer.GetAttributes()));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, indexer));
 			}
 			decl.ReturnType = ConvertType(indexer.ReturnType);
-			if (indexer.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier) {
+			if (indexer.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+			{
 				ct.HasReadOnlySpecifier = true;
 			}
-			foreach (IParameter p in indexer.Parameters) {
+			foreach (IParameter p in indexer.Parameters)
+			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			decl.Getter = ConvertAccessor(indexer.Getter, indexer.Accessibility, false);
-			decl.Setter = ConvertAccessor(indexer.Setter, indexer.Accessibility, true);
-			decl.PrivateImplementationType = GetExplicitInterfaceType (indexer);
+			decl.Getter = ConvertAccessor(indexer.Getter, MethodSemanticsAttributes.Getter, indexer.Accessibility, false);
+			decl.Setter = ConvertAccessor(indexer.Setter, MethodSemanticsAttributes.Setter, indexer.Accessibility, true);
+			decl.PrivateImplementationType = GetExplicitInterfaceType(indexer);
 			MergeReadOnlyModifiers(decl, decl.Getter, decl.Setter);
 			return decl;
 		}
-		
+
 		EntityDeclaration ConvertEvent(IEvent ev)
 		{
-			if (this.UseCustomEvents) {
+			if (this.UseCustomEvents)
+			{
 				CustomEventDeclaration decl = new CustomEventDeclaration();
 				decl.Modifiers = GetMemberModifiers(ev);
-				if (ShowAttributes) {
+				if (ShowAttributes)
+				{
 					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes()));
 				}
-				if (AddResolveResultAnnotations) {
+				if (AddResolveResultAnnotations)
+				{
 					decl.AddAnnotation(new MemberResolveResult(null, ev));
 				}
 				decl.ReturnType = ConvertType(ev.ReturnType);
 				decl.Name = ev.Name;
-				decl.AddAccessor    = ConvertAccessor(ev.AddAccessor, ev.Accessibility, true);
-				decl.RemoveAccessor = ConvertAccessor(ev.RemoveAccessor, ev.Accessibility, true);
-				decl.PrivateImplementationType = GetExplicitInterfaceType (ev);
+				decl.AddAccessor = ConvertAccessor(ev.AddAccessor, MethodSemanticsAttributes.Adder, ev.Accessibility, true);
+				decl.RemoveAccessor = ConvertAccessor(ev.RemoveAccessor, MethodSemanticsAttributes.Remover, ev.Accessibility, true);
+				decl.PrivateImplementationType = GetExplicitInterfaceType(ev);
 				MergeReadOnlyModifiers(decl, decl.AddAccessor, decl.RemoveAccessor);
 				return decl;
-			} else {
+			}
+			else
+			{
 				EventDeclaration decl = new EventDeclaration();
 				decl.Modifiers = GetMemberModifiers(ev);
-				if (ShowAttributes) {
+				if (ShowAttributes)
+				{
 					decl.Attributes.AddRange(ConvertAttributes(ev.GetAttributes()));
 				}
-				if (AddResolveResultAnnotations) {
+				if (AddResolveResultAnnotations)
+				{
 					decl.AddAnnotation(new MemberResolveResult(null, ev));
 				}
 				decl.ReturnType = ConvertType(ev.ReturnType);
@@ -1649,75 +2115,87 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return decl;
 			}
 		}
-		
+
 		MethodDeclaration ConvertMethod(IMethod method)
 		{
 			MethodDeclaration decl = new MethodDeclaration();
 			decl.Modifiers = GetMemberModifiers(method);
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(method.GetAttributes()));
 				decl.Attributes.AddRange(ConvertAttributes(method.GetReturnTypeAttributes(), "return"));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, method));
 			}
 			decl.ReturnType = ConvertType(method.ReturnType);
-			if (method.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier) {
+			if (method.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+			{
 				ct.HasReadOnlySpecifier = true;
 			}
 			decl.Name = method.Name;
-			
-			if (this.ShowTypeParameters) {
-				foreach (ITypeParameter tp in method.TypeParameters) {
+
+			if (this.ShowTypeParameters)
+			{
+				foreach (ITypeParameter tp in method.TypeParameters)
+				{
 					decl.TypeParameters.Add(ConvertTypeParameter(tp));
 				}
 			}
-			
-			foreach (IParameter p in method.Parameters) {
+
+			foreach (IParameter p in method.Parameters)
+			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
 			if (method.IsExtensionMethod && method.ReducedFrom == null && decl.Parameters.Any())
 				decl.Parameters.First().HasThisModifier = true;
-			
-			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints && !method.IsOverride && !method.IsExplicitInterfaceImplementation) {
-				foreach (ITypeParameter tp in method.TypeParameters) {
+
+			if (this.ShowTypeParameters && this.ShowTypeParameterConstraints && !method.IsOverride && !method.IsExplicitInterfaceImplementation)
+			{
+				foreach (ITypeParameter tp in method.TypeParameters)
+				{
 					var constraint = ConvertTypeParameterConstraint(tp);
 					if (constraint != null)
 						decl.Constraints.Add(constraint);
 				}
 			}
 			decl.Body = GenerateBodyBlock();
-			decl.PrivateImplementationType = GetExplicitInterfaceType (method);
+			decl.PrivateImplementationType = GetExplicitInterfaceType(method);
 			return decl;
 		}
-		
+
 		EntityDeclaration ConvertOperator(IMethod op)
 		{
 			OperatorType? opType = OperatorDeclaration.GetOperatorType(op.Name);
 			if (opType == null)
 				return ConvertMethod(op);
-			
+
 			OperatorDeclaration decl = new OperatorDeclaration();
 			decl.Modifiers = GetMemberModifiers(op);
 			decl.OperatorType = opType.Value;
 			decl.ReturnType = ConvertType(op.ReturnType);
-			if (op.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier) {
+			if (op.ReturnTypeIsRefReadOnly && decl.ReturnType is ComposedType ct && ct.HasRefSpecifier)
+			{
 				ct.HasReadOnlySpecifier = true;
 			}
-			foreach (IParameter p in op.Parameters) {
+			foreach (IParameter p in op.Parameters)
+			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			if (ShowAttributes) {
+			if (ShowAttributes)
+			{
 				decl.Attributes.AddRange(ConvertAttributes(op.GetAttributes()));
 				decl.Attributes.AddRange(ConvertAttributes(op.GetReturnTypeAttributes(), "return"));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, op));
 			}
 			decl.Body = GenerateBodyBlock();
 			return decl;
 		}
-		
+
 		ConstructorDeclaration ConvertConstructor(IMethod ctor)
 		{
 			ConstructorDeclaration decl = new ConstructorDeclaration();
@@ -1726,16 +2204,18 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				decl.Attributes.AddRange(ConvertAttributes(ctor.GetAttributes()));
 			if (ctor.DeclaringTypeDefinition != null)
 				decl.Name = ctor.DeclaringTypeDefinition.Name;
-			foreach (IParameter p in ctor.Parameters) {
+			foreach (IParameter p in ctor.Parameters)
+			{
 				decl.Parameters.Add(ConvertParameter(p));
 			}
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, ctor));
 			}
 			decl.Body = GenerateBodyBlock();
 			return decl;
 		}
-		
+
 		DestructorDeclaration ConvertDestructor(IMethod dtor)
 		{
 			DestructorDeclaration decl = new DestructorDeclaration();
@@ -1743,18 +2223,20 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				decl.Attributes.AddRange(ConvertAttributes(dtor.GetAttributes()));
 			if (dtor.DeclaringTypeDefinition != null)
 				decl.Name = dtor.DeclaringTypeDefinition.Name;
-			if (AddResolveResultAnnotations) {
+			if (AddResolveResultAnnotations)
+			{
 				decl.AddAnnotation(new MemberResolveResult(null, dtor));
 			}
 			decl.Body = GenerateBodyBlock();
 			return decl;
 		}
 		#endregion
-		
+
 		#region Convert Modifiers
 		public static Modifiers ModifierFromAccessibility(Accessibility accessibility)
 		{
-			switch (accessibility) {
+			switch (accessibility)
+			{
 				case Accessibility.Private:
 					return Modifiers.Private;
 				case Accessibility.Public:
@@ -1771,40 +2253,57 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return Modifiers.None;
 			}
 		}
-		
+
 		bool NeedsAccessibility(IMember member)
 		{
 			var declaringType = member.DeclaringType;
 			if (member.IsExplicitInterfaceImplementation)
 				return false;
-			if (declaringType != null && declaringType.Kind == TypeKind.Interface) {
-				return member.Accessibility != Accessibility.Public;
-			}
-			switch (member.SymbolKind) {
+			switch (member.SymbolKind)
+			{
 				case SymbolKind.Constructor:
 					return !member.IsStatic;
 				case SymbolKind.Destructor:
 					return false;
 				default:
-					return true;
+					if (declaringType?.Kind == TypeKind.Interface)
+					{
+						return member.Accessibility != Accessibility.Public;
+					}
+					return member is not IMethod method || !method.IsLocalFunction;
 			}
 		}
-		
+
 		Modifiers GetMemberModifiers(IMember member)
 		{
 			Modifiers m = Modifiers.None;
-			if (this.ShowAccessibility && NeedsAccessibility(member)) {
-				m |= ModifierFromAccessibility (member.Accessibility);
+			if (this.ShowAccessibility && NeedsAccessibility(member))
+			{
+				m |= ModifierFromAccessibility(member.Accessibility);
 			}
-			if (this.ShowModifiers) {
-				if (member.IsStatic) {
+			if (this.ShowModifiers)
+			{
+				if (member is LocalFunctionMethod localFunction)
+				{
+					if (localFunction.IsStaticLocalFunction)
+					{
+						m |= Modifiers.Static;
+					}
+				}
+				else if (member.IsStatic)
+				{
 					m |= Modifiers.Static;
-				} else {
+				}
+				else
+				{
 					var declaringType = member.DeclaringType;
-					if (declaringType.Kind == TypeKind.Interface) {
+					if (declaringType.Kind == TypeKind.Interface)
+					{
 						if (!member.IsVirtual && !member.IsAbstract && !member.IsOverride && member.Accessibility != Accessibility.Private && member is IMethod method2 && method2.HasBody)
 							m |= Modifiers.Sealed;
-					} else {
+					}
+					else
+					{
 						if (member.IsAbstract)
 							m |= Modifiers.Abstract;
 						else if (member.IsVirtual && !member.IsOverride)
@@ -1821,7 +2320,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return m;
 		}
 		#endregion
-		
+
 		#region Convert Type Parameter
 		internal TypeParameterDeclaration ConvertTypeParameter(ITypeParameter tp)
 		{
@@ -1832,33 +2331,48 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				decl.Attributes.AddRange(ConvertAttributes(tp.GetAttributes()));
 			return decl;
 		}
-		
+
 		internal Constraint ConvertTypeParameterConstraint(ITypeParameter tp)
 		{
-			if (!tp.HasDefaultConstructorConstraint && !tp.HasReferenceTypeConstraint && !tp.HasValueTypeConstraint && tp.NullabilityConstraint != Nullability.NotNullable && tp.DirectBaseTypes.All(IsObjectOrValueType)) {
+			if (!tp.HasDefaultConstructorConstraint && !tp.HasReferenceTypeConstraint && !tp.HasValueTypeConstraint && tp.NullabilityConstraint != Nullability.NotNullable && tp.DirectBaseTypes.All(IsObjectOrValueType))
+			{
 				return null;
 			}
 			Constraint c = new Constraint();
 			c.TypeParameter = MakeSimpleType(tp.Name);
-			if (tp.HasReferenceTypeConstraint) {
-				if (tp.NullabilityConstraint == Nullability.Nullable) {
+			if (tp.HasReferenceTypeConstraint)
+			{
+				if (tp.NullabilityConstraint == Nullability.Nullable)
+				{
 					c.BaseTypes.Add(new PrimitiveType("class").MakeNullableType());
-				} else {
+				}
+				else
+				{
 					c.BaseTypes.Add(new PrimitiveType("class"));
 				}
-			} else if (tp.HasValueTypeConstraint) {
-				if (tp.HasUnmanagedConstraint) {
+			}
+			else if (tp.HasValueTypeConstraint)
+			{
+				if (tp.HasUnmanagedConstraint)
+				{
 					c.BaseTypes.Add(new PrimitiveType("unmanaged"));
-				} else {
+				}
+				else
+				{
 					c.BaseTypes.Add(new PrimitiveType("struct"));
 				}
-			} else if (tp.NullabilityConstraint == Nullability.NotNullable) {
+			}
+			else if (tp.NullabilityConstraint == Nullability.NotNullable)
+			{
 				c.BaseTypes.Add(new PrimitiveType("notnull"));
 			}
-			foreach (TypeConstraint t in tp.TypeConstraints) {
-				if (!IsObjectOrValueType(t.Type) || t.Attributes.Count > 0) {
+			foreach (TypeConstraint t in tp.TypeConstraints)
+			{
+				if (!IsObjectOrValueType(t.Type) || t.Attributes.Count > 0)
+				{
 					AstType astType = ConvertType(t.Type);
-					if (t.Attributes.Count > 0) {
+					if (t.Attributes.Count > 0)
+					{
 						var attrSection = new AttributeSection();
 						attrSection.Attributes.AddRange(t.Attributes.Select(ConvertAttribute));
 						astType = new ComposedType {
@@ -1869,19 +2383,20 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					c.BaseTypes.Add(astType);
 				}
 			}
-			if (tp.HasDefaultConstructorConstraint && !tp.HasValueTypeConstraint) {
+			if (tp.HasDefaultConstructorConstraint && !tp.HasValueTypeConstraint)
+			{
 				c.BaseTypes.Add(new PrimitiveType("new"));
 			}
 			return c;
 		}
-		
+
 		static bool IsObjectOrValueType(IType type)
 		{
 			ITypeDefinition d = type.GetDefinition();
 			return d != null && (d.KnownTypeCode == KnownTypeCode.Object || d.KnownTypeCode == KnownTypeCode.ValueType);
 		}
 		#endregion
-		
+
 		#region Convert Variable
 		public VariableDeclarationStatement ConvertVariable(IVariable v)
 		{
@@ -1889,10 +2404,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			decl.Modifiers = v.IsConst ? Modifiers.Const : Modifiers.None;
 			decl.Type = ConvertType(v.Type);
 			Expression initializer = null;
-			if (v.IsConst) {
-				try {
+			if (v.IsConst)
+			{
+				try
+				{
 					initializer = ConvertConstantValue(v.Type, v.GetConstantValue(throwOnInvalidMetadata: true));
-				} catch (BadImageFormatException ex) {
+				}
+				catch (BadImageFormatException ex)
+				{
 					initializer = new ErrorExpression(ex.Message);
 				}
 			}
@@ -1900,18 +2419,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return decl;
 		}
 		#endregion
-		
+
 		NamespaceDeclaration ConvertNamespaceDeclaration(INamespace ns)
 		{
 			return new NamespaceDeclaration(ns.FullName);
 		}
 
-		AstType GetExplicitInterfaceType (IMember member)
+		AstType GetExplicitInterfaceType(IMember member)
 		{
-			if (member.IsExplicitInterfaceImplementation) {
-				var baseMember = member.ExplicitlyImplementedInterfaceMembers.FirstOrDefault ();
+			if (member.IsExplicitInterfaceImplementation)
+			{
+				var baseMember = member.ExplicitlyImplementedInterfaceMembers.FirstOrDefault();
 				if (baseMember != null)
-					return ConvertType (baseMember.DeclaringType);
+					return ConvertType(baseMember.DeclaringType);
 			}
 			return null;
 		}

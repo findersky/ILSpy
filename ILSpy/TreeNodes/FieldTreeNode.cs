@@ -18,11 +18,13 @@
 
 using System;
 using System.Windows.Media;
+
 using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
+	using ICSharpCode.Decompiler.TypeSystem;
+
 	/// <summary>
 	/// Represents a field in the TreeView.
 	/// </summary>
@@ -72,10 +74,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 		{
 			language.DecompileField(FieldDefinition, output, options);
 		}
-		
+
 		public override bool IsPublicAPI {
 			get {
-				switch (FieldDefinition.Accessibility) {
+				switch (FieldDefinition.Accessibility)
+				{
 					case Accessibility.Public:
 					case Accessibility.Protected:
 					case Accessibility.ProtectedOrInternal:

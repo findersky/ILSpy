@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -34,8 +36,8 @@ namespace ICSharpCode.Decompiler.Util
 		List<GraphVizNode> nodes = new List<GraphVizNode>();
 		List<GraphVizEdge> edges = new List<GraphVizEdge>();
 
-		public string rankdir;
-		public string Title;
+		public string? rankdir;
+		public string? Title;
 
 		public void AddEdge(GraphVizEdge edge)
 		{
@@ -58,7 +60,7 @@ namespace ICSharpCode.Decompiler.Util
 			Show(null);
 		}
 
-		public void Show(string name)
+		public void Show(string? name)
 		{
 			if (name == null)
 				name = Title;
@@ -73,14 +75,17 @@ namespace ICSharpCode.Decompiler.Util
 
 		static string Escape(string text)
 		{
-			if (Regex.IsMatch(text, @"^[\w\d]+$")) {
+			if (Regex.IsMatch(text, @"^[\w\d]+$"))
+			{
 				return text;
-			} else {
+			}
+			else
+			{
 				return "\"" + text.Replace("\\", "\\\\").Replace("\r", "").Replace("\n", "\\n").Replace("\"", "\\\"") + "\"";
 			}
 		}
 
-		static void WriteGraphAttribute(TextWriter writer, string name, string value)
+		static void WriteGraphAttribute(TextWriter writer, string name, string? value)
 		{
 			if (value != null)
 				writer.WriteLine("{0}={1};", name, Escape(value));
@@ -88,21 +93,24 @@ namespace ICSharpCode.Decompiler.Util
 
 		internal static void WriteAttribute(TextWriter writer, string name, double? value, ref bool isFirst)
 		{
-			if (value != null) {
+			if (value != null)
+			{
 				WriteAttribute(writer, name, value.Value.ToString(CultureInfo.InvariantCulture), ref isFirst);
 			}
 		}
 
 		internal static void WriteAttribute(TextWriter writer, string name, bool? value, ref bool isFirst)
 		{
-			if (value != null) {
+			if (value != null)
+			{
 				WriteAttribute(writer, name, value.Value ? "true" : "false", ref isFirst);
 			}
 		}
 
-		internal static void WriteAttribute(TextWriter writer, string name, string value, ref bool isFirst)
+		internal static void WriteAttribute(TextWriter writer, string name, string? value, ref bool isFirst)
 		{
-			if (value != null) {
+			if (value != null)
+			{
 				if (isFirst)
 					isFirst = false;
 				else
@@ -118,10 +126,12 @@ namespace ICSharpCode.Decompiler.Util
 			writer.WriteLine("digraph G {");
 			writer.WriteLine("node [fontsize = 16];");
 			WriteGraphAttribute(writer, "rankdir", rankdir);
-			foreach (GraphVizNode node in nodes) {
+			foreach (GraphVizNode node in nodes)
+			{
 				node.Save(writer);
 			}
-			foreach (GraphVizEdge edge in edges) {
+			foreach (GraphVizEdge edge in edges)
+			{
 				edge.Save(writer);
 			}
 			writer.WriteLine("}");
@@ -133,13 +143,13 @@ namespace ICSharpCode.Decompiler.Util
 		public readonly string Source, Target;
 
 		/// <summary>edge stroke color</summary>
-		public string color;
+		public string? color;
 		/// <summary>use edge to affect node ranking</summary>
 		public bool? constraint;
 
-		public string label;
+		public string? label;
 
-		public string style;
+		public string? style;
 
 		/// <summary>point size of label</summary>
 		public int? fontsize;
@@ -176,9 +186,9 @@ namespace ICSharpCode.Decompiler.Util
 	sealed class GraphVizNode
 	{
 		public readonly string ID;
-		public string label;
+		public string? label;
 
-		public string labelloc;
+		public string? labelloc;
 
 		/// <summary>point size of label</summary>
 		public int? fontsize;
@@ -187,10 +197,10 @@ namespace ICSharpCode.Decompiler.Util
 		public double? height;
 
 		/// <summary>space around label</summary>
-		public string margin;
+		public string? margin;
 
 		/// <summary>node shape</summary>
-		public string shape;
+		public string? shape;
 
 		public GraphVizNode(string id)
 		{

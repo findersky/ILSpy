@@ -34,26 +34,21 @@ namespace ICSharpCode.ILSpy.Xaml
 	{
 		public ILSpyTreeNode CreateNode(Resource resource)
 		{
-			return null;
-		}
-		
-		public ILSpyTreeNode CreateNode(string key, object data)
-		{
-			if (key.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase) && data is Stream)
-				return new XamlResourceEntryNode(key, (Stream)data);
+			if (resource.Name.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
+				return new XamlResourceEntryNode(resource.Name, resource.TryOpenStream);
 			else
 				return null;
 		}
 	}
-	
+
 	sealed class XamlResourceEntryNode : ResourceEntryNode
 	{
 		string xaml;
-		
-		public XamlResourceEntryNode(string key, Stream data) : base(key, data)
+
+		public XamlResourceEntryNode(string key, Func<Stream> openStream) : base(key, openStream)
 		{
 		}
-		
+
 		public override bool View(TabPageModel tabPage)
 		{
 			AvalonEditTextOutput output = new AvalonEditTextOutput();
@@ -62,16 +57,28 @@ namespace ICSharpCode.ILSpy.Xaml
 			tabPage.ShowTextView(textView => textView.RunWithCancellation(
 				token => Task.Factory.StartNew(
 					() => {
-						try {
+						try
+						{
 							// cache read XAML because stream will be closed after first read
-							if (xaml == null) {
-								using (var reader = new StreamReader(Data)) {
+							if (xaml == null)
+							{
+								using var data = OpenStream();
+								if (data == null)
+								{
+									output.Write("ILSpy: Failed opening resource stream.");
+									output.WriteLine();
+									return output;
+								}
+								using (var reader = new StreamReader(data))
+								{
 									xaml = reader.ReadToEnd();
 								}
 							}
 							output.Write(xaml);
 							highlighting = HighlightingManager.Instance.GetDefinitionByExtension(".xml");
-						} catch (Exception ex) {
+						}
+						catch (Exception ex)
+						{
 							output.Write(ex.ToString());
 						}
 						return output;
