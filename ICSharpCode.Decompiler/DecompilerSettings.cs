@@ -142,10 +142,16 @@ namespace ICSharpCode.Decompiler
 				usePrimaryConstructorSyntax = false;
 				covariantReturns = false;
 			}
+			if (languageVersion < CSharp.LanguageVersion.CSharp10_0)
+			{
+				fileScopedNamespaces = false;
+			}
 		}
 
 		public CSharp.LanguageVersion GetMinimumRequiredVersion()
 		{
+			if (fileScopedNamespaces)
+				return CSharp.LanguageVersion.CSharp10_0;
 			if (nativeIntegers || initAccessors || functionPointers || forEachWithGetEnumeratorExtension
 				|| recordClasses || withExpressions || usePrimaryConstructorSyntax || covariantReturns)
 				return CSharp.LanguageVersion.CSharp9_0;
@@ -318,6 +324,24 @@ namespace ICSharpCode.Decompiler
 				if (switchExpressions != value)
 				{
 					switchExpressions = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool fileScopedNamespaces = true;
+
+		/// <summary>
+		/// Use C# 10 file-scoped namespaces.
+		/// </summary>
+		[Category("C# 10.0 / VS 2022")]
+		[Description("DecompilerSettings.FileScopedNamespaces")]
+		public bool FileScopedNamespaces {
+			get { return fileScopedNamespaces; }
+			set {
+				if (fileScopedNamespaces != value)
+				{
+					fileScopedNamespaces = value;
 					OnPropertyChanged();
 				}
 			}
@@ -1753,7 +1777,7 @@ namespace ICSharpCode.Decompiler
 		/// Gets or sets a value indicating whether the new SDK style format
 		/// shall be used for the generated project files.
 		/// </summary>
-		[Category("DecompilerSettings.Other")]
+		[Category("DecompilerSettings.ProjectExport")]
 		[Description("DecompilerSettings.UseSdkStyleProjectFormat")]
 		public bool UseSdkStyleProjectFormat {
 			get { return useSdkStyleProjectFormat; }
@@ -1761,6 +1785,25 @@ namespace ICSharpCode.Decompiler
 				if (useSdkStyleProjectFormat != value)
 				{
 					useSdkStyleProjectFormat = value;
+					OnPropertyChanged();
+				}
+			}
+		}
+
+		bool useNestedDirectoriesForNamespaces;
+
+		/// <summary>
+		/// Gets/sets whether namespaces and namespace-like identifiers should be split at '.'
+		/// and each part should produce a new level of nesting in the output directory structure. 
+		/// </summary>
+		[Category("DecompilerSettings.ProjectExport")]
+		[Description("DecompilerSettings.UseNestedDirectoriesForNamespaces")]
+		public bool UseNestedDirectoriesForNamespaces {
+			get { return useNestedDirectoriesForNamespaces; }
+			set {
+				if (useNestedDirectoriesForNamespaces != value)
+				{
+					useNestedDirectoriesForNamespaces = value;
 					OnPropertyChanged();
 				}
 			}

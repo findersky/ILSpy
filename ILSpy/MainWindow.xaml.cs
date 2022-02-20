@@ -32,7 +32,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 
@@ -44,6 +43,7 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.ILSpy.Analyzers;
+using ICSharpCode.ILSpy.Commands;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.Themes;
@@ -55,13 +55,6 @@ using Microsoft.Win32;
 
 namespace ICSharpCode.ILSpy
 {
-	class MainWindowDataContext
-	{
-		public DockWorkspace Workspace { get; set; }
-		public SessionSettings SessionSettings { get; set; }
-		public AssemblyListManager AssemblyListManager { get; set; }
-	}
-
 	/// <summary>
 	/// The main window of the application.
 	/// </summary>
@@ -70,7 +63,8 @@ namespace ICSharpCode.ILSpy
 		bool refreshInProgress, changingActiveTab;
 		readonly NavigationHistory<NavigationState> history = new NavigationHistory<NavigationState>();
 		ILSpySettings spySettingsForMainWindow_Loaded;
-		internal SessionSettings sessionSettings;
+		SessionSettings sessionSettings;
+		FilterSettings filterSettings;
 		AssemblyList assemblyList;
 		AssemblyListTreeNode assemblyListTreeNode;
 
@@ -115,8 +109,8 @@ namespace ICSharpCode.ILSpy
 			// Make sure Images are initialized on the UI thread.
 			this.Icon = Images.ILSpyIcon;
 
-			this.DataContext = new MainWindowDataContext {
-				Workspace = DockWorkspace.Instance,
+			this.DataContext = new MainWindowViewModel {
+				Workspace = new DockWorkspace(this),
 				SessionSettings = sessionSettings,
 				AssemblyListManager = AssemblyListManager
 			};
@@ -130,13 +124,38 @@ namespace ICSharpCode.ILSpy
 			InitializeComponent();
 			InitToolPanes();
 			DockWorkspace.Instance.InitializeLayout(DockManager);
-			sessionSettings.FilterSettings.PropertyChanged += filterSettings_PropertyChanged;
 			sessionSettings.PropertyChanged += SessionSettings_PropertyChanged;
+			filterSettings = sessionSettings.FilterSettings;
+			filterSettings.PropertyChanged += filterSettings_PropertyChanged;
+			DockWorkspace.Instance.PropertyChanged += DockWorkspace_PropertyChanged;
 			InitMainMenu();
+			InitWindowMenu();
 			InitToolbar();
 			ContextMenuProvider.Add(AssemblyTreeView);
 
 			this.Loaded += MainWindow_Loaded;
+		}
+
+		private void DockWorkspace_PropertyChanged(object sender, PropertyChangedEventArgs e)
+		{
+			switch (e.PropertyName)
+			{
+				case nameof(DockWorkspace.Instance.ActiveTabPage):
+					DockWorkspace dock = DockWorkspace.Instance;
+					filterSettings.PropertyChanged -= filterSettings_PropertyChanged;
+					filterSettings = dock.ActiveTabPage.FilterSettings;
+					filterSettings.PropertyChanged += filterSettings_PropertyChanged;
+
+					var windowMenuItem = mainMenu.Items.OfType<MenuItem>().First(m => (string)m.Tag == Properties.Resources._Window);
+					foreach (MenuItem menuItem in windowMenuItem.Items.OfType<MenuItem>())
+					{
+						if (menuItem.IsCheckable && menuItem.Tag is TabPageModel)
+						{
+							menuItem.IsChecked = menuItem.Tag == dock.ActiveTabPage;
+						}
+					}
+					break;
+			}
 		}
 
 		private void SessionSettings_PropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -222,48 +241,93 @@ namespace ICSharpCode.ILSpy
 		void InitMainMenu()
 		{
 			var mainMenuCommands = App.ExportProvider.GetExports<ICommand, IMainMenuCommandMetadata>("MainMenuCommand");
-			foreach (var topLevelMenu in mainMenuCommands.OrderBy(c => c.Metadata.MenuOrder).GroupBy(c => GetResourceString(c.Metadata.Menu)))
+			// Start by constructing the individual flat menus
+			var parentMenuItems = new Dictionary<string, MenuItem>();
+			var menuGroups = mainMenuCommands.OrderBy(c => c.Metadata.MenuOrder).GroupBy(c => c.Metadata.ParentMenuID);
+			foreach (var menu in menuGroups)
 			{
-				var topLevelMenuItem = mainMenu.Items.OfType<MenuItem>().FirstOrDefault(m => (GetResourceString(m.Header as string)) == topLevelMenu.Key);
-				foreach (var category in topLevelMenu.GroupBy(c => GetResourceString(c.Metadata.MenuCategory)))
+				// Get or add the target menu item and add all items grouped by menu category
+				var parentMenuItem = GetOrAddParentMenuItem(menu.Key, menu.Key);
+				foreach (var category in menu.GroupBy(c => c.Metadata.MenuCategory))
 				{
-					if (topLevelMenuItem == null)
+					if (parentMenuItem.Items.Count > 0)
 					{
-						topLevelMenuItem = new MenuItem();
-						topLevelMenuItem.Header = GetResourceString(topLevelMenu.Key);
-						mainMenu.Items.Add(topLevelMenuItem);
-					}
-					else if (topLevelMenuItem.Items.Count > 0)
-					{
-						topLevelMenuItem.Items.Add(new Separator());
+						parentMenuItem.Items.Add(new Separator() { Tag = category.Key });
 					}
 					foreach (var entry in category)
 					{
-						MenuItem menuItem = new MenuItem();
-						menuItem.Command = CommandWrapper.Unwrap(entry.Value);
-						if (!string.IsNullOrEmpty(GetResourceString(entry.Metadata.Header)))
-							menuItem.Header = GetResourceString(entry.Metadata.Header);
-						if (!string.IsNullOrEmpty(entry.Metadata.MenuIcon))
+						if (menuGroups.Any(g => g.Key == entry.Metadata.MenuID))
 						{
-							menuItem.Icon = new Image {
-								Width = 16,
-								Height = 16,
-								Source = Images.Load(entry.Value, entry.Metadata.MenuIcon)
-							};
+							var menuItem = GetOrAddParentMenuItem(entry.Metadata.MenuID, entry.Metadata.Header);
+							// replace potential dummy text with real name
+							menuItem.Header = GetResourceString(entry.Metadata.Header);
+							parentMenuItem.Items.Add(menuItem);
 						}
+						else
+						{
+							MenuItem menuItem = new MenuItem();
+							menuItem.Command = CommandWrapper.Unwrap(entry.Value);
+							menuItem.Tag = entry.Metadata.MenuID;
+							menuItem.Header = GetResourceString(entry.Metadata.Header);
+							if (!string.IsNullOrEmpty(entry.Metadata.MenuIcon))
+							{
+								menuItem.Icon = new Image {
+									Width = 16,
+									Height = 16,
+									Source = Images.Load(entry.Value, entry.Metadata.MenuIcon)
+								};
+							}
 
-						menuItem.IsEnabled = entry.Metadata.IsEnabled;
-						menuItem.InputGestureText = entry.Metadata.InputGestureText;
-						topLevelMenuItem.Items.Add(menuItem);
+							menuItem.IsEnabled = entry.Metadata.IsEnabled;
+							menuItem.InputGestureText = entry.Metadata.InputGestureText;
+							parentMenuItem.Items.Add(menuItem);
+						}
 					}
 				}
+			}
+
+			foreach (var (key, item) in parentMenuItems)
+			{
+				if (item.Parent == null)
+				{
+					mainMenu.Items.Add(item);
+				}
+			}
+
+			MenuItem GetOrAddParentMenuItem(string menuID, string resourceKey)
+			{
+				if (!parentMenuItems.TryGetValue(menuID, out var parentMenuItem))
+				{
+					var topLevelMenuItem = mainMenu.Items.OfType<MenuItem>().FirstOrDefault(m => (string)m.Tag == menuID);
+					if (topLevelMenuItem == null)
+					{
+						parentMenuItem = new MenuItem();
+						parentMenuItem.Header = GetResourceString(resourceKey);
+						parentMenuItem.Tag = menuID;
+						parentMenuItems.Add(menuID, parentMenuItem);
+					}
+					else
+					{
+						parentMenuItems.Add(menuID, topLevelMenuItem);
+						parentMenuItem = topLevelMenuItem;
+					}
+				}
+				return parentMenuItem;
 			}
 		}
 
 		internal static string GetResourceString(string key)
 		{
-			var str = !string.IsNullOrEmpty(key) ? Properties.Resources.ResourceManager.GetString(key) : null;
-			return string.IsNullOrEmpty(key) || string.IsNullOrEmpty(str) ? key : str;
+			if (string.IsNullOrEmpty(key))
+			{
+				return null;
+			}
+			string value = Properties.Resources.ResourceManager.GetString(key);
+			if (!string.IsNullOrEmpty(value))
+			{
+				return value;
+			}
+			return key;
 		}
 		#endregion
 
@@ -287,6 +351,182 @@ namespace ICSharpCode.ILSpy
 				DockWorkspace.Instance.ToolPanes.Add(model);
 			}
 			DockManager.LayoutItemTemplateSelector = templateSelector;
+		}
+
+		private void InitWindowMenu()
+		{
+			var windowMenuItem = mainMenu.Items.OfType<MenuItem>().First(m => (string)m.Tag == Properties.Resources._Window);
+			Separator separatorBeforeTools, separatorBeforeDocuments;
+			windowMenuItem.Items.Add(separatorBeforeTools = new Separator());
+			windowMenuItem.Items.Add(separatorBeforeDocuments = new Separator());
+
+			var dock = DockWorkspace.Instance;
+			dock.ToolPanes.CollectionChanged += ToolsChanged;
+			dock.TabPages.CollectionChanged += TabsChanged;
+
+			ToolsChanged(dock.ToolPanes, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+			TabsChanged(dock.TabPages, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+
+			void ToolsChanged(object sender, NotifyCollectionChangedEventArgs e)
+			{
+				int endIndex = windowMenuItem.Items.IndexOf(separatorBeforeDocuments);
+				int startIndex = windowMenuItem.Items.IndexOf(separatorBeforeTools) + 1;
+				int insertionIndex;
+				switch (e.Action)
+				{
+					case NotifyCollectionChangedAction.Add:
+						insertionIndex = Math.Min(endIndex, startIndex + e.NewStartingIndex);
+						foreach (ToolPaneModel pane in e.NewItems)
+						{
+							MenuItem menuItem = CreateMenuItem(pane);
+							windowMenuItem.Items.Insert(insertionIndex, menuItem);
+							insertionIndex++;
+						}
+						break;
+					case NotifyCollectionChangedAction.Remove:
+						foreach (ToolPaneModel pane in e.OldItems)
+						{
+							for (int i = endIndex - 1; i >= startIndex; i--)
+							{
+								MenuItem item = (MenuItem)windowMenuItem.Items[i];
+								if (pane == item.Tag)
+								{
+									windowMenuItem.Items.RemoveAt(i);
+									item.Tag = null;
+									endIndex--;
+									break;
+								}
+							}
+						}
+						break;
+					case NotifyCollectionChangedAction.Replace:
+						break;
+					case NotifyCollectionChangedAction.Move:
+						break;
+					case NotifyCollectionChangedAction.Reset:
+						for (int i = endIndex - 1; i >= startIndex; i--)
+						{
+							MenuItem item = (MenuItem)windowMenuItem.Items[0];
+							item.Tag = null;
+							windowMenuItem.Items.RemoveAt(i);
+							endIndex--;
+						}
+						insertionIndex = endIndex;
+						foreach (ToolPaneModel pane in dock.ToolPanes)
+						{
+							MenuItem menuItem = CreateMenuItem(pane);
+							windowMenuItem.Items.Insert(insertionIndex, menuItem);
+							insertionIndex++;
+						}
+						break;
+				}
+
+				MenuItem CreateMenuItem(ToolPaneModel pane)
+				{
+					MenuItem menuItem = new MenuItem();
+					menuItem.Command = new ToolPaneCommand(pane.ContentId);
+					menuItem.Header = pane.Title;
+					menuItem.Tag = pane;
+					var shortcutKey = pane.ShortcutKey;
+					if (shortcutKey != null)
+					{
+						InputBindings.Add(new InputBinding(menuItem.Command, shortcutKey));
+						menuItem.InputGestureText = shortcutKey.GetDisplayStringForCulture(System.Globalization.CultureInfo.CurrentUICulture);
+					}
+					if (!string.IsNullOrEmpty(pane.Icon))
+					{
+						menuItem.Icon = new Image {
+							Width = 16,
+							Height = 16,
+							Source = Images.Load(pane, pane.Icon)
+						};
+					}
+
+					return menuItem;
+				}
+			}
+
+			void TabsChanged(object sender, NotifyCollectionChangedEventArgs e)
+			{
+				int endIndex = windowMenuItem.Items.Count;
+				int startIndex = windowMenuItem.Items.IndexOf(separatorBeforeDocuments) + 1;
+				int insertionIndex;
+				switch (e.Action)
+				{
+					case NotifyCollectionChangedAction.Add:
+						insertionIndex = Math.Min(endIndex, startIndex + e.NewStartingIndex);
+						foreach (TabPageModel pane in e.NewItems)
+						{
+							MenuItem menuItem = CreateMenuItem(pane);
+							pane.PropertyChanged += TabPageChanged;
+							windowMenuItem.Items.Insert(insertionIndex, menuItem);
+							insertionIndex++;
+						}
+						break;
+					case NotifyCollectionChangedAction.Remove:
+						foreach (TabPageModel pane in e.OldItems)
+						{
+							for (int i = endIndex - 1; i >= startIndex; i--)
+							{
+								MenuItem item = (MenuItem)windowMenuItem.Items[i];
+								if (pane == item.Tag)
+								{
+									windowMenuItem.Items.RemoveAt(i);
+									pane.PropertyChanged -= TabPageChanged;
+									item.Tag = null;
+									endIndex--;
+									break;
+								}
+							}
+						}
+						break;
+					case NotifyCollectionChangedAction.Replace:
+						break;
+					case NotifyCollectionChangedAction.Move:
+						break;
+					case NotifyCollectionChangedAction.Reset:
+						for (int i = endIndex - 1; i >= startIndex; i--)
+						{
+							MenuItem item = (MenuItem)windowMenuItem.Items[i];
+							windowMenuItem.Items.RemoveAt(i);
+							((TabPageModel)item.Tag).PropertyChanged -= TabPageChanged;
+							endIndex--;
+						}
+						insertionIndex = endIndex;
+						foreach (TabPageModel pane in dock.TabPages)
+						{
+							MenuItem menuItem = CreateMenuItem(pane);
+							pane.PropertyChanged += TabPageChanged;
+							windowMenuItem.Items.Insert(insertionIndex, menuItem);
+							insertionIndex++;
+						}
+						break;
+				}
+
+				MenuItem CreateMenuItem(TabPageModel pane)
+				{
+					MenuItem menuItem = new MenuItem();
+					menuItem.Command = new TabPageCommand(pane);
+					menuItem.Header = pane.Title.Length > 20 ? pane.Title.Substring(20) + "..." : pane.Title;
+					menuItem.Tag = pane;
+					menuItem.IsCheckable = true;
+
+					return menuItem;
+				}
+			}
+
+			static void TabPageChanged(object sender, PropertyChangedEventArgs e)
+			{
+				var windowMenuItem = Instance.mainMenu.Items.OfType<MenuItem>().First(m => (string)m.Tag == nameof(Properties.Resources._Window));
+				foreach (MenuItem menuItem in windowMenuItem.Items.OfType<MenuItem>())
+				{
+					if (menuItem.IsCheckable && menuItem.Tag == sender)
+					{
+						string title = ((TabPageModel)sender).Title;
+						menuItem.Header = title.Length > 20 ? title.Substring(0, 20) + "..." : title;
+					}
+				}
+			}
 		}
 
 		public void ShowInTopPane(string title, object content)
@@ -322,6 +562,7 @@ namespace ICSharpCode.ILSpy
 			{
 				hwndSource.AddHook(WndProc);
 			}
+			App.ReleaseSingleInstanceMutex();
 			// Validate and Set Window Bounds
 			Rect bounds = Rect.Transform(sessionSettings.WindowBounds, source.CompositionTarget.TransformToDevice);
 			var boundsRect = new System.Drawing.Rectangle((int)bounds.Left, (int)bounds.Top, (int)bounds.Width, (int)bounds.Height);
@@ -406,7 +647,7 @@ namespace ICSharpCode.ILSpy
 		{
 			LoadAssemblies(args.AssembliesToLoad, commandLineLoadedAssemblies, focusNode: false);
 			if (args.Language != null)
-				sessionSettings.FilterSettings.Language = Languages.GetLanguage(args.Language);
+				filterSettings.Language = Languages.GetLanguage(args.Language);
 			return true;
 		}
 
@@ -597,8 +838,7 @@ namespace ICSharpCode.ILSpy
 		void MainWindow_Loaded(object sender, RoutedEventArgs e)
 		{
 			DockWorkspace.Instance.TabPages.Add(new TabPageModel() {
-				Language = CurrentLanguage,
-				LanguageVersion = CurrentLanguageVersion
+				FilterSettings = filterSettings.Clone()
 			});
 			DockWorkspace.Instance.ActiveTabPage = DockWorkspace.Instance.TabPages.First();
 
@@ -770,7 +1010,7 @@ namespace ICSharpCode.ILSpy
 			assemblyList.CollectionChanged += assemblyList_Assemblies_CollectionChanged;
 
 			assemblyListTreeNode = new AssemblyListTreeNode(assemblyList);
-			assemblyListTreeNode.FilterSettings = sessionSettings.FilterSettings.Clone();
+			assemblyListTreeNode.FilterSettings = filterSettings.Clone();
 			assemblyListTreeNode.Select = x => SelectNode(x, inNewTabPage: false);
 			AssemblyTreeView.Root = assemblyListTreeNode;
 
@@ -824,7 +1064,6 @@ namespace ICSharpCode.ILSpy
 
 		void filterSettings_PropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
-			RefreshTreeView();
 			RefreshTreeViewFilter();
 			if (e.PropertyName == "Language" || e.PropertyName == "LanguageVersion")
 			{
@@ -838,7 +1077,7 @@ namespace ICSharpCode.ILSpy
 			// Thus, the main window will use one mutable instance (for data-binding), and assign a new clone to the ILSpyTreeNodes whenever the main
 			// mutable instance changes.
 			if (assemblyListTreeNode != null)
-				assemblyListTreeNode.FilterSettings = sessionSettings.FilterSettings.Clone();
+				assemblyListTreeNode.FilterSettings = DockWorkspace.Instance.ActiveTabPage.FilterSettings.Clone();
 		}
 
 		internal AssemblyListTreeNode AssemblyListTreeNode {
@@ -867,8 +1106,7 @@ namespace ICSharpCode.ILSpy
 					{
 						DockWorkspace.Instance.TabPages.Add(
 							new TabPageModel() {
-								Language = CurrentLanguage,
-								LanguageVersion = CurrentLanguageVersion
+								FilterSettings = filterSettings.Clone()
 							});
 						DockWorkspace.Instance.ActiveTabPage = DockWorkspace.Instance.TabPages.Last();
 						AssemblyTreeView.SelectedItem = null;
@@ -914,8 +1152,7 @@ namespace ICSharpCode.ILSpy
 			{
 				DockWorkspace.Instance.TabPages.Add(
 					new TabPageModel() {
-						Language = CurrentLanguage,
-						LanguageVersion = CurrentLanguageVersion
+						FilterSettings = filterSettings.Clone()
 					});
 				DockWorkspace.Instance.ActiveTabPage = DockWorkspace.Instance.TabPages.Last();
 			}
@@ -1092,7 +1329,7 @@ namespace ICSharpCode.ILSpy
 		{
 			try
 			{
-				Process.Start(link);
+				Process.Start(new ProcessStartInfo { FileName = link, UseShellExecute = true });
 #pragma warning disable RECS0022 // A catch clause that catches System.Exception and has an empty body
 			}
 			catch (Exception)
@@ -1174,11 +1411,6 @@ namespace ICSharpCode.ILSpy
 
 		void RefreshCommandExecuted(object sender, ExecutedRoutedEventArgs e)
 		{
-			RefreshTreeView();
-		}
-
-		void RefreshTreeView()
-		{
 			try
 			{
 				refreshInProgress = true;
@@ -1206,7 +1438,10 @@ namespace ICSharpCode.ILSpy
 			{
 				state = DockWorkspace.Instance.ActiveTabPage.GetState() as DecompilerTextViewState;
 			}
-			DecompileSelectedNodes(state);
+			if (!changingActiveTab)
+			{
+				DecompileSelectedNodes(state);
+			}
 
 			SelectionChanged?.Invoke(sender, e);
 		}
@@ -1274,8 +1509,10 @@ namespace ICSharpCode.ILSpy
 			}
 		}
 
-		public Language CurrentLanguage => sessionSettings.FilterSettings.Language;
-		public LanguageVersion CurrentLanguageVersion => sessionSettings.FilterSettings.LanguageVersion;
+		public Language CurrentLanguage => DockWorkspace.Instance.ActiveTabPage.FilterSettings.Language;
+		public LanguageVersion CurrentLanguageVersion => DockWorkspace.Instance.ActiveTabPage.FilterSettings.LanguageVersion;
+
+		public bool SupportsLanguageSwitching => DockWorkspace.Instance.ActiveTabPage.SupportsLanguageSwitching;
 
 		public event SelectionChangedEventHandler SelectionChanged;
 
@@ -1347,8 +1584,7 @@ namespace ICSharpCode.ILSpy
 				{
 					DockWorkspace.Instance.TabPages.Add(
 						new TabPageModel() {
-							Language = CurrentLanguage,
-							LanguageVersion = CurrentLanguageVersion
+							FilterSettings = filterSettings.Clone()
 						});
 					DockWorkspace.Instance.ActiveTabPage = DockWorkspace.Instance.TabPages.Last();
 				}
@@ -1413,6 +1649,7 @@ namespace ICSharpCode.ILSpy
 			sessionSettings.ActiveAutoLoadedAssembly = GetAutoLoadedAssemblyNode(AssemblyTreeView.SelectedItem as SharpTreeNode);
 			sessionSettings.WindowBounds = this.RestoreBounds;
 			sessionSettings.DockLayout.Serialize(new XmlLayoutSerializer(DockManager));
+			sessionSettings.FilterSettings = DockWorkspace.Instance.ActiveTabPage.FilterSettings.Clone();
 			sessionSettings.Save();
 		}
 

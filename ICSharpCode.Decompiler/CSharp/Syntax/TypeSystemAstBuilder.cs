@@ -22,6 +22,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.TypeSystem;
@@ -1307,19 +1308,36 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return Math.Abs(num) < den && new int[] { 2, 3, 5 }.Any(x => den % x == 0);
 		}
 
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		static bool EqualDoubles(in double val1, in double val2)
+		{
+			// We use `in double` to pass the floats through memory,
+			// which ensures we won't get more than 64bits of precision
+			return val1 == val2;
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		static bool EqualFloats(in float val1, in float val2)
+		{
+			// We use `in float` to pass the floats through memory,
+			// which ensures we won't get more than 32bits of precision
+			return val1 == val2;
+		}
+
 		static bool IsEqual(long num, long den, object constantValue, bool isDouble)
 		{
 			if (isDouble)
 			{
-				return (double)constantValue == num / (double)den;
+				return EqualDoubles((double)constantValue, num / (double)den);
 			}
 			else
 			{
-				return (float)constantValue == num / (float)den;
+				return EqualFloats((float)constantValue, num / (float)den);
 			}
 		}
 
-		const int MAX_DENOMINATOR = 1000;
+		const int MAX_DENOMINATOR_DOUBLE = 1000;
+		const int MAX_DENOMINATOR_FLOAT = 360;
 
 		Expression ConvertFloatingPointLiteral(IType type, object constantValue)
 		{
@@ -1353,6 +1371,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			bool useFraction = (str.Length - (str.StartsWith("-", StringComparison.OrdinalIgnoreCase) ? 2 : 1) > 5);
 
+			if (useFraction && expr == null)
+			{
+				Debug.Assert(200 < MAX_DENOMINATOR_FLOAT);
+				// For fractions not involving PI, use a smaller MAX_DENOMINATOR
+				// to avoid coincidences such as (1f/MathF.PI) == (113f/355f)
+				(long num, long den) = isDouble
+					? FractionApprox((double)constantValue, MAX_DENOMINATOR_DOUBLE)
+					: FractionApprox((float)constantValue, 200);
+
+				if (IsValidFraction(num, den) && IsEqual(num, den, constantValue, isDouble) && Math.Abs(den) != 1)
+				{
+					var left = MakeConstant(type, num);
+					var right = MakeConstant(type, den);
+					expr = new BinaryOperatorExpression(left, BinaryOperatorType.Divide, right);
+				}
+			}
+
 			if (useFraction && expr == null && UseSpecialConstants)
 			{
 				IType mathType;
@@ -1372,21 +1407,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 				expr = TryExtractExpression(mathType, type, constantValue, "PI", isDouble)
 					?? TryExtractExpression(mathType, type, constantValue, "E", isDouble);
-			}
-
-			if (useFraction && expr == null)
-			{
-				(long num, long den) = isDouble
-					? FractionApprox((double)constantValue, MAX_DENOMINATOR)
-					: FractionApprox((float)constantValue, MAX_DENOMINATOR);
-
-				if (IsValidFraction(num, den) && IsEqual(num, den, constantValue, isDouble) && Math.Abs(num) != 1 && Math.Abs(den) != 1)
-				{
-					var left = MakeConstant(type, num);
-					var right = MakeConstant(type, den);
-					return new BinaryOperatorExpression(left, BinaryOperatorType.Divide, right).WithoutILInstruction()
-						.WithRR(new ConstantResolveResult(type, constantValue));
-				}
 			}
 
 			if (expr == null)
@@ -1458,14 +1478,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				{
 					double field = memberName == "PI" ? Math.PI : Math.E;
 					double approxValue = field * n / d;
-					if (approxValue == (double)literalValue)
+					if (EqualDoubles(approxValue, (double)literalValue))
 						return expr;
 				}
 				else
 				{
 					float field = memberName == "PI" ? MathF_PI : MathF_E;
 					float approxValue = field * n / d;
-					if (approxValue == (float)literalValue)
+					if (EqualFloats(approxValue, (float)literalValue))
 						return expr;
 				}
 
@@ -1488,14 +1508,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				{
 					double field = memberName == "PI" ? Math.PI : Math.E;
 					double approxValue = (double)n / ((double)d * field);
-					if (approxValue == (double)literalValue)
+					if (EqualDoubles(approxValue, (double)literalValue))
 						return expr;
 				}
 				else
 				{
 					float field = memberName == "PI" ? MathF_PI : MathF_E;
 					float approxValue = (float)n / ((float)d * field);
-					if (approxValue == (float)literalValue)
+					if (EqualFloats(approxValue, (float)literalValue))
 						return expr;
 				}
 
@@ -1503,17 +1523,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			}
 
 			(long num, long den) = isDouble
-				? FractionApprox((double)literalValue / (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR)
-				: FractionApprox((float)literalValue / (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR);
+				? FractionApprox((double)literalValue / (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR_DOUBLE)
+				: FractionApprox((float)literalValue / (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR_FLOAT);
 
 			if (IsValidFraction(num, den))
 			{
-				return ExtractExpression(num, den);
+				var expr = ExtractExpression(num, den);
+				if (expr != null)
+					return expr;
 			}
 
 			(num, den) = isDouble
-				? FractionApprox((double)literalValue * (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR)
-				: FractionApprox((float)literalValue * (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR);
+				? FractionApprox((double)literalValue * (memberName == "PI" ? Math.PI : Math.E), MAX_DENOMINATOR_DOUBLE)
+				: FractionApprox((float)literalValue * (memberName == "PI" ? MathF_PI : MathF_E), MAX_DENOMINATOR_FLOAT);
 
 			if (IsValidFraction(num, den))
 			{
@@ -1571,8 +1593,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				if (v - ai == 0)
 					break;
 				v = 1 / (v - ai);
-				if (Math.Abs(v) > long.MaxValue)
-					break; // value cannot be stored in fraction without overflow
+				if (Math.Abs(v) >= long.MaxValue)
+				{
+					// values greater than long.MaxValue cannot be stored in fraction without overflow.
+					// Because the implicit conversion of long.MaxValue to double loses precision,
+					// it's possible that a value v that is strictly greater than long.MaxValue will
+					// nevertheless compare equal, so we use ">=" to compensate.
+					break;
+				}
 			}
 
 			if (m[1, 0] == 0)
@@ -2290,17 +2318,29 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 						m |= Modifiers.Static;
 					}
 				}
-				else if (member.IsStatic)
-				{
-					m |= Modifiers.Static;
-				}
 				else
 				{
+					if (member.IsStatic)
+					{
+						m |= Modifiers.Static;
+					}
+					if (member is IMethod method && method.ThisIsRefReadOnly
+						&& method.DeclaringTypeDefinition?.IsReadOnly == false)
+					{
+						m |= Modifiers.Readonly;
+					}
+
 					var declaringType = member.DeclaringType;
 					if (declaringType.Kind == TypeKind.Interface)
 					{
-						if (!member.IsVirtual && !member.IsAbstract && !member.IsOverride && member.Accessibility != Accessibility.Private && member is IMethod method2 && method2.HasBody)
+						if (!member.IsStatic && !member.IsVirtual && !member.IsAbstract && !member.IsOverride
+							&& member.Accessibility != Accessibility.Private
+							&& member is IMethod method2 && method2.HasBody)
+						{
 							m |= Modifiers.Sealed;
+						}
+						if (member.IsAbstract && member.IsStatic)
+							m |= Modifiers.Abstract;
 					}
 					else
 					{
@@ -2308,13 +2348,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 							m |= Modifiers.Abstract;
 						else if (member.IsVirtual && !member.IsOverride)
 							m |= Modifiers.Virtual;
+						if (member.IsOverride && !member.IsExplicitInterfaceImplementation)
+							m |= Modifiers.Override;
+						if (member.IsSealed && !member.IsExplicitInterfaceImplementation)
+							m |= Modifiers.Sealed;
 					}
-					if (member.IsOverride && !member.IsExplicitInterfaceImplementation)
-						m |= Modifiers.Override;
-					if (member.IsSealed && !member.IsExplicitInterfaceImplementation)
-						m |= Modifiers.Sealed;
-					if (member is IMethod method && method.ThisIsRefReadOnly && method.DeclaringTypeDefinition?.IsReadOnly == false)
-						m |= Modifiers.Readonly;
 				}
 			}
 			return m;

@@ -10,11 +10,11 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <AssemblyName>ilspycmd</AssemblyName>
     <ToolCommandName>ilspycmd</ToolCommandName>
-    <Version>7.2.0.6702-preview2</Version>
+    <Version>7.2.0.6791-preview3</Version>
     <AssemblyVersion>7.2.0.0</AssemblyVersion>
     <FileVersion>7.2.0.0</FileVersion>
     <Description>Command-line decompiler using the ILSpy decompilation engine</Description>
-    <Copyright>Copyright 2011-2021 AlphaSierraPapa</Copyright>
+    <Copyright>Copyright 2011-2022 AlphaSierraPapa</Copyright>
     <PackageProjectUrl>https://github.com/icsharpcode/ILSpy/</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>ILSpyCmdNuGetPackageIcon.png</PackageIcon>
@@ -46,7 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="2.3.2" />
+    <PackageReference Include="McMaster.Extensions.CommandLineUtils" Version="3.1.0" />
     <PackageReference Include="System.IO.FileSystem.Primitives" Version="4.3.0" />
     <PackageReference Include="System.Runtime.Handles" Version="4.3.0" />
     <PackageReference Include="System.Runtime.InteropServices" Version="4.3.0" />

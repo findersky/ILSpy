@@ -76,7 +76,7 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			tabPage.Content = view;
 
-			if (scrollTargetEntry?.RID > 1)
+			if (scrollTargetEntry?.RID > 0)
 			{
 				ScrollItemIntoView(view, scrollTargetEntry);
 			}
@@ -125,7 +125,8 @@ namespace ICSharpCode.ILSpy.Metadata
 				MethodSteppingInformation,
 				CompilationOptions,
 				CompilationMetadataReferences,
-				TupleElementNames
+				TupleElementNames,
+				TypeDefinitionDocuments
 			}
 
 			static CustomDebugInformationKind GetKind(MetadataReader metadata, GuidHandle h)
@@ -177,6 +178,10 @@ namespace ICSharpCode.ILSpy.Metadata
 				{
 					return CustomDebugInformationKind.TupleElementNames;
 				}
+				if (KnownGuids.TypeDefinitionDocuments == guid)
+				{
+					return CustomDebugInformationKind.TypeDefinitionDocuments;
+				}
 
 				return CustomDebugInformationKind.Unknown;
 			}
@@ -186,7 +191,13 @@ namespace ICSharpCode.ILSpy.Metadata
 			public object Offset => offset == null ? null : offset;
 
 			[StringFormat("X8")]
+			[LinkToTable]
 			public int Parent => MetadataTokens.GetToken(debugInfo.Parent);
+
+			public void OnParentClick()
+			{
+				MainWindow.Instance.JumpToReference(new EntityReference(module, debugInfo.Parent, protocol: "metadata"));
+			}
 
 			public string ParentTooltip {
 				get {
@@ -250,6 +261,9 @@ namespace ICSharpCode.ILSpy.Metadata
 							break;
 						case CustomDebugInformationKind.TupleElementNames:
 							kindString = $"{MetadataTokens.GetHeapOffset(debugInfo.Kind):X8} - Tuple Element Names (C#) [{ guid}]";
+							break;
+						case CustomDebugInformationKind.TypeDefinitionDocuments:
+							kindString = $"{MetadataTokens.GetHeapOffset(debugInfo.Kind):X8} - Type Definition Documents (C# / VB) [{ guid}]";
 							break;
 						default:
 							kindString = $"{MetadataTokens.GetHeapOffset(debugInfo.Kind):X8} - Unknown [{guid}]";

@@ -152,7 +152,7 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			if (this.DataContext is PaneModel model)
 			{
-				model.Title = currentTitle ?? ILSpy.Properties.Resources.NewTab;
+				model.Title = currentTitle ?? ILSpy.Properties.Resources.Decompiling;
 			}
 		}
 
@@ -665,8 +665,8 @@ namespace ICSharpCode.ILSpy.TextView
 				textOutput.Title = string.Join(", ", nodes.Select(n => n.Text));
 			}
 
-			ShowOutput(textOutput, highlighting);
 			decompiledNodes = nodes;
+			ShowOutput(textOutput, highlighting);
 		}
 
 		/// <summary>
@@ -815,12 +815,12 @@ namespace ICSharpCode.ILSpy.TextView
 			return RunWithCancellation(
 				delegate (CancellationToken ct) { // creation of the background task
 					context.Options.CancellationToken = ct;
+					decompiledNodes = context.TreeNodes;
 					return DecompileAsync(context, outputLengthLimit);
 				})
 			.Then(
 				delegate (AvalonEditTextOutput textOutput) { // handling the result
 					ShowOutput(textOutput, context.Language.SyntaxHighlighting, context.Options.TextViewState);
-					decompiledNodes = context.TreeNodes;
 				})
 			.Catch<Exception>(exception => {
 				textEditor.SyntaxHighlighting = null;
@@ -835,7 +835,6 @@ namespace ICSharpCode.ILSpy.TextView
 					output.WriteLine(exception.ToString());
 				}
 				ShowOutput(output);
-				decompiledNodes = context.TreeNodes;
 			});
 		}
 
@@ -1035,7 +1034,7 @@ namespace ICSharpCode.ILSpy.TextView
 			SaveFileDialog dlg = new SaveFileDialog();
 			dlg.DefaultExt = language.FileExtension;
 			dlg.Filter = language.Name + "|*" + language.FileExtension + Properties.Resources.AllFiles;
-			dlg.FileName = CleanUpName(treeNodes.First().ToString()) + language.FileExtension;
+			dlg.FileName = WholeProjectDecompiler.CleanUpFileName(treeNodes.First().ToString()) + language.FileExtension;
 			if (dlg.ShowDialog() == true)
 			{
 				SaveToDisk(new DecompilationContext(language, treeNodes.ToArray(), options), dlg.FileName);
@@ -1149,14 +1148,6 @@ namespace ICSharpCode.ILSpy.TextView
 				}));
 			thread.Start();
 			return tcs.Task;
-		}
-
-		/// <summary>
-		/// Cleans up a node name for use as a file name.
-		/// </summary>
-		internal static string CleanUpName(string text)
-		{
-			return WholeProjectDecompiler.CleanUpFileName(text);
 		}
 		#endregion
 

@@ -1,23 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <symbols>
   <files>
-    <file id="1" name="ICSharpCode\Decompiler\Tests\TestCases\PdbGen\LambdaCapturing.cs" language="C#" checksumAlgorithm="SHA256"><![CDATA[using System;
+    <file id="1" name="ICSharpCode.Decompiler.Tests.TestCases.PdbGen\LambdaCapturing.cs" language="C#" checksumAlgorithm="SHA256"><![CDATA[using System;
 
-namespace ICSharpCode.Decompiler.Tests.TestCases.PdbGen
+namespace ICSharpCode.Decompiler.Tests.TestCases.PdbGen;
+
+public class LambdaCapturing
 {
-	public class LambdaCapturing
+	public static void Main(string[] args)
 	{
-		public static void Main(string[] args)
-		{
-			int num = 4;
-			int captured = Environment.TickCount + num;
-			Test((int a, int b) => a + b + captured);
-		}
+		int num = 4;
+		int captured = Environment.TickCount + num;
+		Test((int a, int b) => a + b + captured);
+	}
 
-		private static void Test(Func<int, int, int> p)
-		{
-			p(1, 2);
-		}
+	private static void Test(Func<int, int, int> p)
+	{
+		p(1, 2);
 	}
 }
 ]]></file>

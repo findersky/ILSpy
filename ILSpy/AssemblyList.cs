@@ -86,7 +86,14 @@ namespace ICSharpCode.ILSpy
 		public AssemblyList(AssemblyList list, string newName)
 			: this(newName)
 		{
-			this.assemblies.AddRange(list.assemblies);
+			lock (lockObj)
+			{
+				lock (list.lockObj)
+				{
+					this.assemblies.AddRange(list.assemblies);
+				}
+			}
+			this.dirty = false;
 		}
 
 		public event NotifyCollectionChangedEventHandler CollectionChanged {

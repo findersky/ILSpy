@@ -46,6 +46,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public const long LongMaxValue = long.MaxValue;
 		public const long LongMinValue = long.MinValue;
 
+		// This constant is (1 / (double)long.MaxValue). Note that the (double) cast involves
+		// loss of precision: long.MaxValue is rounded up to (long.MaxValue+1), which is a power of two.
+		// The division then is exact, resulting in the double 0x3c00000000000000.
+		// When trying to represent this as a fraction, we get (long.MaxValue+1) as divisor, which
+		// does not fit type long, but compares equals to long.MaxValue due to the long->double conversion.
+		public const double Double_One_Div_LongMaxValue = 1.0842021724855044E-19;
+
 		public const float FloatZero = 0f;
 		public const float FloatMinusZero = -0f;
 		public const float FloatNaN = float.NaN;
@@ -71,6 +78,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public const double Double_One = 1.0;
 		public const float Float_Two = 2f;
 		public const double Double_Two = 2.0;
+		public const float Float_Sixth = 1f / 6f;
+		public const double Double_Sixth = 1.0 / 6.0;
+		public const float Float_Tenth = 0.1f;
+		public const double Double_Tenth = 0.1;
 
 		public const float Float_PI = (float)Math.PI;
 		public const float Float_HalfOfPI = (float)Math.PI / 2f;
