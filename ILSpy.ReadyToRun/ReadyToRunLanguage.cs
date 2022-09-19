@@ -33,6 +33,7 @@ using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.ILSpyX;
 
 using ILCompiler.Reflection.ReadyToRun;
 
@@ -51,7 +52,7 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		{
 		}
 
-		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false)
+		public void MarkFoldStart(string collapsedText = "...", bool defaultCollapsed = false, bool isDefinition = false)
 		{
 		}
 
@@ -156,8 +157,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 						.GroupBy(m => m.MethodHandle)
 						.ToDictionary(g => g.Key, g => g.ToArray());
 				}
-				bool showMetadataTokens = ILSpy.Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokens;
-				bool showMetadataTokensInBase10 = ILSpy.Options.DisplaySettingsPanel.CurrentDisplaySettings.ShowMetadataTokensInBase10;
+				var displaySettings = MainWindow.Instance.CurrentDisplaySettings;
+				bool showMetadataTokens = displaySettings.ShowMetadataTokens;
+				bool showMetadataTokensInBase10 = displaySettings.ShowMetadataTokensInBase10;
 #if STRESS
 				ITextOutput originalOutput = output;
 				output = new DummyOutput();

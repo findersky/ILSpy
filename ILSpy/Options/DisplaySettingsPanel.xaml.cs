@@ -68,14 +68,6 @@ namespace ICSharpCode.ILSpy.Options
 			this.DataContext = LoadDisplaySettings(settings);
 		}
 
-		static DisplaySettings currentDisplaySettings;
-
-		public static DisplaySettings CurrentDisplaySettings {
-			get {
-				return currentDisplaySettings ?? (currentDisplaySettings = LoadDisplaySettings(ILSpySettings.Load()));
-			}
-		}
-
 		static bool IsSymbolFont(FontFamily fontFamily)
 		{
 			foreach (var tf in fontFamily.GetTypefaces())
@@ -123,6 +115,7 @@ namespace ICSharpCode.ILSpy.Options
 			s.HighlightMatchingBraces = (bool?)e.Attribute("HighlightMatchingBraces") ?? true;
 			s.HighlightCurrentLine = (bool?)e.Attribute("HighlightCurrentLine") ?? false;
 			s.HideEmptyMetadataTables = (bool?)e.Attribute("HideEmptyMetadataTables") ?? true;
+			s.UseNestedNamespaceNodes = (bool?)e.Attribute("UseNestedNamespaceNodes") ?? false;
 			s.ShowRawOffsetsAndBytesBeforeInstruction = (bool?)e.Attribute("ShowRawOffsetsAndBytesBeforeInstruction") ?? false;
 			s.StyleWindowTitleBar = (bool?)e.Attribute("StyleWindowTitleBar") ?? false;
 
@@ -151,6 +144,7 @@ namespace ICSharpCode.ILSpy.Options
 			section.SetAttributeValue("HighlightMatchingBraces", s.HighlightMatchingBraces);
 			section.SetAttributeValue("HighlightCurrentLine", s.HighlightCurrentLine);
 			section.SetAttributeValue("HideEmptyMetadataTables", s.HideEmptyMetadataTables);
+			section.SetAttributeValue("UseNestedNamespaceNodes", s.UseNestedNamespaceNodes);
 			section.SetAttributeValue("ShowRawOffsetsAndBytesBeforeInstruction", s.ShowRawOffsetsAndBytesBeforeInstruction);
 			section.SetAttributeValue("StyleWindowTitleBar", s.StyleWindowTitleBar);
 
@@ -160,8 +154,7 @@ namespace ICSharpCode.ILSpy.Options
 			else
 				root.Add(section);
 
-			if (currentDisplaySettings != null)
-				currentDisplaySettings.CopyValues(s);
+			MainWindow.Instance.CurrentDisplaySettings.CopyValues(s);
 		}
 
 		private void TextBox_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
@@ -181,8 +174,8 @@ namespace ICSharpCode.ILSpy.Options
 
 		public void LoadDefaults()
 		{
-			currentDisplaySettings = new DisplaySettings();
-			this.DataContext = currentDisplaySettings;
+			MainWindow.Instance.CurrentDisplaySettings.CopyValues(new DisplaySettings());
+			this.DataContext = MainWindow.Instance.CurrentDisplaySettings;
 		}
 	}
 

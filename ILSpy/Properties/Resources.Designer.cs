@@ -19,7 +19,7 @@ namespace ICSharpCode.ILSpy.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class Resources {
@@ -739,6 +739,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Always fully qualify namespaces using the &quot;global::&quot; prefix.
+        /// </summary>
+        public static string DecompilerSettings_AlwaysUseGlobal {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.AlwaysUseGlobal", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Apply Windows Runtime projections on loaded assemblies.
         /// </summary>
         public static string DecompilerSettings_ApplyWindowsRuntimeProjectionsOnLoadedAssemblies {
@@ -1074,6 +1083,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to &apos;scoped&apos; lifetime annotation.
+        /// </summary>
+        public static string DecompilerSettings_LifetimeAnnotations {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.LifetimeAnnotations", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Use nint/nuint types.
         /// </summary>
         public static string DecompilerSettings_NativeIntegers {
@@ -1119,6 +1137,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Use parameter null checking.
+        /// </summary>
+        public static string DecompilerSettings_ParameterNullCheck {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.ParameterNullCheck", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Use pattern matching expressions.
         /// </summary>
         public static string DecompilerSettings_PatternMatching {
@@ -1155,11 +1182,20 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Records.
+        ///   Looks up a localized string similar to Record classes.
         /// </summary>
         public static string DecompilerSettings_RecordClasses {
             get {
                 return ResourceManager.GetString("DecompilerSettings.RecordClasses", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Record structs.
+        /// </summary>
+        public static string DecompilerSettings_RecordStructs {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.RecordStructs", resourceCulture);
             }
         }
         
@@ -2670,6 +2706,15 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string UseLogicOperationSugar {
             get {
                 return ResourceManager.GetString("UseLogicOperationSugar", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Use nested namespace structure.
+        /// </summary>
+        public static string UseNestedNamespaceNodes {
+            get {
+                return ResourceManager.GetString("UseNestedNamespaceNodes", resourceCulture);
             }
         }
         

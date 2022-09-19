@@ -105,6 +105,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					initInst = ci.Arguments.Single();
 					break;
 				default:
+					var typeDef = v.Type.GetDefinition();
+					if (context.Settings.WithExpressions && typeDef?.IsReferenceType == false && typeDef.IsRecord)
+					{
+						instType = v.Type;
+						blockKind = BlockKind.WithInitializer;
+						break;
+					}
 					return false;
 			}
 			int initializerItemsCount = 0;
@@ -275,7 +282,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var previous = path.SkipLast(1).LastOrDefault();
 			if (!(element.Member is IProperty p))
 				return true;
-			return !p.IsIndexer || (previous.Member?.ReturnType.Equals(element.Member.DeclaringType) == true);
+			return !p.IsIndexer || NormalizeTypeVisitor.IgnoreNullabilityAndTuples.EquivalentTypes(previous.Member?.ReturnType, element.Member.DeclaringType);
 		}
 	}
 
@@ -328,7 +335,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							var property = method.AccessorOwner as IProperty;
 							if (!CanBeUsedInInitializer(property, resolveContext, kind, path))
 								goto default;
-							var isGetter = method.Equals(property?.Getter);
+							var isGetter = method.AccessorKind == System.Reflection.MethodSemanticsAttributes.Getter;
 							var indices = call.Arguments.Skip(1).Take(call.Arguments.Count - (isGetter ? 1 : 2)).ToArray();
 							if (indices.Length > 0 && settings?.DictionaryInitializers == false)
 								goto default;

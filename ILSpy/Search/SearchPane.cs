@@ -35,10 +35,12 @@ using System.Windows.Threading;
 
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Options;
-using ICSharpCode.ILSpy.Search;
 using ICSharpCode.ILSpy.ViewModels;
+using ICSharpCode.ILSpyX;
+using ICSharpCode.ILSpyX.Extensions;
+using ICSharpCode.ILSpyX.Search;
 
-namespace ICSharpCode.ILSpy
+namespace ICSharpCode.ILSpy.Search
 {
 	/// <summary>
 	/// Search pane
@@ -246,7 +248,8 @@ namespace ICSharpCode.ILSpy
 				currentSearch = null;
 			}
 
-			resultsComparer = DisplaySettingsPanel.CurrentDisplaySettings.SortResults ?
+			MainWindow mainWindow = MainWindow.Instance;
+			resultsComparer = mainWindow.CurrentDisplaySettings.SortResults ?
 				SearchResult.ComparerByFitness :
 				SearchResult.ComparerByName;
 			Results.Clear();
@@ -254,7 +257,6 @@ namespace ICSharpCode.ILSpy
 			RunningSearch startedSearch = null;
 			if (!string.IsNullOrEmpty(searchTerm))
 			{
-				MainWindow mainWindow = MainWindow.Instance;
 
 				searchProgressBar.IsIndeterminate = true;
 				startedSearch = new RunningSearch(await mainWindow.CurrentAssemblyList.GetAllAssemblies(), searchTerm,
@@ -319,14 +321,17 @@ namespace ICSharpCode.ILSpy
 						prefixLength = part.Length;
 					}
 
+					int delimiterLength;
 					// Find end of prefix
 					if (part.StartsWith("@", StringComparison.Ordinal))
 					{
 						prefixLength = 1;
+						delimiterLength = 0;
 					}
 					else
 					{
 						prefixLength = part.IndexOf(':', 0, prefixLength);
+						delimiterLength = 1;
 					}
 					string prefix;
 					if (prefixLength <= 0)
@@ -340,7 +345,7 @@ namespace ICSharpCode.ILSpy
 					}
 
 					// unescape quotes
-					string searchTerm = part.Substring(prefixLength + 1).Trim();
+					string searchTerm = part.Substring(prefixLength + delimiterLength).Trim();
 					if (searchTerm.Length > 0)
 					{
 						searchTerm = NativeMethods.CommandLineToArgumentArray(searchTerm)[0];
@@ -445,6 +450,9 @@ namespace ICSharpCode.ILSpy
 
 				request.Keywords = keywords.ToArray();
 				request.RegEx = regex;
+				request.SearchResultFactory = new SearchResultFactory(language);
+				request.TreeNodeFactory = new TreeNodeFactory();
+				request.DecompilerSettings = MainWindow.Instance.CurrentDecompilerSettings;
 
 				return request;
 			}
@@ -533,21 +541,5 @@ namespace ICSharpCode.ILSpy
 			NavigationCommands.Search.InputGestures.Add(new KeyGesture(Key.F, ModifierKeys.Control | ModifierKeys.Shift));
 			NavigationCommands.Search.InputGestures.Add(new KeyGesture(Key.E, ModifierKeys.Control));
 		}
-	}
-
-	public enum SearchMode
-	{
-		TypeAndMember,
-		Type,
-		Member,
-		Method,
-		Field,
-		Property,
-		Event,
-		Literal,
-		Token,
-		Resource,
-		Assembly,
-		Namespace
 	}
 }

@@ -16,9 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -33,7 +36,8 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 	{
 		IteratorMoveNext,
 		IteratorDispose,
-		AsyncMoveNext
+		AsyncMoveNext,
+		AwaitInFinally
 	}
 
 	/// <summary>
@@ -53,22 +57,27 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 	{
 		public CancellationToken CancellationToken;
 		readonly StateRangeAnalysisMode mode;
-		readonly IField stateField;
+		readonly IField? stateField;
 		readonly SymbolicEvaluationContext evalContext;
 
 		readonly Dictionary<Block, LongSet> ranges = new Dictionary<Block, LongSet>();
-		readonly internal Dictionary<IMethod, LongSet> finallyMethodToStateRange; // used only for IteratorDispose
+		readonly Dictionary<BlockContainer, LongSet>? rangesForLeave; // used only for AwaitInFinally
+		readonly internal Dictionary<IMethod, LongSet>? finallyMethodToStateRange; // used only for IteratorDispose
 
-		internal ILVariable doFinallyBodies;
-		internal ILVariable skipFinallyBodies;
+		internal ILVariable? doFinallyBodies;
+		internal ILVariable? skipFinallyBodies;
 
-		public StateRangeAnalysis(StateRangeAnalysisMode mode, IField stateField, ILVariable cachedStateVar = null)
+		public StateRangeAnalysis(StateRangeAnalysisMode mode, IField? stateField, ILVariable? cachedStateVar = null)
 		{
 			this.mode = mode;
 			this.stateField = stateField;
 			if (mode == StateRangeAnalysisMode.IteratorDispose)
 			{
 				finallyMethodToStateRange = new Dictionary<IMethod, LongSet>();
+			}
+			if (mode == StateRangeAnalysisMode.AwaitInFinally)
+			{
+				rangesForLeave = new Dictionary<BlockContainer, LongSet>();
 			}
 
 			evalContext = new SymbolicEvaluationContext(stateField);
@@ -173,6 +182,9 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				case Branch br:
 					AddStateRange(br.TargetBlock, stateRange);
 					return LongSet.Empty;
+				case Leave leave when mode == StateRangeAnalysisMode.AwaitInFinally:
+					AddStateRangeForLeave(leave.TargetContainer, stateRange);
+					return LongSet.Empty;
 				case Nop nop:
 					return stateRange;
 				case StLoc stloc when stloc.Variable == doFinallyBodies || stloc.Variable == skipFinallyBodies:
@@ -195,7 +207,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 					// Call to finally method.
 					// Usually these are in finally blocks, but sometimes (e.g. foreach over array),
 					// the C# compiler puts the call to a finally method outside the try-finally block.
-					finallyMethodToStateRange.Add((IMethod)call.Method.MemberDefinition, stateRange);
+					finallyMethodToStateRange!.Add((IMethod)call.Method.MemberDefinition, stateRange);
 					return LongSet.Empty; // return Empty since we executed user code (the finally method)
 				case StObj stobj when mode == StateRangeAnalysisMode.IteratorMoveNext:
 				{
@@ -229,6 +241,15 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				ranges.Add(block, stateRange);
 		}
 
+		private void AddStateRangeForLeave(BlockContainer target, LongSet stateRange)
+		{
+			if (rangesForLeave!.TryGetValue(target, out var existingRange))
+				rangesForLeave[target] = stateRange.UnionWith(existingRange);
+			else
+				rangesForLeave.Add(target, stateRange);
+		}
+
+
 		/// <summary>
 		/// Gets a mapping from states to blocks.
 		/// 
@@ -257,6 +278,12 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 					}
 				}
 			}
+		}
+
+		public LongDict<BlockContainer> GetBlockStateSetMappingForLeave()
+		{
+			Debug.Assert(mode == StateRangeAnalysisMode.AwaitInFinally);
+			return LongDict.Create(rangesForLeave!.Select(kv => (kv.Value, kv.Key)));
 		}
 	}
 }

@@ -42,8 +42,12 @@ using ICSharpCode.Decompiler.Output;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
+using ICSharpCode.ILSpy.Options;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
+using ICSharpCode.ILSpyX;
+
+using LanguageVersion = ICSharpCode.ILSpyX.LanguageVersion;
 
 namespace ICSharpCode.ILSpy
 {
@@ -113,6 +117,7 @@ namespace ICSharpCode.ILSpy
 						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp8_0.ToString(), "C# 8.0 / VS 2019"),
 						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp9_0.ToString(), "C# 9.0 / VS 2019.8"),
 						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp10_0.ToString(), "C# 10.0 / VS 2022"),
+						new LanguageVersion(Decompiler.CSharp.LanguageVersion.CSharp11_0.ToString(), "C# 11.0 / VS 2022.4"),
 					};
 				}
 				return versions;
@@ -449,6 +454,10 @@ namespace ICSharpCode.ILSpy
 				{
 					output.WriteLine("// This assembly was compiled using the /deterministic option.");
 				}
+				if (module.Metadata.MetadataKind != MetadataKind.Ecma335)
+				{
+					output.WriteLine("// This assembly was loaded with Windows Runtime projections applied.");
+				}
 				if (metadata.IsAssembly)
 				{
 					var asm = metadata.GetAssemblyDefinition();
@@ -496,21 +505,23 @@ namespace ICSharpCode.ILSpy
 			readonly DecompilationOptions options;
 
 			public ILSpyWholeProjectDecompiler(LoadedAssembly assembly, DecompilationOptions options)
-				: base(options.DecompilerSettings, assembly.GetAssemblyResolver(), assembly.GetAssemblyReferenceClassifier(), assembly.GetDebugInfoOrNull())
+				: base(options.DecompilerSettings, assembly.GetAssemblyResolver(), assembly.GetAssemblyReferenceClassifier(options.DecompilerSettings.ApplyWindowsRuntimeProjections), assembly.GetDebugInfoOrNull())
 			{
 				this.assembly = assembly;
 				this.options = options;
 			}
 
-			protected override IEnumerable<(string itemType, string fileName)> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)
+			protected override IEnumerable<(string itemType, string fileName, List<PartialTypeInfo> partialTypes)> WriteResourceToFile(string fileName, string resourceName, Stream entryStream)
 			{
+				var context = new ResourceFileHandlerContext(options);
 				foreach (var handler in App.ExportProvider.GetExportedValues<IResourceFileHandler>())
 				{
-					if (handler.CanHandle(fileName, options))
+					if (handler.CanHandle(fileName, context))
 					{
 						entryStream.Position = 0;
-						fileName = handler.WriteResourceToFile(assembly, fileName, entryStream, options);
-						return new[] { (handler.EntryType, fileName) };
+						fileName = handler.WriteResourceToFile(assembly, fileName, entryStream, context);
+
+						return new[] { (handler.EntryType, fileName, context.PartialTypes) };
 					}
 				}
 				return base.WriteResourceToFile(fileName, resourceName, entryStream);
@@ -522,7 +533,7 @@ namespace ICSharpCode.ILSpy
 			CSharpAmbience ambience = new CSharpAmbience();
 			// Do not forget to update CSharpAmbienceTests.ILSpyMainTreeViewTypeFlags, if this ever changes.
 			ambience.ConversionFlags = ConversionFlags.ShowTypeParameterList | ConversionFlags.PlaceReturnTypeAfterParameterList;
-			if (new DecompilationOptions().DecompilerSettings.LiftNullables)
+			if (MainWindow.Instance.CurrentDecompilerSettings.LiftNullables)
 			{
 				ambience.ConversionFlags |= ConversionFlags.UseNullableSpecifierForValueTypes;
 			}
@@ -710,7 +721,7 @@ namespace ICSharpCode.ILSpy
 		public override bool ShowMember(IEntity member)
 		{
 			PEFile assembly = member.ParentModule.PEFile;
-			return showAllMembers || !CSharpDecompiler.MemberIsHidden(assembly, member.MetadataToken, new DecompilationOptions().DecompilerSettings);
+			return showAllMembers || !CSharpDecompiler.MemberIsHidden(assembly, member.MetadataToken, MainWindow.Instance.CurrentDecompilerSettings);
 		}
 
 		public override RichText GetRichTextTooltip(IEntity entity)
@@ -719,7 +730,7 @@ namespace ICSharpCode.ILSpy
 			var output = new StringWriter();
 			var decoratedWriter = new TextWriterTokenWriter(output);
 			var writer = new CSharpHighlightingTokenWriter(TokenWriter.InsertRequiredSpaces(decoratedWriter), locatable: decoratedWriter);
-			var settings = new DecompilationOptions().DecompilerSettings;
+			var settings = MainWindow.Instance.CurrentDecompilerSettings;
 			if (!settings.LiftNullables)
 			{
 				flags &= ~ConversionFlags.UseNullableSpecifierForValueTypes;
@@ -727,6 +738,10 @@ namespace ICSharpCode.ILSpy
 			if (settings.RecordClasses)
 			{
 				flags |= ConversionFlags.SupportRecordClasses;
+			}
+			if (settings.RecordStructs)
+			{
+				flags |= ConversionFlags.SupportRecordStructs;
 			}
 			if (settings.InitAccessors)
 			{
