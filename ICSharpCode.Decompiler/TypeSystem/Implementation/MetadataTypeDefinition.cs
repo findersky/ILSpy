@@ -58,6 +58,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		IEvent[] events;
 		IMethod[] methods;
 		List<IType> directBaseTypes;
+		bool defaultMemberNameInitialized;
 		string defaultMemberName;
 
 		internal MetadataTypeDefinition(MetadataModule module, TypeDefinitionHandle handle)
@@ -323,7 +324,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 					EntityHandle baseTypeHandle = td.BaseType;
 					if (!baseTypeHandle.IsNil)
 					{
-						baseType = module.ResolveType(baseTypeHandle, context);
+						baseType = module.ResolveType(baseTypeHandle, context, metadata.GetCustomAttributes(this.handle), Nullability.Oblivious);
 					}
 				}
 				catch (BadImageFormatException)
@@ -459,7 +460,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		public string DefaultMemberName {
 			get {
 				string defaultMemberName = LazyInit.VolatileRead(ref this.defaultMemberName);
-				if (defaultMemberName != null)
+				if (defaultMemberName != null || defaultMemberNameInitialized)
 					return defaultMemberName;
 				var metadata = module.metadata;
 				var typeDefinition = metadata.GetTypeDefinition(handle);
@@ -475,7 +476,9 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 						break;
 					}
 				}
-				return LazyInit.GetOrSet(ref this.defaultMemberName, defaultMemberName ?? "Item");
+				defaultMemberName = LazyInit.GetOrSet(ref this.defaultMemberName, defaultMemberName);
+				defaultMemberNameInitialized = true;
+				return defaultMemberName;
 			}
 		}
 		#endregion
