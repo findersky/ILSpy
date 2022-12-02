@@ -89,10 +89,10 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
 		};
 
-		[Test, Ignore("Implement VB async/await")]
+		[Test]
 		public async Task Async([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
-			await Run(options: options);
+			await Run(options: options | CompilerOptions.Library);
 		}
 
 		[Test] // TODO: legacy VB compound assign
@@ -131,6 +131,12 @@ namespace ICSharpCode.Decompiler.Tests
 			await Run(options: options | CompilerOptions.Library);
 		}
 
+		[Test]
+		public async Task VBNonGenericForEach([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			await Run(options: options | CompilerOptions.Library);
+		}
+
 		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null)
 		{
 			var vbFile = Path.Combine(TestCasePath, testName + ".vb");
@@ -142,7 +148,7 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 
 			var executable = await Tester.CompileVB(vbFile, options | CompilerOptions.ReferenceVisualBasic, exeFile).ConfigureAwait(false);
-			var decompiled = await Tester.DecompileCSharp(executable.PathToAssembly, settings).ConfigureAwait(false);
+			var decompiled = await Tester.DecompileCSharp(executable.PathToAssembly, settings ?? new DecompilerSettings { FileScopedNamespaces = false }).ConfigureAwait(false);
 
 			CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(options).ToArray());
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));
