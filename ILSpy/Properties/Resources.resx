@@ -222,9 +222,6 @@ Are you sure you want to continue?</value>
   <data name="DEBUGDumpPDBAsXML" xml:space="preserve">
     <value>DEBUG -- Dump PDB as XML</value>
   </data>
-  <data name="DarkMode" xml:space="preserve">
-    <value>Dark Mode</value>
-  </data>
   <data name="DebugSteps" xml:space="preserve">
     <value>Debug Steps</value>
   </data>
@@ -542,6 +539,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DisplaySettingsPanel_Font" xml:space="preserve">
     <value>Font:</value>
+  </data>
+  <data name="DisplaySettingsPanel_Theme" xml:space="preserve">
+	  <value>Theme:</value>
   </data>
   <data name="Download" xml:space="preserve">
     <value>Download</value>
@@ -906,6 +906,9 @@ Do you want to continue?</value>
   </data>
   <data name="TabSize" xml:space="preserve">
     <value>Tab size:</value>
+  </data>
+  <data name="Theme" xml:space="preserve">
+	  <value>Theme</value>
   </data>
   <data name="ToggleFolding" xml:space="preserve">
     <value>Toggle All Folding</value>
