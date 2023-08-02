@@ -33,6 +33,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		None,
 
 		CompilerGenerated,
+		CompilerFeatureRequired,
 		/// <summary>
 		/// Marks a method as extension method; or a class as containing extension methods.
 		/// </summary>
@@ -89,10 +90,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		In,
 		Out,
 		Optional,
+		DefaultParameterValue,
 		CallerMemberName,
 		CallerFilePath,
 		CallerLineNumber,
-		LifetimeAnnotation,
+		ScopedRef,
 
 		// Type parameter attributes:
 		IsUnmanaged,
@@ -118,6 +120,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		static readonly TopLevelTypeName[] typeNames = new TopLevelTypeName[Count]{
 			default,
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CompilerGeneratedAttribute)),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "CompilerFeatureRequiredAttribute"),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(ExtensionAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(DynamicAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(TupleElementNamesAttribute)),
@@ -165,10 +168,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(InAttribute)),
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(OutAttribute)),
 			new TopLevelTypeName("System.Runtime.InteropServices", nameof(OptionalAttribute)),
+			new TopLevelTypeName("System.Runtime.InteropServices", nameof(DefaultParameterValueAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerMemberNameAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerFilePathAttribute)),
 			new TopLevelTypeName("System.Runtime.CompilerServices", nameof(CallerLineNumberAttribute)),
-			new TopLevelTypeName("System.Runtime.CompilerServices", "LifetimeAnnotationAttribute"),
+			new TopLevelTypeName("System.Runtime.CompilerServices", "ScopedRefAttribute"),
 			// Type parameter attributes:
 			new TopLevelTypeName("System.Runtime.CompilerServices", "IsUnmanagedAttribute"),
 			// Marshalling attributes:
@@ -220,6 +224,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				case KnownAttribute.MarshalAs:
 				case KnownAttribute.PermissionSet:
 				case KnownAttribute.Optional:
+				case KnownAttribute.DefaultParameterValue:
 				case KnownAttribute.In:
 				case KnownAttribute.Out:
 				case KnownAttribute.IndexerName:

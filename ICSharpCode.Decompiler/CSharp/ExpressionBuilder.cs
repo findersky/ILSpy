@@ -617,6 +617,14 @@ namespace ICSharpCode.Decompiler.CSharp
 				.WithRR(new ConstantResolveResult(compilation.FindType(KnownTypeCode.String), inst.Value));
 		}
 
+		protected internal override TranslatedExpression VisitLdStrUtf8(LdStrUtf8 inst, TranslationContext context)
+		{
+			var type = new ParameterizedType(compilation.FindType(KnownTypeCode.ReadOnlySpanOfT), new[] { compilation.FindType(KnownTypeCode.Byte) });
+			return new PrimitiveExpression(inst.Value, LiteralFormat.Utf8Literal)
+				.WithILInstruction(inst)
+				.WithRR(new ConstantResolveResult(type, inst.Value));
+		}
+
 		protected internal override TranslatedExpression VisitLdNull(LdNull inst, TranslationContext context)
 		{
 			return GetDefaultValueExpression(SpecialType.NullType).WithILInstruction(inst);
@@ -1200,9 +1208,9 @@ namespace ICSharpCode.Decompiler.CSharp
 				case BinaryNumericOperator.BitXor:
 					return HandleBinaryNumeric(inst, BinaryOperatorType.ExclusiveOr, context);
 				case BinaryNumericOperator.ShiftLeft:
-					return HandleShift(inst, BinaryOperatorType.ShiftLeft);
+					return HandleShift(inst, BinaryOperatorType.ShiftLeft, context);
 				case BinaryNumericOperator.ShiftRight:
-					return HandleShift(inst, BinaryOperatorType.ShiftRight);
+					return HandleShift(inst, BinaryOperatorType.ShiftRight, context);
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -1579,7 +1587,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			var rr = resolverWithOverflowCheck.ResolveBinaryOperator(op, left.ResolveResult, right.ResolveResult);
 			if (rr.IsError || NullableType.GetUnderlyingType(rr.Type).GetStackType() != inst.UnderlyingResultType
-				|| !IsCompatibleWithSign(left.Type, inst.Sign) || !IsCompatibleWithSign(right.Type, inst.Sign))
+				|| !IsCompatibleWithSign(rr.Type, inst.Sign))
 			{
 				// Left and right operands are incompatible, so convert them to a common type
 				Sign sign = inst.Sign;
@@ -1721,13 +1729,14 @@ namespace ICSharpCode.Decompiler.CSharp
 				case BinaryOperatorType.ExclusiveOr:
 				case BinaryOperatorType.ShiftLeft:
 				case BinaryOperatorType.ShiftRight:
+				case BinaryOperatorType.UnsignedShiftRight:
 					return false;
 				default:
 					return true;
 			}
 		}
 
-		TranslatedExpression HandleShift(BinaryNumericInstruction inst, BinaryOperatorType op)
+		TranslatedExpression HandleShift(BinaryNumericInstruction inst, BinaryOperatorType op, TranslationContext context)
 		{
 			var left = Translate(inst.Left);
 			var right = Translate(inst.Right);
@@ -1736,10 +1745,27 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			Sign sign = inst.Sign;
 			var leftUType = NullableType.GetUnderlyingType(left.Type);
-			if (leftUType.IsCSharpSmallIntegerType() && sign != Sign.Unsigned && inst.UnderlyingResultType == StackType.I4)
+			bool couldUseUnsignedRightShift = (
+				sign == Sign.Unsigned && op == BinaryOperatorType.ShiftRight && settings.UnsignedRightShift
+				&& (leftUType.IsCSharpPrimitiveIntegerType() || leftUType.IsCSharpNativeIntegerType())
+				// If we need to cast to unsigned anyway, don't use >>> operator.
+				&& context.TypeHint.GetSign() != Sign.Unsigned
+			);
+			if (leftUType.IsCSharpSmallIntegerType() && inst.UnderlyingResultType == StackType.I4 &&
+				(sign != Sign.Unsigned || couldUseUnsignedRightShift))
 			{
 				// With small integer types, C# will promote to int and perform signed shifts.
 				// We thus don't need any casts in this case.
+				// The >>> operator also promotes to signed int, but then performs an unsigned shift.
+				if (sign == Sign.Unsigned)
+				{
+					op = BinaryOperatorType.UnsignedShiftRight;
+				}
+			}
+			else if (couldUseUnsignedRightShift && leftUType.GetSize() == inst.UnderlyingResultType.GetSize() && leftUType.GetSign() == Sign.Signed)
+			{
+				// Use C# 11 unsigned right shift operator. We don't need any casts in this case.
+				op = BinaryOperatorType.UnsignedShiftRight;
 			}
 			else
 			{
@@ -1784,6 +1810,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			{
 				target = Translate(inst.Target, loadType);
 			}
+			var opType = OperatorDeclaration.GetOperatorType(inst.Method.Name);
+			if (opType != null && OperatorDeclaration.IsChecked(opType.Value))
+			{
+				target.Expression.AddAnnotation(AddCheckedBlocks.CheckedAnnotation);
+			}
+			else if (ReplaceMethodCallsWithOperators.HasCheckedEquivalent(inst.Method))
+			{
+				target.Expression.AddAnnotation(AddCheckedBlocks.UncheckedAnnotation);
+			}
 			if (UserDefinedCompoundAssign.IsStringConcat(inst.Method))
 			{
 				Debug.Assert(inst.Method.Parameters.Count == 2);
@@ -1796,7 +1831,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			else if (inst.Method.Parameters.Count == 2)
 			{
 				var value = Translate(inst.Value).ConvertTo(inst.Method.Parameters[1].Type, this);
-				AssignmentOperatorType? op = GetAssignmentOperatorTypeFromMetadataName(inst.Method.Name);
+				AssignmentOperatorType? op = GetAssignmentOperatorTypeFromMetadataName(inst.Method.Name, settings);
 				Debug.Assert(op != null);
 
 				return new AssignmentExpression(target, op.Value, value)
@@ -1814,7 +1849,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		internal static AssignmentOperatorType? GetAssignmentOperatorTypeFromMetadataName(string name)
+		internal static AssignmentOperatorType? GetAssignmentOperatorTypeFromMetadataName(string name, DecompilerSettings settings)
 		{
 			switch (name)
 			{
@@ -1838,6 +1873,8 @@ namespace ICSharpCode.Decompiler.CSharp
 					return AssignmentOperatorType.ShiftLeft;
 				case "op_RightShift":
 					return AssignmentOperatorType.ShiftRight;
+				case "op_UnsignedRightShift" when settings.UnsignedRightShift:
+					return AssignmentOperatorType.UnsignedShiftRight;
 				default:
 					return null;
 			}
@@ -1848,8 +1885,10 @@ namespace ICSharpCode.Decompiler.CSharp
 			switch (name)
 			{
 				case "op_Increment":
+				case "op_CheckedIncrement":
 					return isPostfix ? UnaryOperatorType.PostIncrement : UnaryOperatorType.Increment;
 				case "op_Decrement":
+				case "op_CheckedDecrement":
 					return isPostfix ? UnaryOperatorType.PostDecrement : UnaryOperatorType.Decrement;
 				default:
 					return null;
@@ -1879,7 +1918,22 @@ namespace ICSharpCode.Decompiler.CSharp
 				case BinaryNumericOperator.ShiftLeft:
 					return HandleCompoundShift(inst, AssignmentOperatorType.ShiftLeft);
 				case BinaryNumericOperator.ShiftRight:
-					return HandleCompoundShift(inst, AssignmentOperatorType.ShiftRight);
+					if (inst.Sign == Sign.Unsigned && inst.Type.GetSign() == Sign.Signed)
+					{
+						Debug.Assert(settings.UnsignedRightShift);
+						return HandleCompoundShift(inst, AssignmentOperatorType.UnsignedShiftRight);
+					}
+					else if (inst.Sign == Sign.Unsigned && inst.Type.IsCSharpSmallIntegerType() && settings.UnsignedRightShift)
+					{
+						// For small unsigned integer types promoted to signed int, the sign bit will be zero,
+						// so there is no difference between signed and unsigned shift.
+						// However the IL still indicates which C# operator was used, so preserve that if the setting allows us to.
+						return HandleCompoundShift(inst, AssignmentOperatorType.UnsignedShiftRight);
+					}
+					else
+					{
+						return HandleCompoundShift(inst, AssignmentOperatorType.ShiftRight);
+					}
 				default:
 					throw new ArgumentOutOfRangeException();
 			}

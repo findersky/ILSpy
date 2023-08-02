@@ -1,5 +1,5 @@
 ﻿using System;
-#if ROSLYN4
+#if CS100
 using System.Runtime.InteropServices;
 #endif
 
@@ -242,6 +242,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	}
 #endif
 }
+#if !NET60
 namespace System.Runtime.CompilerServices
 {
 	[AttributeUsage(AttributeTargets.All, AllowMultiple = true, Inherited = false)]
@@ -255,9 +256,13 @@ namespace System.Runtime.CompilerServices
 	internal class IsExternalInit
 	{
 	}
-
+#endif
+#if !NET70
 	[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
 	internal sealed class RequiredMemberAttribute : Attribute
 	{
 	}
+#endif
+#if !NET60
 }
+#endif

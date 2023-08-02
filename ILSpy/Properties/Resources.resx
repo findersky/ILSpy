@@ -279,6 +279,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.AsyncEnumerator" xml:space="preserve">
     <value>Decompile async IAsyncEnumerator methods</value>
   </data>
+  <data name="DecompilerSettings.CheckedOperators" xml:space="preserve">
+    <value>User-defined checked operators</value>
+  </data>
   <data name="DecompilerSettings.DecompileAnonymousMethodsLambdas" xml:space="preserve">
     <value>Decompile anonymous methods/lambdas</value>
   </data>
@@ -381,9 +384,6 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.IsUnmanagedAttributeOnTypeParametersShouldBeReplacedWithUnmanagedConstraints" xml:space="preserve">
     <value>IsUnmanagedAttribute on type parameters should be replaced with 'unmanaged' constraints</value>
   </data>
-  <data name="DecompilerSettings.LifetimeAnnotations" xml:space="preserve">
-    <value>'scoped' lifetime annotation</value>
-  </data>
   <data name="DecompilerSettings.NativeIntegers" xml:space="preserve">
     <value>Use nint/nuint types</value>
   </data>
@@ -392,6 +392,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.NullableReferenceTypes" xml:space="preserve">
     <value>Nullable reference types</value>
+  </data>
+  <data name="DecompilerSettings.NumericIntPtr" xml:space="preserve">
+    <value>Treat (U)IntPtr as n(u)int</value>
   </data>
   <data name="DecompilerSettings.ObjectCollectionInitializerExpressions" xml:space="preserve">
     <value>Object/collection initializer expressions</value>
@@ -432,6 +435,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.RequiredMembers" xml:space="preserve">
     <value>Required members</value>
   </data>
+  <data name="DecompilerSettings.ScopedRef" xml:space="preserve">
+    <value>'scoped' lifetime annotation</value>
+  </data>
   <data name="DecompilerSettings.SeparateLocalVariableDeclarations" xml:space="preserve">
     <value>Separate local variable declarations and initializers (int x = 5; -&gt; int x; x = 5;), if possible</value>
   </data>
@@ -446,6 +452,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.SwitchExpressions" xml:space="preserve">
     <value>Switch expressions</value>
+  </data>
+  <data name="DecompilerSettings.UnsignedRightShift" xml:space="preserve">
+    <value>Unsigned right shift (&gt;&gt;&gt;)</value>
   </data>
   <data name="DecompilerSettings.UseDiscards" xml:space="preserve">
     <value>Use discards</value>
@@ -513,6 +522,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.UseVariableNamesFromDebugSymbolsIfAvailable" xml:space="preserve">
     <value>Use variable names from debug symbols, if available</value>
   </data>
+  <data name="DecompilerSettings.Utf8StringLiterals" xml:space="preserve">
+    <value>UTF-8 string literals</value>
+  </data>
   <data name="DecompilerSettings.VBSpecificOptions" xml:space="preserve">
     <value>VB-specific options</value>
   </data>
@@ -541,7 +553,7 @@ Are you sure you want to continue?</value>
     <value>Font:</value>
   </data>
   <data name="DisplaySettingsPanel_Theme" xml:space="preserve">
-	  <value>Theme:</value>
+    <value>Theme:</value>
   </data>
   <data name="Download" xml:space="preserve">
     <value>Download</value>
@@ -644,6 +656,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="ManageAssembly_Lists" xml:space="preserve">
     <value>Manage assembly _lists...</value>
+  </data>
+  <data name="Metadata" xml:space="preserve">
+    <value>Metadata</value>
   </data>
   <data name="Misc" xml:space="preserve">
     <value>Misc</value>
@@ -908,7 +923,7 @@ Do you want to continue?</value>
     <value>Tab size:</value>
   </data>
   <data name="Theme" xml:space="preserve">
-	  <value>Theme</value>
+    <value>Theme</value>
   </data>
   <data name="ToggleFolding" xml:space="preserve">
     <value>Toggle All Folding</value>

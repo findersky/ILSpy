@@ -22,9 +22,19 @@
 						Value="{Binding RelativeSource={RelativeSource Self},
 					 Path=(ItemsControl.AlternationIndex),
 					 Converter={StaticResource BackgroundConverter}}" />
+				<Setter Property="ContextMenu">
+					<Setter.Value>
+						<ContextMenu>
+							<MenuItem Header="_Copy" Command="ApplicationCommands.Copy" />
+							<MenuItem Header="Copy _name" Command="ApplicationCommands.Copy" CommandParameter="Key" InputGestureText=" " />
+							<MenuItem Header="Copy _value" Command="ApplicationCommands.Copy" CommandParameter="Value" InputGestureText=" " />
+						</ContextMenu>
+					</Setter.Value>
+				</Setter>
 			</Style>
 		</Grid.Resources>
 		<Grid.RowDefinitions>
+			<RowDefinition />
 			<RowDefinition />
 			<RowDefinition />
 		</Grid.RowDefinitions>
@@ -32,10 +42,15 @@
 			   FontFamily="Segoe UI"
 			   FontWeight="Bold"
 			   FontSize="12pt" />
+		<local:SearchBox x:Name="resourceFilterBox" 
+			   FontFamily="Segoe UI"
+			   FontSize="9pt"
+			   Grid.Row="1"
+			   TextChanged="OnFilterTextChanged" />
 		<ListView Name="resourceListView"
 			  FontFamily="Segoe UI"
 			  FontSize="9pt"
-			  Grid.Row="1"
+			  Grid.Row="2"
 			  AlternationCount="2"
 			  ItemContainerStyle="{StaticResource alternatingWithBinding}"
 			  local:SortableGridViewColumn.SortMode="Automatic">

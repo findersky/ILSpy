@@ -18,9 +18,12 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 
 namespace ICSharpCode.ILSpy.Controls
@@ -30,6 +33,9 @@ namespace ICSharpCode.ILSpy.Controls
 	/// </summary>
 	public partial class ResourceObjectTable : UserControl
 	{
+		ICollectionView filteredView;
+		string filter;
+
 		public ResourceObjectTable(IEnumerable resources, FrameworkElement container)
 		{
 			InitializeComponent();
@@ -38,7 +44,22 @@ namespace ICSharpCode.ILSpy.Controls
 			if (!double.IsNaN(container.ActualWidth))
 				Width = Math.Max(container.ActualWidth - 45, 0);
 			MaxHeight = container.ActualHeight;
-			resourceListView.ItemsSource = resources;
+
+			filteredView = CollectionViewSource.GetDefaultView(resources);
+			filteredView.Filter = OnResourceFilter;
+			resourceListView.ItemsSource = filteredView;
+		}
+
+		private bool OnResourceFilter(object obj)
+		{
+			if (string.IsNullOrEmpty(filter))
+				return true;
+
+			if (obj is TreeNodes.ResourcesFileTreeNode.SerializedObjectRepresentation item)
+				return item.Key?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true ||
+					   item.Value?.Contains(filter, StringComparison.OrdinalIgnoreCase) == true;
+
+			return false; // make it obvious search is not working
 		}
 
 		private void OnParentSizeChanged(object sender, SizeChangedEventArgs e)
@@ -49,11 +70,38 @@ namespace ICSharpCode.ILSpy.Controls
 				MaxHeight = e.NewSize.Height;
 		}
 
+		private void OnFilterTextChanged(object sender, TextChangedEventArgs e)
+		{
+			filter = resourceFilterBox.Text;
+			filteredView?.Refresh();
+		}
+
 		void ExecuteCopy(object sender, ExecutedRoutedEventArgs args)
 		{
 			StringBuilder sb = new StringBuilder();
 			foreach (var item in resourceListView.SelectedItems)
 			{
+				if (item is TreeNodes.ResourcesFileTreeNode.SerializedObjectRepresentation so)
+				{
+					switch (args.Parameter)
+					{
+						case "Key":
+							sb.AppendLine(so.Key);
+							continue;
+
+						case "Value":
+							sb.AppendLine(so.Value);
+							continue;
+
+						case "Type":
+							sb.AppendLine(so.Type);
+							continue;
+
+						default:
+							sb.AppendLine($"{so.Key}\t{so.Value}\t{so.Type}");
+							continue;
+					}
+				}
 				sb.AppendLine(item.ToString());
 			}
 			Clipboard.SetText(sb.ToString());
