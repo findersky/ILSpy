@@ -16,45 +16,41 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System;
 using System.Collections.Generic;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 
 using ICSharpCode.Decompiler;
-using ICSharpCode.Decompiler.Disassembler;
-using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.ILSpy.Metadata
 {
 	class EventMapTableTreeNode : MetadataTableTreeNode
 	{
-		public EventMapTableTreeNode(PEFile module)
-			: base((HandleKind)0x12, module)
+		public EventMapTableTreeNode(MetadataFile metadataFile)
+			: base((HandleKind)0x12, metadataFile)
 		{
 		}
 
-		public override object Text => $"12 EventMap ({module.Metadata.GetTableRowCount(TableIndex.EventMap)})";
+		public override object Text => $"12 EventMap ({metadataFile.Metadata.GetTableRowCount(TableIndex.EventMap)})";
 
-		public override object Icon => Images.Literal;
-
-		public unsafe override bool View(ViewModels.TabPageModel tabPage)
+		public override bool View(ViewModels.TabPageModel tabPage)
 		{
 			tabPage.Title = Text.ToString();
 			tabPage.SupportsLanguageSwitching = false;
 
 			var view = Helpers.PrepareDataGrid(tabPage, this);
-			var metadata = module.Metadata;
+			var metadata = metadataFile.Metadata;
 
 			var list = new List<EventMapEntry>();
 			EventMapEntry scrollTargetEntry = default;
 
 			var length = metadata.GetTableRowCount(TableIndex.EventMap);
-			byte* ptr = metadata.MetadataPointer;
-			int metadataOffset = module.Reader.PEHeaders.MetadataStartOffset;
+			ReadOnlySpan<byte> ptr = metadata.AsReadOnlySpan();
 			for (int rid = 1; rid <= length; rid++)
 			{
-				EventMapEntry entry = new EventMapEntry(module, ptr, metadataOffset, rid);
+				EventMapEntry entry = new EventMapEntry(metadataFile, ptr, rid);
 				if (entry.RID == this.scrollTarget)
 				{
 					scrollTargetEntry = entry;
@@ -79,17 +75,16 @@ namespace ICSharpCode.ILSpy.Metadata
 			public readonly TypeDefinitionHandle Parent;
 			public readonly EventDefinitionHandle EventList;
 
-			public unsafe EventMap(byte* ptr, int typeDefSize, int eventDefSize)
+			public EventMap(ReadOnlySpan<byte> ptr, int typeDefSize, int eventDefSize)
 			{
-				Parent = MetadataTokens.TypeDefinitionHandle(Helpers.GetValue(ptr, typeDefSize));
-				EventList = MetadataTokens.EventDefinitionHandle(Helpers.GetValue(ptr + typeDefSize, eventDefSize));
+				Parent = MetadataTokens.TypeDefinitionHandle(Helpers.GetValueLittleEndian(ptr.Slice(0, typeDefSize)));
+				EventList = MetadataTokens.EventDefinitionHandle(Helpers.GetValueLittleEndian(ptr.Slice(typeDefSize, eventDefSize)));
 			}
 		}
 
-		unsafe struct EventMapEntry
+		struct EventMapEntry
 		{
-			readonly PEFile module;
-			readonly MetadataReader metadata;
+			readonly MetadataFile metadataFile;
 			readonly EventMap eventMap;
 
 			public int RID { get; }
@@ -103,34 +98,33 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			public void OnParentClick()
 			{
-				MainWindow.Instance.JumpToReference(new EntityReference(module, eventMap.Parent, protocol: "metadata"));
+				MainWindow.Instance.JumpToReference(new EntityReference(metadataFile, eventMap.Parent, protocol: "metadata"));
 			}
 
 			string parentTooltip;
-			public string ParentTooltip => GenerateTooltip(ref parentTooltip, module, eventMap.Parent);
+			public string ParentTooltip => GenerateTooltip(ref parentTooltip, metadataFile, eventMap.Parent);
 
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
 			public int EventList => MetadataTokens.GetToken(eventMap.EventList);
 
 			public void OnEventListClick()
 			{
-				MainWindow.Instance.JumpToReference(new EntityReference(module, eventMap.EventList, protocol: "metadata"));
+				MainWindow.Instance.JumpToReference(new EntityReference(metadataFile, eventMap.EventList, protocol: "metadata"));
 			}
 
 			string eventListTooltip;
-			public string EventListTooltip => GenerateTooltip(ref eventListTooltip, module, eventMap.EventList);
+			public string EventListTooltip => GenerateTooltip(ref eventListTooltip, metadataFile, eventMap.EventList);
 
-			public EventMapEntry(PEFile module, byte* ptr, int metadataOffset, int row)
+			public EventMapEntry(MetadataFile metadataFile, ReadOnlySpan<byte> ptr, int row)
 			{
-				this.module = module;
-				this.metadata = module.Metadata;
+				this.metadataFile = metadataFile;
 				this.RID = row;
-				var rowOffset = metadata.GetTableMetadataOffset(TableIndex.EventMap)
-					+ metadata.GetTableRowSize(TableIndex.EventMap) * (row - 1);
-				this.Offset = metadataOffset + rowOffset;
-				int typeDefSize = metadata.GetTableRowCount(TableIndex.TypeDef) < ushort.MaxValue ? 2 : 4;
-				int eventDefSize = metadata.GetTableRowCount(TableIndex.Event) < ushort.MaxValue ? 2 : 4;
-				this.eventMap = new EventMap(ptr + rowOffset, typeDefSize, eventDefSize);
+				var rowOffset = metadataFile.Metadata.GetTableMetadataOffset(TableIndex.EventMap)
+					+ metadataFile.Metadata.GetTableRowSize(TableIndex.EventMap) * (row - 1);
+				this.Offset = metadataFile.MetadataOffset + rowOffset;
+				int typeDefSize = metadataFile.Metadata.GetTableRowCount(TableIndex.TypeDef) < ushort.MaxValue ? 2 : 4;
+				int eventDefSize = metadataFile.Metadata.GetTableRowCount(TableIndex.Event) < ushort.MaxValue ? 2 : 4;
+				this.eventMap = new EventMap(ptr.Slice(rowOffset), typeDefSize, eventDefSize);
 				this.parentTooltip = null;
 				this.eventListTooltip = null;
 			}
