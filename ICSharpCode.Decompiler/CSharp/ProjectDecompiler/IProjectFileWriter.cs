@@ -27,7 +27,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 	/// An interface for a service that creates and writes a project file structure
 	/// for a specific module being decompiled.
 	/// </summary>
-	interface IProjectFileWriter
+	public interface IProjectFileWriter
 	{
 		/// <summary>
 		/// Writes the content of a new project file for the specified <paramref name="module"/> being decompiled.
@@ -36,6 +36,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		/// <param name="project">The information about the project being created.</param>
 		/// <param name="files">A collection of source files to be included into the project.</param>
 		/// <param name="module">The module being decompiled.</param>
-		void Write(TextWriter target, IProjectInfoProvider project, IEnumerable<ProjectItemInfo> files, PEFile module);
+		void Write(TextWriter target, IProjectInfoProvider project, IEnumerable<ProjectItemInfo> files, MetadataFile module);
 	}
 }

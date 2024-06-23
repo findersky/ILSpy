@@ -47,7 +47,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		public DecompilerSettings Settings { get; }
 		public CancellationToken CancellationToken { get; set; }
 		public Stepper Stepper { get; set; }
-		public Metadata.PEFile PEFile => TypeSystem.MainModule.PEFile;
+		public Metadata.MetadataFile PEFile => TypeSystem.MainModule.MetadataFile;
 
 		internal DecompileRun? DecompileRun { get; set; }
 		internal ResolvedUsingScope? UsingScope => DecompileRun?.UsingScope.Resolve(TypeSystem);
@@ -88,12 +88,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		/// Unlike <c>context.Stepper.Step()</c>, calls to this method are only compiled in debug builds.
 		/// </summary>
 		[Conditional("STEP")]
+		[DebuggerStepThrough]
 		internal void Step(string description, ILInstruction? near)
 		{
 			Stepper.Step(description, near);
 		}
 
 		[Conditional("STEP")]
+		[DebuggerStepThrough]
 		internal void StepStartGroup(string description, ILInstruction? near = null)
 		{
 			Stepper.StartGroup(description, near);

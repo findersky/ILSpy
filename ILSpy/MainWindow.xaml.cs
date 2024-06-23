@@ -44,6 +44,7 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.ILSpy.Analyzers;
+using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Commands;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Options;
@@ -54,6 +55,7 @@ using ICSharpCode.ILSpy.TreeNodes;
 using ICSharpCode.ILSpy.Updates;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.ILSpyX;
+using ICSharpCode.ILSpyX.FileLoaders;
 using ICSharpCode.ILSpyX.Settings;
 using ICSharpCode.TreeView;
 
@@ -152,6 +154,7 @@ namespace ICSharpCode.ILSpy
 			InitMainMenu();
 			InitWindowMenu();
 			InitToolbar();
+			InitFileLoaders();
 			ContextMenuProvider.Add(AssemblyTreeView);
 
 			this.Loaded += MainWindow_Loaded;
@@ -579,17 +582,25 @@ namespace ICSharpCode.ILSpy
 		}
 		#endregion
 
+		#region File Loader extensibility
+
+		void InitFileLoaders()
+		{
+			// TODO
+			foreach (var loader in App.ExportProvider.GetExportedValues<IFileLoader>())
+			{
+
+			}
+		}
+
+		#endregion
+
 		#region Message Hook
 		protected override void OnSourceInitialized(EventArgs e)
 		{
 			base.OnSourceInitialized(e);
 			PresentationSource source = PresentationSource.FromVisual(this);
-			HwndSource hwndSource = source as HwndSource;
-			if (hwndSource != null)
-			{
-				hwndSource.AddHook(WndProc);
-			}
-			SingleInstanceHandling.ReleaseSingleInstanceMutex();
+
 			// Validate and Set Window Bounds
 			Rect bounds = Rect.Transform(sessionSettings.WindowBounds, source.CompositionTarget.TransformToDevice);
 			var boundsRect = new System.Drawing.Rectangle((int)bounds.Left, (int)bounds.Top, (int)bounds.Width, (int)bounds.Height);
@@ -608,35 +619,6 @@ namespace ICSharpCode.ILSpy
 			this.WindowState = sessionSettings.WindowState;
 		}
 
-		unsafe IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
-		{
-			if (msg == NativeMethods.WM_COPYDATA)
-			{
-				CopyDataStruct* copyData = (CopyDataStruct*)lParam;
-				string data = new string((char*)copyData->Buffer, 0, copyData->Size / sizeof(char));
-				if (data.StartsWith("ILSpy:\r\n", StringComparison.Ordinal))
-				{
-					data = data.Substring(8);
-					List<string> lines = new List<string>();
-					using (StringReader r = new StringReader(data))
-					{
-						string line;
-						while ((line = r.ReadLine()) != null)
-							lines.Add(line);
-					}
-					var args = new CommandLineArguments(lines);
-					if (HandleCommandLineArguments(args))
-					{
-						if (!args.NoActivate && WindowState == WindowState.Minimized)
-							WindowState = WindowState.Normal;
-						HandleCommandLineArgumentsAfterShowList(args);
-						handled = true;
-						return (IntPtr)1;
-					}
-				}
-			}
-			return IntPtr.Zero;
-		}
 		#endregion
 
 		protected override void OnKeyDown(KeyEventArgs e)
@@ -669,6 +651,21 @@ namespace ICSharpCode.ILSpy
 		public event NotifyCollectionChangedEventHandler CurrentAssemblyListChanged;
 
 		List<LoadedAssembly> commandLineLoadedAssemblies = new List<LoadedAssembly>();
+
+		internal async Task HandleSingleInstanceCommandLineArguments(string[] args)
+		{
+			var cmdArgs = CommandLineArguments.Create(args);
+
+			await Dispatcher.InvokeAsync(() => {
+				if (HandleCommandLineArguments(cmdArgs))
+				{
+					if (!cmdArgs.NoActivate && WindowState == WindowState.Minimized)
+						WindowState = WindowState.Normal;
+
+					HandleCommandLineArgumentsAfterShowList(cmdArgs);
+				}
+			});
+		}
 
 		bool HandleCommandLineArguments(CommandLineArguments args)
 		{
@@ -710,7 +707,7 @@ namespace ICSharpCode.ILSpy
 						{
 							// FindNamespaceNode() blocks the UI if the assembly is not yet loaded,
 							// so use an async wait instead.
-							await asm.GetPEFileAsync().Catch<Exception>(ex => { });
+							await asm.GetMetadataFileAsync().Catch<Exception>(ex => { });
 							NamespaceTreeNode nsNode = asmNode.FindNamespaceNode(namespaceName);
 							if (nsNode != null)
 							{
@@ -736,7 +733,7 @@ namespace ICSharpCode.ILSpy
 					// Make sure we wait for assemblies being loaded...
 					// BeginInvoke in LoadedAssembly.LookupReferencedAssemblyInternal
 					await Dispatcher.InvokeAsync(delegate { }, DispatcherPriority.Normal);
-					if (mr != null && mr.ParentModule.PEFile != null)
+					if (mr != null && mr.ParentModule.MetadataFile != null)
 					{
 						found = true;
 						if (AssemblyTreeView.SelectedItem == initialSelection)
@@ -773,7 +770,7 @@ namespace ICSharpCode.ILSpy
 						{
 							// FindNodeByPath() blocks the UI if the assembly is not yet loaded,
 							// so use an async wait instead.
-							await asm.GetPEFileAsync().Catch<Exception>(ex => { });
+							await asm.GetMetadataFileAsync().Catch<Exception>(ex => { });
 						}
 					}
 					node = FindNodeByPath(activeTreeViewPath, true);
@@ -810,12 +807,12 @@ namespace ICSharpCode.ILSpy
 			}
 			foreach (LoadedAssembly asm in relevantAssemblies.ToList())
 			{
-				var module = asm.GetPEFileOrNull();
+				var module = asm.GetMetadataFileOrNull();
 				if (CanResolveTypeInPEFile(module, typeRef, out var typeHandle))
 				{
 					ICompilation compilation = typeHandle.Kind == HandleKind.ExportedType
 						? new DecompilerTypeSystem(module, module.GetAssemblyResolver())
-						: new SimpleCompilation(module, MinimalCorlib.Instance);
+						: new SimpleCompilation((PEFile)module, MinimalCorlib.Instance);
 					return memberRef == null
 						? typeRef.Resolve(new SimpleTypeResolveContext(compilation)) as ITypeDefinition
 						: (IEntity)memberRef.Resolve(new SimpleTypeResolveContext(compilation));
@@ -824,14 +821,8 @@ namespace ICSharpCode.ILSpy
 			return null;
 		}
 
-		static bool CanResolveTypeInPEFile(PEFile module, ITypeReference typeRef, out EntityHandle typeHandle)
+		static bool CanResolveTypeInPEFile(MetadataFile module, ITypeReference typeRef, out EntityHandle typeHandle)
 		{
-			if (module == null)
-			{
-				typeHandle = default;
-				return false;
-			}
-
 			// We intentionally ignore reference assemblies, so that the loop continues looking for another assembly that might have a usable definition.
 			if (module.IsReferenceAssembly())
 			{
@@ -1259,7 +1250,7 @@ namespace ICSharpCode.ILSpy
 			{
 				case LoadedAssembly lasm:
 					return assemblyListTreeNode.FindAssemblyNode(lasm);
-				case PEFile asm:
+				case MetadataFile asm:
 					return assemblyListTreeNode.FindAssemblyNode(asm);
 				case Resource res:
 					return assemblyListTreeNode.FindResourceNode(res);
@@ -1314,7 +1305,7 @@ namespace ICSharpCode.ILSpy
 					break;
 				case EntityReference unresolvedEntity:
 					string protocol = unresolvedEntity.Protocol ?? "decompile";
-					PEFile file = unresolvedEntity.ResolveAssembly(assemblyList) as PEFile;
+					var file = unresolvedEntity.ResolveAssembly(assemblyList);
 					if (file == null)
 					{
 						break;
@@ -1385,7 +1376,7 @@ namespace ICSharpCode.ILSpy
 		{
 			e.Handled = true;
 			OpenFileDialog dlg = new OpenFileDialog();
-			dlg.Filter = ".NET assemblies|*.dll;*.exe;*.winmd|Nuget Packages (*.nupkg)|*.nupkg|Portable Program Database (*.pdb)|*.pdb|All files|*.*";
+			dlg.Filter = ".NET assemblies|*.dll;*.exe;*.winmd;*.wasm|Nuget Packages (*.nupkg)|*.nupkg|Portable Program Database (*.pdb)|*.pdb|All files|*.*";
 			dlg.Multiselect = true;
 			dlg.RestoreDirectory = true;
 			if (dlg.ShowDialog() == true)

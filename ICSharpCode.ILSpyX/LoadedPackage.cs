@@ -71,7 +71,10 @@ namespace ICSharpCode.ILSpyX
 			foreach (var entry in this.Entries)
 			{
 				var (dirname, filename) = SplitName(entry.Name);
-				GetFolder(dirname).Entries.Add(new FolderEntry(filename, entry));
+				if (!string.IsNullOrEmpty(filename))
+				{
+					GetFolder(dirname).Entries.Add(new FolderEntry(filename, entry));
+				}
 			}
 			this.RootFolder = rootFolder;
 
@@ -273,52 +276,52 @@ namespace ICSharpCode.ILSpyX
 		public List<PackageFolder> Folders { get; } = new List<PackageFolder>();
 		public List<PackageEntry> Entries { get; } = new List<PackageEntry>();
 
-		public PEFile? Resolve(IAssemblyReference reference)
+		public MetadataFile? Resolve(IAssemblyReference reference)
 		{
 			var asm = ResolveFileName(reference.Name + ".dll");
 			if (asm != null)
 			{
-				return asm.GetPEFileOrNull();
+				return asm.GetMetadataFileOrNull();
 			}
 			return parent?.Resolve(reference);
 		}
 
-		public Task<PEFile?> ResolveAsync(IAssemblyReference reference)
+		public Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
 		{
 			var asm = ResolveFileName(reference.Name + ".dll");
 			if (asm != null)
 			{
-				return asm.GetPEFileOrNullAsync();
+				return asm.GetMetadataFileOrNullAsync();
 			}
 			if (parent != null)
 			{
 				return parent.ResolveAsync(reference);
 			}
-			return Task.FromResult<PEFile?>(null);
+			return Task.FromResult<MetadataFile?>(null);
 		}
 
-		public PEFile? ResolveModule(PEFile mainModule, string moduleName)
+		public MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName)
 		{
 			var asm = ResolveFileName(moduleName + ".dll");
 			if (asm != null)
 			{
-				return asm.GetPEFileOrNull();
+				return asm.GetMetadataFileOrNull();
 			}
 			return parent?.ResolveModule(mainModule, moduleName);
 		}
 
-		public Task<PEFile?> ResolveModuleAsync(PEFile mainModule, string moduleName)
+		public Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName)
 		{
 			var asm = ResolveFileName(moduleName + ".dll");
 			if (asm != null)
 			{
-				return asm.GetPEFileOrNullAsync();
+				return asm.GetMetadataFileOrNullAsync();
 			}
 			if (parent != null)
 			{
 				return parent.ResolveModuleAsync(mainModule, moduleName);
 			}
-			return Task.FromResult<PEFile?>(null);
+			return Task.FromResult<MetadataFile?>(null);
 		}
 
 		readonly Dictionary<string, LoadedAssembly?> assemblies = new Dictionary<string, LoadedAssembly?>(StringComparer.OrdinalIgnoreCase);
@@ -336,6 +339,7 @@ namespace ICSharpCode.ILSpyX
 				{
 					asm = new LoadedAssembly(
 						package.LoadedAssembly, entry.Name,
+						fileLoaders: package.LoadedAssembly.AssemblyList.LoaderRegistry,
 						assemblyResolver: this,
 						stream: Task.Run(entry.TryOpenStream),
 						applyWinRTProjections: package.LoadedAssembly.AssemblyList.ApplyWinRTProjections,

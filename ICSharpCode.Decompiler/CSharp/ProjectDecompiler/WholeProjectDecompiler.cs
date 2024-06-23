@@ -37,8 +37,6 @@ using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
-using Microsoft.Win32;
-
 using static ICSharpCode.Decompiler.Metadata.MetadataExtensions;
 
 namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
@@ -101,16 +99,17 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		#endregion
 
 		public WholeProjectDecompiler(IAssemblyResolver assemblyResolver)
-			: this(new DecompilerSettings(), assemblyResolver, assemblyReferenceClassifier: null, debugInfoProvider: null)
+			: this(new DecompilerSettings(), assemblyResolver, projectWriter: null, assemblyReferenceClassifier: null, debugInfoProvider: null)
 		{
 		}
 
 		public WholeProjectDecompiler(
 			DecompilerSettings settings,
 			IAssemblyResolver assemblyResolver,
+			IProjectFileWriter projectWriter,
 			AssemblyReferenceClassifier assemblyReferenceClassifier,
 			IDebugInfoProvider debugInfoProvider)
-			: this(settings, Guid.NewGuid(), assemblyResolver, assemblyReferenceClassifier, debugInfoProvider)
+			: this(settings, Guid.NewGuid(), assemblyResolver, projectWriter, assemblyReferenceClassifier, debugInfoProvider)
 		{
 		}
 
@@ -118,6 +117,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			DecompilerSettings settings,
 			Guid projectGuid,
 			IAssemblyResolver assemblyResolver,
+			IProjectFileWriter projectWriter,
 			AssemblyReferenceClassifier assemblyReferenceClassifier,
 			IDebugInfoProvider debugInfoProvider)
 		{
@@ -126,23 +126,23 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			AssemblyResolver = assemblyResolver ?? throw new ArgumentNullException(nameof(assemblyResolver));
 			AssemblyReferenceClassifier = assemblyReferenceClassifier ?? new AssemblyReferenceClassifier();
 			DebugInfoProvider = debugInfoProvider;
-			projectWriter = Settings.UseSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Create() : ProjectFileWriterDefault.Create();
+			this.projectWriter = projectWriter ?? (Settings.UseSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Create() : ProjectFileWriterDefault.Create());
 		}
 
 		// per-run members
 		HashSet<string> directories = new HashSet<string>(Platform.FileNameComparer);
 		readonly IProjectFileWriter projectWriter;
 
-		public void DecompileProject(PEFile moduleDefinition, string targetDirectory, CancellationToken cancellationToken = default(CancellationToken))
+		public void DecompileProject(MetadataFile file, string targetDirectory, CancellationToken cancellationToken = default(CancellationToken))
 		{
-			string projectFileName = Path.Combine(targetDirectory, CleanUpFileName(moduleDefinition.Name) + ".csproj");
+			string projectFileName = Path.Combine(targetDirectory, CleanUpFileName(file.Name) + ".csproj");
 			using (var writer = new StreamWriter(projectFileName))
 			{
-				DecompileProject(moduleDefinition, targetDirectory, writer, cancellationToken);
+				DecompileProject(file, targetDirectory, writer, cancellationToken);
 			}
 		}
 
-		public ProjectId DecompileProject(PEFile moduleDefinition, string targetDirectory, TextWriter projectFileWriter, CancellationToken cancellationToken = default(CancellationToken))
+		public ProjectId DecompileProject(MetadataFile file, string targetDirectory, TextWriter projectFileWriter, CancellationToken cancellationToken = default(CancellationToken))
 		{
 			if (string.IsNullOrEmpty(targetDirectory))
 			{
@@ -150,23 +150,27 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			}
 			TargetDirectory = targetDirectory;
 			directories.Clear();
-			var resources = WriteResourceFilesInProject(moduleDefinition).ToList();
-			var files = WriteCodeFilesInProject(moduleDefinition, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
+			var resources = WriteResourceFilesInProject(file).ToList();
+			var files = WriteCodeFilesInProject(file, resources.SelectMany(r => r.PartialTypes ?? Enumerable.Empty<PartialTypeInfo>()).ToList(), cancellationToken).ToList();
 			files.AddRange(resources);
-			files.AddRange(WriteMiscellaneousFilesInProject(moduleDefinition));
+			var module = file as PEFile;
+			if (module != null)
+			{
+				files.AddRange(WriteMiscellaneousFilesInProject(module));
+			}
 			if (StrongNameKeyFile != null)
 			{
 				File.Copy(StrongNameKeyFile, Path.Combine(targetDirectory, Path.GetFileName(StrongNameKeyFile)), overwrite: true);
 			}
 
-			projectWriter.Write(projectFileWriter, this, files, moduleDefinition);
+			projectWriter.Write(projectFileWriter, this, files, file);
 
-			string platformName = TargetServices.GetPlatformName(moduleDefinition);
+			string platformName = module != null ? TargetServices.GetPlatformName(module) : "AnyCPU";
 			return new ProjectId(platformName, ProjectGuid, ProjectTypeGuids.CSharpWindows);
 		}
 
 		#region WriteCodeFilesInProject
-		protected virtual bool IncludeTypeWhenDecompilingProject(PEFile module, TypeDefinitionHandle type)
+		protected virtual bool IncludeTypeWhenDecompilingProject(MetadataFile module, TypeDefinitionHandle type)
 		{
 			var metadata = module.Metadata;
 			var typeDef = metadata.GetTypeDefinition(type);
@@ -208,7 +212,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			return new[] { new ProjectItemInfo("Compile", assemblyInfo) };
 		}
 
-		IEnumerable<ProjectItemInfo> WriteCodeFilesInProject(Metadata.PEFile module, IList<PartialTypeInfo> partialTypes, CancellationToken cancellationToken)
+		IEnumerable<ProjectItemInfo> WriteCodeFilesInProject(MetadataFile module, IList<PartialTypeInfo> partialTypes, CancellationToken cancellationToken)
 		{
 			var metadata = module.Metadata;
 			var files = module.Metadata.GetTopLevelTypeDefinitions().Where(td => IncludeTypeWhenDecompilingProject(module, td))
@@ -244,7 +248,18 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				{
 					string dir = Settings.UseNestedDirectoriesForNamespaces ? CleanUpPath(ns) : CleanUpDirectoryName(ns);
 					if (directories.Add(dir))
-						Directory.CreateDirectory(Path.Combine(TargetDirectory, dir));
+					{
+						var path = Path.Combine(TargetDirectory, dir);
+						try
+						{
+							Directory.CreateDirectory(path);
+						}
+						catch (IOException)
+						{
+							File.Delete(path);
+							Directory.CreateDirectory(path);
+						}
+					}
 					return Path.Combine(dir, file);
 				}
 			}
@@ -306,7 +321,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		#endregion
 
 		#region WriteResourceFilesInProject
-		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(Metadata.PEFile module)
+		protected virtual IEnumerable<ProjectItemInfo> WriteResourceFilesInProject(MetadataFile module)
 		{
 			foreach (var r in module.Resources.Where(r => r.ResourceType == ResourceType.Embedded))
 			{
@@ -758,7 +773,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 			}
 		}
 
-		public static bool CanUseSdkStyleProjectFormat(PEFile module)
+		public static bool CanUseSdkStyleProjectFormat(MetadataFile module)
 		{
 			return TargetServices.DetectTargetFramework(module).Moniker != null;
 		}

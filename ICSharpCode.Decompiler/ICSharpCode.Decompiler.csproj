@@ -98,6 +98,8 @@
     <Compile Include="Disassembler\IEntityProcessor.cs" />
     <Compile Include="Disassembler\SortByNameProcessor.cs" />
     <Compile Include="IL\ApplyPdbLocalTypeInfoTypeVisitor.cs" />
+    <Compile Include="Metadata\MetadataFile.cs" />
+    <Compile Include="Metadata\ModuleReferenceMetadata.cs" />
     <Compile Include="NRTAttributes.cs" />
     <Compile Include="PartialTypeInfo.cs" />
     <Compile Include="CSharp\ProjectDecompiler\IProjectFileWriter.cs" />
@@ -145,6 +147,7 @@
     <Compile Include="TypeSystem\ITypeDefinitionOrUnknown.cs" />
     <Compile Include="Util\BitOperations.cs" />
     <Compile Include="Util\Index.cs" />
+    <Compile Include="Metadata\WebCilFile.cs" />
     <None Include="Properties\DecompilerVersionInfo.template.cs" />
     <Compile Include="Semantics\OutVarResolveResult.cs" />
     <Compile Include="SingleFileBundle.cs" />
@@ -362,6 +365,9 @@
     <Compile Include="IL\Transforms\TransformDisplayClassUsage.cs" />
     <Compile Include="IL\Transforms\UserDefinedLogicTransform.cs" />
     <Compile Include="Metadata\AssemblyReferences.cs" />
+    <Compile Include="Metadata\ExportedTypeMetadata.cs" />
+    <Compile Include="Metadata\MemberReferenceMetadata.cs" />
+    <Compile Include="Metadata\TypeReferenceMetadata.cs" />
     <Compile Include="Metadata\CodeMappingInfo.cs" />
     <Compile Include="Metadata\EnumUnderlyingTypeResolveException.cs" />
     <Compile Include="Metadata\MetadataTokenHelpers.cs" />

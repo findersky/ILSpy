@@ -27,15 +27,16 @@ using System.Threading.Tasks;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Util;
 using ICSharpCode.ILSpyX.Extensions;
+using ICSharpCode.ILSpyX.FileLoaders;
 
 namespace ICSharpCode.ILSpyX
 {
 	class AssemblyListSnapshot
 	{
 		readonly ImmutableArray<LoadedAssembly> assemblies;
-		Dictionary<string, PEFile>? asmLookupByFullName;
-		Dictionary<string, PEFile>? asmLookupByShortName;
-		Dictionary<string, List<(PEFile module, Version version)>>? asmLookupByShortNameGrouped;
+		Dictionary<string, MetadataFile>? asmLookupByFullName;
+		Dictionary<string, MetadataFile>? asmLookupByShortName;
+		Dictionary<string, List<(MetadataFile module, Version version)>>? asmLookupByShortNameGrouped;
 		public ImmutableArray<LoadedAssembly> Assemblies => assemblies;
 
 		public AssemblyListSnapshot(ImmutableArray<LoadedAssembly> assemblies)
@@ -43,7 +44,7 @@ namespace ICSharpCode.ILSpyX
 			this.assemblies = assemblies;
 		}
 
-		public async Task<PEFile?> TryGetModuleAsync(IAssemblyReference reference, string tfm)
+		public async Task<MetadataFile?> TryGetModuleAsync(IAssemblyReference reference, string tfm)
 		{
 			bool isWinRT = reference.IsWindowsRuntime;
 			if (tfm.StartsWith(".NETFramework,Version=v4.", StringComparison.Ordinal))
@@ -57,12 +58,12 @@ namespace ICSharpCode.ILSpyX
 				lookup = await CreateLoadedAssemblyLookupAsync(shortNames: isWinRT).ConfigureAwait(false);
 				lookup = LazyInit.GetOrSet(ref isWinRT ? ref asmLookupByShortName : ref asmLookupByFullName, lookup);
 			}
-			if (lookup.TryGetValue(key, out PEFile? module))
+			if (lookup.TryGetValue(key, out MetadataFile? module))
 				return module;
 			return null;
 		}
 
-		public async Task<PEFile?> TryGetSimilarModuleAsync(IAssemblyReference reference)
+		public async Task<MetadataFile?> TryGetSimilarModuleAsync(IAssemblyReference reference)
 		{
 			var lookup = LazyInit.VolatileRead(ref asmLookupByShortNameGrouped);
 			if (lookup == null)
@@ -76,14 +77,14 @@ namespace ICSharpCode.ILSpyX
 			return candidates.FirstOrDefault(c => c.version >= reference.Version).module ?? candidates.Last().module;
 		}
 
-		private async Task<Dictionary<string, PEFile>> CreateLoadedAssemblyLookupAsync(bool shortNames)
+		private async Task<Dictionary<string, MetadataFile>> CreateLoadedAssemblyLookupAsync(bool shortNames)
 		{
-			var result = new Dictionary<string, PEFile>(StringComparer.OrdinalIgnoreCase);
+			var result = new Dictionary<string, MetadataFile>(StringComparer.OrdinalIgnoreCase);
 			foreach (LoadedAssembly loaded in assemblies)
 			{
 				try
 				{
-					var module = await loaded.GetPEFileOrNullAsync().ConfigureAwait(false);
+					var module = await loaded.GetMetadataFileOrNullAsync().ConfigureAwait(false);
 					if (module == null)
 						continue;
 					var reader = module.Metadata;
@@ -109,15 +110,15 @@ namespace ICSharpCode.ILSpyX
 			return result;
 		}
 
-		private async Task<Dictionary<string, List<(PEFile module, Version version)>>> CreateLoadedAssemblyShortNameGroupLookupAsync()
+		private async Task<Dictionary<string, List<(MetadataFile module, Version version)>>> CreateLoadedAssemblyShortNameGroupLookupAsync()
 		{
-			var result = new Dictionary<string, List<(PEFile module, Version version)>>(StringComparer.OrdinalIgnoreCase);
+			var result = new Dictionary<string, List<(MetadataFile module, Version version)>>(StringComparer.OrdinalIgnoreCase);
 
 			foreach (LoadedAssembly loaded in assemblies)
 			{
 				try
 				{
-					var module = await loaded.GetPEFileOrNullAsync().ConfigureAwait(false);
+					var module = await loaded.GetMetadataFileOrNullAsync().ConfigureAwait(false);
 					var reader = module?.Metadata;
 					if (reader == null || !reader.IsAssembly)
 						continue;
@@ -128,7 +129,7 @@ namespace ICSharpCode.ILSpyX
 
 					if (!result.TryGetValue(asmDefName, out var existing))
 					{
-						existing = new List<(PEFile module, Version version)>();
+						existing = new List<(MetadataFile module, Version version)>();
 						result.Add(asmDefName, existing);
 						existing.Add(line);
 						continue;
@@ -156,7 +157,7 @@ namespace ICSharpCode.ILSpyX
 
 			foreach (var asm in assemblies)
 			{
-				LoadedAssembly.LoadResult result;
+				LoadResult result;
 				try
 				{
 					result = await asm.GetLoadResultAsync().ConfigureAwait(false);
@@ -170,7 +171,7 @@ namespace ICSharpCode.ILSpyX
 				{
 					AddDescendants(result.Package.RootFolder);
 				}
-				else if (result.PEFile != null)
+				else if (result.MetadataFile != null)
 				{
 					results.Add(asm);
 				}

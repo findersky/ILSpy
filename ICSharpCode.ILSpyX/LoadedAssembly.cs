@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection.Metadata;
@@ -31,9 +30,9 @@ using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
+using ICSharpCode.ILSpyX.FileLoaders;
 using ICSharpCode.ILSpyX.PdbProvider;
 
-using K4os.Compression.LZ4;
 
 #nullable enable
 
@@ -62,47 +61,29 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		internal static readonly ConditionalWeakTable<MetadataFile, LoadedAssembly> loadedAssemblies = new ConditionalWeakTable<MetadataFile, LoadedAssembly>();
 
-		public sealed class LoadResult
-		{
-			public MetadataFile? MetadataFile { get; }
-			public PEFile? PEFile => MetadataFile as PEFile;
-			public Exception? FileLoadException { get; }
-			public LoadedPackage? Package { get; }
-
-			public LoadResult(PEFile peFile)
-			{
-				this.MetadataFile = peFile ?? throw new ArgumentNullException(nameof(peFile));
-			}
-			public LoadResult(Exception fileLoadException, LoadedPackage package)
-			{
-				this.FileLoadException = fileLoadException ?? throw new ArgumentNullException(nameof(fileLoadException));
-				this.Package = package ?? throw new ArgumentNullException(nameof(package));
-			}
-			public LoadResult(Exception fileLoadException, MetadataFile metadataFile)
-			{
-				this.FileLoadException = fileLoadException ?? throw new ArgumentNullException(nameof(fileLoadException));
-				this.MetadataFile = metadataFile ?? throw new ArgumentNullException(nameof(metadataFile));
-			}
-		}
-
 		readonly Task<LoadResult> loadingTask;
 		readonly AssemblyList assemblyList;
 		readonly string fileName;
 		readonly string shortName;
 		readonly IAssemblyResolver? providedAssemblyResolver;
+		readonly FileLoaderRegistry? fileLoaders;
 		readonly bool applyWinRTProjections;
 		readonly bool useDebugSymbols;
 
 		public LoadedAssembly? ParentBundle { get; }
 
 		public LoadedAssembly(AssemblyList assemblyList, string fileName,
-			Task<Stream?>? stream = null, IAssemblyResolver? assemblyResolver = null, string? pdbFileName = null,
+			Task<Stream?>? stream = null,
+			FileLoaderRegistry? fileLoaders = null,
+			IAssemblyResolver? assemblyResolver = null,
+			string? pdbFileName = null,
 			bool applyWinRTProjections = false, bool useDebugSymbols = false)
 		{
 			this.assemblyList = assemblyList ?? throw new ArgumentNullException(nameof(assemblyList));
 			this.fileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
 			this.PdbFileName = pdbFileName;
 			this.providedAssemblyResolver = assemblyResolver;
+			this.fileLoaders = fileLoaders;
 			this.applyWinRTProjections = applyWinRTProjections;
 			this.useDebugSymbols = useDebugSymbols;
 
@@ -111,9 +92,10 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		public LoadedAssembly(LoadedAssembly bundle, string fileName, Task<Stream?>? stream,
+			FileLoaderRegistry? fileLoaders = null,
 			IAssemblyResolver? assemblyResolver = null,
 			bool applyWinRTProjections = false, bool useDebugSymbols = false)
-			: this(bundle.assemblyList, fileName, stream, assemblyResolver, null,
+			: this(bundle.assemblyList, fileName, stream, fileLoaders, assemblyResolver, null,
 				  applyWinRTProjections, useDebugSymbols)
 		{
 			this.ParentBundle = bundle;
@@ -133,7 +115,7 @@ namespace ICSharpCode.ILSpyX
 			var value = LazyInit.VolatileRead(ref targetFrameworkId);
 			if (value == null)
 			{
-				var assembly = await GetPEFileAsync().ConfigureAwait(false);
+				var assembly = await GetMetadataFileAsync().ConfigureAwait(false);
 				value = assembly.DetectTargetFrameworkId() ?? string.Empty;
 				value = LazyInit.GetOrSet(ref targetFrameworkId, value);
 			}
@@ -148,7 +130,7 @@ namespace ICSharpCode.ILSpyX
 			var value = LazyInit.VolatileRead(ref runtimePack);
 			if (value == null)
 			{
-				var assembly = await GetPEFileAsync().ConfigureAwait(false);
+				var assembly = await GetMetadataFileAsync().ConfigureAwait(false);
 				value = assembly.DetectRuntimePack() ?? string.Empty;
 				value = LazyInit.GetOrSet(ref runtimePack, value);
 			}
@@ -169,27 +151,27 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Gets the <see cref="PEFile"/>.
+		/// Gets the <see cref="MetadataFile"/>.
 		/// </summary>
-		public async Task<PEFile> GetPEFileAsync()
+		public async Task<MetadataFile> GetMetadataFileAsync()
 		{
 			var loadResult = await loadingTask.ConfigureAwait(false);
-			if (loadResult.PEFile != null)
-				return loadResult.PEFile;
+			if (loadResult.MetadataFile != null)
+				return loadResult.MetadataFile;
 			else
-				throw loadResult.FileLoadException!;
+				throw loadResult.FileLoadException ?? new MetadataFileNotSupportedException();
 		}
 
 		/// <summary>
 		/// Gets the <see cref="PEFile"/>.
 		/// Returns null in case of load errors.
 		/// </summary>
-		public PEFile? GetPEFileOrNull()
+		public MetadataFile? GetMetadataFileOrNull()
 		{
 			try
 			{
 				var loadResult = loadingTask.GetAwaiter().GetResult();
-				return loadResult.PEFile;
+				return loadResult.MetadataFile;
 			}
 			catch (Exception ex)
 			{
@@ -199,15 +181,15 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		/// <summary>
-		/// Gets the <see cref="PEFile"/>.
+		/// Gets the <see cref="MetadataFile"/>.
 		/// Returns null in case of load errors.
 		/// </summary>
-		public async Task<PEFile?> GetPEFileOrNullAsync()
+		public async Task<MetadataFile?> GetMetadataFileOrNullAsync()
 		{
 			try
 			{
 				var loadResult = await loadingTask.ConfigureAwait(false);
-				return loadResult.PEFile;
+				return loadResult.MetadataFile;
 			}
 			catch (Exception ex)
 			{
@@ -228,7 +210,7 @@ namespace ICSharpCode.ILSpyX
 		public ICompilation? GetTypeSystemOrNull()
 		{
 			return LazyInitializer.EnsureInitialized(ref this.typeSystem, () => {
-				var module = GetPEFileOrNull();
+				var module = GetMetadataFileOrNull();
 				if (module == null)
 					return null!;
 				return new SimpleCompilation(
@@ -247,7 +229,7 @@ namespace ICSharpCode.ILSpyX
 			{
 				if (typeSystemWithOptions != null && options == currentTypeSystemOptions)
 					return typeSystemWithOptions;
-				var module = GetPEFileOrNull();
+				var module = GetMetadataFileOrNull();
 				if (module == null)
 					return null;
 				currentTypeSystemOptions = options;
@@ -312,7 +294,7 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		public bool IsLoadedAsValidAssembly {
 			get {
-				return loadingTask.Status == TaskStatus.RanToCompletion && loadingTask.Result.PEFile != null;
+				return loadingTask.Status == TaskStatus.RanToCompletion && loadingTask.Result.MetadataFile != null;
 			}
 		}
 
@@ -331,140 +313,111 @@ namespace ICSharpCode.ILSpyX
 
 		async Task<LoadResult> LoadAsync(Task<Stream?>? streamTask)
 		{
-			// runs on background thread
-			var stream = streamTask != null ? await streamTask.ConfigureAwait(false) : null;
-			if (stream != null)
+			using var stream = await PrepareStream();
+			FileLoadContext settings = new FileLoadContext(applyWinRTProjections, ParentBundle);
+
+			LoadResult? result = null;
+
+			if (fileLoaders != null)
 			{
-				// Read the module from a precrafted stream
-				if (!stream.CanSeek)
+				foreach (var loader in fileLoaders.RegisteredLoaders)
 				{
-					var memoryStream = new MemoryStream();
-					stream.CopyTo(memoryStream);
-					stream.Close();
-					memoryStream.Position = 0;
-					stream = memoryStream;
-				}
-				var streamOptions = stream is MemoryStream ? PEStreamOptions.PrefetchEntireImage : PEStreamOptions.Default;
-				return LoadAssembly(stream, streamOptions, applyWinRTProjections);
-			}
-			// Read the module from disk
-			Exception loadAssemblyException;
-			try
-			{
-				using (var fileStream = new FileStream(fileName, FileMode.Open, FileAccess.Read))
-				{
-					return LoadAssembly(fileStream, PEStreamOptions.PrefetchEntireImage, applyWinRTProjections);
-				}
-			}
-			catch (PEFileNotSupportedException ex)
-			{
-				loadAssemblyException = ex;
-			}
-			catch (BadImageFormatException ex)
-			{
-				loadAssemblyException = ex;
-			}
-			// Maybe its a compressed Xamarin/Mono assembly, see https://github.com/xamarin/xamarin-android/pull/4686
-			try
-			{
-				return LoadCompressedAssembly(fileName);
-			}
-			catch (InvalidDataException)
-			{
-				// Not a compressed module, try other options below
-			}
-			// If it's not a .NET module, maybe it's a single-file bundle
-			var bundle = LoadedPackage.FromBundle(fileName);
-			if (bundle != null)
-			{
-				bundle.LoadedAssembly = this;
-				return new LoadResult(loadAssemblyException, bundle);
-			}
-			// If it's not a .NET module, maybe it's a zip archive (e.g. .nupkg)
-			try
-			{
-				var zip = LoadedPackage.FromZipFile(fileName);
-				zip.LoadedAssembly = this;
-				return new LoadResult(loadAssemblyException, zip);
-			}
-			catch (InvalidDataException)
-			{
-				// Not a compressed module, try other options below
-			}
-			// or it could be a standalone portable PDB
-			try
-			{
-				using (var fileStream = new FileStream(fileName, FileMode.Open, FileAccess.Read))
-				{
-					var metadata = MetadataReaderProvider.FromMetadataStream(fileStream, MetadataStreamOptions.PrefetchMetadata);
-					var metadataFile = new MetadataFile(fileName, metadata);
-					lock (loadedAssemblies)
+					// In each iteration any of the following things may happen:
+					// Load returns null because the loader is unable to handle the file, we simply continue without recording the result.
+					// Load returns a non-null value that is either a valid result or an exception:
+					// - if it's a success, we use that and end the loop,
+					// - if it's an error, we remember the error, discarding any previous errors.
+					// Load throws an exception, remember the error, discarding any previous errors.
+					stream.Position = 0;
+					try
 					{
-						loadedAssemblies.Add(metadataFile, this);
+						var nextResult = await loader.Load(fileName, stream, settings).ConfigureAwait(false);
+						if (nextResult != null)
+						{
+							result = nextResult;
+							if (result.IsSuccess)
+							{
+								break;
+							}
+						}
 					}
-					return new LoadResult(loadAssemblyException, metadataFile);
+					catch (Exception ex)
+					{
+						result = new LoadResult { FileLoadException = ex };
+					}
 				}
 			}
-			catch (Exception)
+
+			if (result?.IsSuccess != true)
 			{
-				throw loadAssemblyException;
-			}
-		}
-
-		LoadResult LoadAssembly(Stream stream, PEStreamOptions streamOptions, bool applyWinRTProjections)
-		{
-			MetadataReaderOptions options = applyWinRTProjections
-				? MetadataReaderOptions.ApplyWindowsRuntimeProjections
-				: MetadataReaderOptions.None;
-
-			PEFile module = new PEFile(fileName, stream, streamOptions, metadataOptions: options);
-
-			debugInfoProvider = LoadDebugInfo(module);
-			lock (loadedAssemblies)
-			{
-				loadedAssemblies.Add(module, this);
-			}
-			return new LoadResult(module);
-		}
-
-		LoadResult LoadCompressedAssembly(string fileName)
-		{
-			const uint CompressedDataMagic = 0x5A4C4158; // Magic used for Xamarin compressed module header ('XALZ', little-endian)
-			using (var fileStream = new FileStream(fileName, FileMode.Open, FileAccess.Read))
-			using (var fileReader = new BinaryReader(fileStream))
-			{
-				// Read compressed file header
-				var magic = fileReader.ReadUInt32();
-				if (magic != CompressedDataMagic)
-					throw new InvalidDataException($"Xamarin compressed module header magic {magic} does not match expected {CompressedDataMagic}");
-				_ = fileReader.ReadUInt32(); // skip index into descriptor table, unused
-				int uncompressedLength = (int)fileReader.ReadUInt32();
-				int compressedLength = (int)fileStream.Length;  // Ensure we read all of compressed data
-				ArrayPool<byte> pool = ArrayPool<byte>.Shared;
-				var src = pool.Rent(compressedLength);
-				var dst = pool.Rent(uncompressedLength);
+				stream.Position = 0;
 				try
 				{
-					// fileReader stream position is now at compressed module data
-					fileStream.Read(src, 0, compressedLength);
-					// Decompress
-					LZ4Codec.Decode(src, 0, compressedLength, dst, 0, uncompressedLength);
-					// Load module from decompressed data buffer
-					using (var uncompressedStream = new MemoryStream(dst, writable: false))
-					{
-						return LoadAssembly(uncompressedStream, PEStreamOptions.PrefetchEntireImage, applyWinRTProjections);
-					}
+					MetadataReaderOptions options = applyWinRTProjections
+						? MetadataReaderOptions.ApplyWindowsRuntimeProjections
+						: MetadataReaderOptions.None;
+
+					PEFile module = new PEFile(fileName, stream, PEStreamOptions.PrefetchEntireImage, metadataOptions: options);
+					result = new LoadResult { MetadataFile = module };
 				}
-				finally
+				catch (Exception ex)
 				{
-					pool.Return(dst);
-					pool.Return(src);
+					result = new LoadResult { FileLoadException = ex };
+				}
+			}
+
+			if (result.MetadataFile != null)
+			{
+				lock (loadedAssemblies)
+				{
+					loadedAssemblies.Add(result.MetadataFile, this);
+				}
+
+				if (result.MetadataFile is PEFile module)
+				{
+					debugInfoProvider = LoadDebugInfo(module);
+				}
+			}
+			else if (result.Package != null)
+			{
+				result.Package.LoadedAssembly = this;
+			}
+			else if (result.FileLoadException != null)
+			{
+				throw result.FileLoadException;
+			}
+			return result;
+
+			async Task<Stream> PrepareStream()
+			{
+				// runs on background thread
+				var stream = streamTask != null ? await streamTask.ConfigureAwait(false) : null;
+				if (stream != null)
+				{
+					// Read the module from a precrafted stream
+					if (!stream.CanSeek)
+					{
+						var memoryStream = new MemoryStream();
+						stream.CopyTo(memoryStream);
+						stream.Close();
+						memoryStream.Position = 0;
+						stream = memoryStream;
+					}
+					return stream;
+				}
+				else
+				{
+					return new FileStream(fileName, FileMode.Open, FileAccess.Read);
 				}
 			}
 		}
 
-		IDebugInfoProvider? LoadDebugInfo(PEFile module)
+		IDebugInfoProvider? LoadDebugInfo(PEFile? module)
 		{
+			if (module == null)
+			{
+				return null;
+			}
 			if (useDebugSymbols)
 			{
 				try
@@ -489,8 +442,8 @@ namespace ICSharpCode.ILSpyX
 		public async Task<IDebugInfoProvider?> LoadDebugInfo(string fileName)
 		{
 			this.PdbFileName = fileName;
-			var assembly = await GetPEFileAsync().ConfigureAwait(false);
-			debugInfoProvider = await Task.Run(() => LoadDebugInfo(assembly));
+			var assembly = await GetMetadataFileAsync().ConfigureAwait(false);
+			debugInfoProvider = await Task.Run(() => LoadDebugInfo(assembly as PEFile));
 			return debugInfoProvider;
 		}
 
@@ -525,7 +478,7 @@ namespace ICSharpCode.ILSpyX
 				this.referenceLoadInfo = parent.LoadedAssemblyReferencesInfo;
 			}
 
-			public PEFile? Resolve(IAssemblyReference reference)
+			public MetadataFile? Resolve(IAssemblyReference reference)
 			{
 				return ResolveAsync(reference).GetAwaiter().GetResult();
 			}
@@ -542,9 +495,9 @@ namespace ICSharpCode.ILSpyX
 			/// 8) search C:\Windows\Microsoft.NET\Framework64\v4.0.30319
 			/// 9) try to find match by asm name (no tfm/version) in loaded assemblies
 			/// </summary>
-			public async Task<PEFile?> ResolveAsync(IAssemblyReference reference)
+			public async Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
 			{
-				PEFile? module;
+				MetadataFile? module;
 				// 0) if we're inside a package, look for filename.dll in parent directories
 				if (providedAssemblyResolver != null)
 				{
@@ -580,7 +533,7 @@ namespace ICSharpCode.ILSpyX
 					if (asm != null)
 					{
 						referenceLoadInfo.AddMessage(reference.FullName, MessageKind.Info, "Success - Loading from: " + file);
-						return await asm.GetPEFileOrNullAsync().ConfigureAwait(false);
+						return await asm.GetMetadataFileOrNullAsync().ConfigureAwait(false);
 					}
 					return null;
 				}
@@ -600,12 +553,12 @@ namespace ICSharpCode.ILSpyX
 				}
 			}
 
-			public PEFile? ResolveModule(PEFile mainModule, string moduleName)
+			public MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName)
 			{
 				return ResolveModuleAsync(mainModule, moduleName).GetAwaiter().GetResult();
 			}
 
-			public async Task<PEFile?> ResolveModuleAsync(PEFile mainModule, string moduleName)
+			public async Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName)
 			{
 				if (providedAssemblyResolver != null)
 				{
@@ -632,7 +585,7 @@ namespace ICSharpCode.ILSpyX
 						}
 						if (asm != null)
 						{
-							return await asm.GetPEFileOrNullAsync().ConfigureAwait(false);
+							return await asm.GetMetadataFileOrNullAsync().ConfigureAwait(false);
 						}
 					}
 				}
@@ -640,7 +593,7 @@ namespace ICSharpCode.ILSpyX
 				// Module does not exist on disk, look for one with a matching name in the assemblylist:
 				foreach (LoadedAssembly loaded in alreadyLoadedAssemblies.Assemblies)
 				{
-					var module = await loaded.GetPEFileOrNullAsync().ConfigureAwait(false);
+					var module = await loaded.GetMetadataFileOrNullAsync().ConfigureAwait(false);
 					var reader = module?.Metadata;
 					if (reader == null || reader.IsAssembly)
 						continue;
@@ -694,7 +647,7 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		public IDebugInfoProvider? GetDebugInfoOrNull()
 		{
-			if (GetPEFileOrNull() == null)
+			if (GetMetadataFileOrNull() == null)
 				return null;
 			return debugInfoProvider;
 		}

@@ -16,7 +16,6 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
@@ -24,6 +23,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Input;
 
+using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Commands;
 using ICSharpCode.ILSpyX.Settings;
 
@@ -41,7 +41,10 @@ namespace ICSharpCode.ILSpy.Options
 			AllowMultipleInstances = s.AllowMultipleInstances;
 			LoadPreviousAssemblies = s.LoadPreviousAssemblies;
 
-			AddRemoveShellIntegrationCommand = new DelegateCommand<object>(AddRemoveShellIntegration);
+			if (EnableShellIntegrationCommand)
+			{
+				AddRemoveShellIntegrationCommand = new DelegateCommand<object>(AddRemoveShellIntegration);
+			}
 		}
 
 		/// <summary>
@@ -73,13 +76,14 @@ namespace ICSharpCode.ILSpy.Options
 		}
 
 		public ICommand AddRemoveShellIntegrationCommand { get; }
+		public bool EnableShellIntegrationCommand => AppEnvironment.IsWindows;
 
 		const string rootPath = @"Software\Classes\{0}\shell";
 		const string fullPath = @"Software\Classes\{0}\shell\Open with ILSpy\command";
 
 		private void AddRemoveShellIntegration(object obj)
 		{
-			string commandLine = NativeMethods.ArgumentArrayToCommandLine(Path.ChangeExtension(Assembly.GetEntryAssembly().Location, ".exe")) + " \"%L\"";
+			string commandLine = CommandLineTools.ArgumentArrayToCommandLine(Path.ChangeExtension(Assembly.GetEntryAssembly().Location, ".exe")) + " \"%L\"";
 			if (RegistryEntriesExist())
 			{
 				if (MessageBox.Show(string.Format(Properties.Resources.RemoveShellIntegrationMessage, commandLine), "ILSpy", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)

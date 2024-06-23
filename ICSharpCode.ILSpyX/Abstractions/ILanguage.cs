@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.Reflection.Metadata;
+
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -24,7 +26,8 @@ namespace ICSharpCode.ILSpyX.Abstractions
 	public interface ILanguage
 	{
 		bool ShowMember(IEntity member);
-		string GetEntityName(PEFile module, System.Reflection.Metadata.EntityHandle handle, bool fullName, bool omitGenerics);
+		CodeMappingInfo GetCodeMappingInfo(MetadataFile module, EntityHandle member);
+		string GetEntityName(MetadataFile module, System.Reflection.Metadata.EntityHandle handle, bool fullName, bool omitGenerics);
 		string GetTooltip(IEntity entity);
 
 		string TypeToString(IType type, bool includeNamespace);

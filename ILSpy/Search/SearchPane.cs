@@ -21,7 +21,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -33,8 +32,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 
+using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Docking;
-using ICSharpCode.ILSpy.Options;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.ILSpyX;
 using ICSharpCode.ILSpyX.Extensions;
@@ -220,7 +219,14 @@ namespace ICSharpCode.ILSpy.Search
 
 			if (resultsAdded > 0 && Results.Count == MAX_RESULTS)
 			{
-				Results.Add(new SearchResult { Name = Properties.Resources.SearchAbortedMoreThan1000ResultsFound });
+				Results.Add(new SearchResult {
+					Name = Properties.Resources.SearchAbortedMoreThan1000ResultsFound,
+					Location = null!,
+					Assembly = null!,
+					Image = null!,
+					LocationImage = null!,
+					AssemblyImage = null!,
+				});
 				currentSearch.Cancel();
 			}
 		}
@@ -288,7 +294,7 @@ namespace ICSharpCode.ILSpy.Search
 
 			SearchRequest Parse(string input)
 			{
-				string[] parts = NativeMethods.CommandLineToArgumentArray(input);
+				string[] parts = CommandLineTools.CommandLineToArgumentArray(input);
 
 				SearchRequest request = new SearchRequest();
 				List<string> keywords = new List<string>();
@@ -333,7 +339,7 @@ namespace ICSharpCode.ILSpy.Search
 					string searchTerm = part.Substring(prefixLength + delimiterLength).Trim();
 					if (searchTerm.Length > 0)
 					{
-						searchTerm = NativeMethods.CommandLineToArgumentArray(searchTerm)[0];
+						searchTerm = CommandLineTools.CommandLineToArgumentArray(searchTerm)[0];
 					}
 					else
 					{
@@ -467,7 +473,7 @@ namespace ICSharpCode.ILSpy.Search
 						{
 							foreach (var loadedAssembly in assemblies)
 							{
-								var module = loadedAssembly.GetPEFileOrNull();
+								var module = loadedAssembly.GetMetadataFileOrNull();
 								if (module == null)
 									continue;
 								searcher.Search(module, cts.Token);

@@ -19,6 +19,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -60,10 +61,10 @@ namespace ICSharpCode.Decompiler.Metadata
 	public interface IAssemblyResolver
 	{
 #if !VSADDIN
-		PEFile? Resolve(IAssemblyReference reference);
-		PEFile? ResolveModule(PEFile mainModule, string moduleName);
-		Task<PEFile?> ResolveAsync(IAssemblyReference reference);
-		Task<PEFile?> ResolveModuleAsync(PEFile mainModule, string moduleName);
+		MetadataFile? Resolve(IAssemblyReference reference);
+		MetadataFile? ResolveModule(MetadataFile mainModule, string moduleName);
+		Task<MetadataFile?> ResolveAsync(IAssemblyReference reference);
+		Task<MetadataFile?> ResolveModuleAsync(MetadataFile mainModule, string moduleName);
 #endif
 	}
 
@@ -275,6 +276,42 @@ namespace ICSharpCode.Decompiler.Metadata
 			return bytes;
 		}
 
+		ImmutableArray<TypeReferenceMetadata> typeReferences;
+		public ImmutableArray<TypeReferenceMetadata> TypeReferences {
+			get {
+				var value = typeReferences;
+				if (value.IsDefault)
+				{
+					value = Metadata.TypeReferences
+						.Select(r => new TypeReferenceMetadata(Metadata, r))
+						.Where(r => r.ResolutionScope == Handle)
+						.OrderBy(r => r.Namespace)
+						.ThenBy(r => r.Name)
+						.ToImmutableArray();
+					typeReferences = value;
+				}
+				return value;
+			}
+		}
+
+		ImmutableArray<ExportedTypeMetadata> exportedTypes;
+		public ImmutableArray<ExportedTypeMetadata> ExportedTypes {
+			get {
+				var value = exportedTypes;
+				if (value.IsDefault)
+				{
+					value = Metadata.ExportedTypes
+						.Select(r => new ExportedTypeMetadata(Metadata, r))
+						.Where(r => r.Implementation == Handle)
+						.OrderBy(r => r.Namespace)
+						.ThenBy(r => r.Name)
+						.ToImmutableArray();
+					exportedTypes = value;
+				}
+				return value;
+			}
+		}
+
 		public AssemblyReference(MetadataReader metadata, AssemblyReferenceHandle handle)
 		{
 			if (metadata == null)
@@ -286,7 +323,7 @@ namespace ICSharpCode.Decompiler.Metadata
 			entry = metadata.GetAssemblyReference(handle);
 		}
 
-		public AssemblyReference(PEFile module, AssemblyReferenceHandle handle)
+		public AssemblyReference(MetadataFile module, AssemblyReferenceHandle handle)
 		{
 			if (module == null)
 				throw new ArgumentNullException(nameof(module));

@@ -19,8 +19,8 @@
 using System;
 using System.ComponentModel.Composition;
 using System.IO;
-using System.Linq;
 
+using ICSharpCode.BamlDecompiler;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
@@ -51,7 +51,7 @@ namespace ILSpy.BamlDecompiler
 
 		public string WriteResourceToFile(LoadedAssembly assembly, string fileName, Stream stream, ResourceFileHandlerContext context)
 		{
-			BamlDecompilerTypeSystem typeSystem = new BamlDecompilerTypeSystem(assembly.GetPEFileOrNull(), assembly.GetAssemblyResolver());
+			BamlDecompilerTypeSystem typeSystem = new BamlDecompilerTypeSystem(assembly.GetMetadataFileOrNull(), assembly.GetAssemblyResolver());
 			var decompiler = new XamlDecompiler(typeSystem, new BamlDecompilerSettings() {
 				ThrowOnAssemblyResolveErrors = context.DecompilationOptions.DecompilerSettings.ThrowOnAssemblyResolveErrors
 			});
