@@ -528,7 +528,7 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 			{
 				CompilerResults results = new CompilerResults();
 				results.PathToAssembly = outputFileName;
-				string testBasePath = RoundtripAssembly.TestDir;
+				string testBasePath = Roundtrip.RoundtripAssembly.TestDir;
 				if (!Directory.Exists(testBasePath))
 				{
 					Assert.Ignore($"Compilation with mcs ignored: test directory '{testBasePath}' needs to be checked out separately." + Environment.NewLine +
@@ -596,7 +596,7 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 					CompilerOptions.UseRoslyn1_3_2 => CSharp.LanguageVersion.CSharp6,
 					CompilerOptions.UseRoslyn2_10_0 => CSharp.LanguageVersion.CSharp7_3,
 					CompilerOptions.UseRoslyn3_11_0 => CSharp.LanguageVersion.CSharp9_0,
-					_ => cscOptions.HasFlag(CompilerOptions.Preview) ? CSharp.LanguageVersion.Latest : CSharp.LanguageVersion.CSharp11_0,
+					_ => cscOptions.HasFlag(CompilerOptions.Preview) ? CSharp.LanguageVersion.Latest : CSharp.LanguageVersion.CSharp12_0,
 				};
 				DecompilerSettings settings = new(langVersion) {
 					// Never use file-scoped namespaces
@@ -886,7 +886,7 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 			get {
 				if (pathToAssembly == null)
 				{
-					pathToAssembly = Path.GetTempFileName();
+					pathToAssembly = TestsAssemblyOutput.GetTempFileName();
 					tempFiles.Add(pathToAssembly);
 				}
 				return pathToAssembly;
