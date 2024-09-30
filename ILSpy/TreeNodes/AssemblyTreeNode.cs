@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -29,19 +30,21 @@ using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.ILSpy.AssemblyTree;
+using ICSharpCode.ILSpy.Controls.TreeView;
+using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Metadata;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.ILSpyX;
 using ICSharpCode.ILSpyX.FileLoaders;
 using ICSharpCode.ILSpyX.PdbProvider;
-using ICSharpCode.ILSpy.Controls.TreeView;
+using ICSharpCode.ILSpyX.TreeView;
 using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
 
 using Microsoft.Win32;
 
 using TypeDefinitionHandle = System.Reflection.Metadata.TypeDefinitionHandle;
-using ICSharpCode.ILSpyX.TreeView;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
@@ -168,6 +171,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
+		public void UpdateToolTip()
+		{
+			tooltip = null;
+			RaisePropertyChanged(nameof(ToolTip));
+		}
+
 		public override bool ShowExpander {
 			get { return !LoadedAssembly.HasLoadError; }
 		}
@@ -254,7 +263,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				ns.Children.Clear();
 			}
 			namespaces.Clear();
-			bool useNestedStructure = MainWindow.Instance.CurrentDisplaySettings.UseNestedNamespaceNodes;
+			bool useNestedStructure = SettingsService.Instance.DisplaySettings.UseNestedNamespaceNodes;
 			foreach (var type in assembly.TopLevelTypeDefinitions.OrderBy(t => t.ReflectionName, NaturalStringComparer.Instance))
 			{
 				var ns = GetOrCreateNamespaceTreeNode(type.Namespace);
@@ -320,7 +329,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				ns.Children.Clear();
 			}
 			namespaces.Clear();
-			bool useNestedStructure = MainWindow.Instance.CurrentDisplaySettings.UseNestedNamespaceNodes;
+			bool useNestedStructure = SettingsService.Instance.DisplaySettings.UseNestedNamespaceNodes;
 			foreach (var type in assembly.TopLevelTypeDefinitions.OrderBy(t => t.ReflectionName, NaturalStringComparer.Instance))
 			{
 				var ns = GetOrCreateNamespaceTreeNode(type.Namespace);
@@ -442,7 +451,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			return dataObject;
 		}
 
-		public override FilterResult Filter(FilterSettings settings)
+		public override FilterResult Filter(LanguageSettings settings)
 		{
 			if (settings.SearchTermMatches(LoadedAssembly.ShortName))
 				return FilterResult.Match;
@@ -538,7 +547,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			dlg.Filter = language.Name + " project|*" + language.ProjectFileExtension + "|" + language.Name + " single file|*" + language.FileExtension + "|All files|*.*";
 			if (dlg.ShowDialog() == true)
 			{
-				DecompilationOptions options = MainWindow.Instance.CreateDecompilationOptions();
+				var options = SettingsService.Instance.CreateDecompilationOptions(DockWorkspace.Instance.ActiveTabPage);
 				options.FullDecompilation = true;
 				if (dlg.FilterIndex == 1)
 				{
@@ -571,6 +580,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._Remove), Icon = "images/Delete")]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class RemoveAssembly : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -597,6 +607,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._Reload), Icon = "images/Refresh")]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class ReloadAssembly : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -620,17 +631,18 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			{
 				foreach (var node in context.SelectedTreeNodes)
 				{
-					paths.Add(MainWindow.GetPathForNode(node));
+					paths.Add(AssemblyTreeModel.GetPathForNode(node));
 					var la = ((AssemblyTreeNode)node).LoadedAssembly;
 					la.AssemblyList.ReloadAssembly(la.FileName);
 				}
 			}
-			MainWindow.Instance.SelectNodes(paths.Select(p => MainWindow.Instance.FindNodeByPath(p, true)).ToArray());
-			MainWindow.Instance.RefreshDecompiledView();
+			MainWindow.Instance.AssemblyTreeModel.SelectNodes(paths.Select(p => MainWindow.Instance.AssemblyTreeModel.FindNodeByPath(p, true)).ToArray());
+			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._LoadDependencies), Category = nameof(Resources.Dependencies))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class LoadDependencies : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -665,11 +677,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				}
 			}
 			await Task.WhenAll(tasks);
-			MainWindow.Instance.RefreshDecompiledView();
+			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._AddMainList), Category = nameof(Resources.Dependencies))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class AddToMainList : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -699,11 +712,12 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					node.RaisePropertyChanged(nameof(ILSpyTreeNode.IsAutoLoaded));
 				}
 			}
-			MainWindow.Instance.CurrentAssemblyList.RefreshSave();
+			MainWindow.Instance.AssemblyTreeModel.AssemblyList.RefreshSave();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._OpenContainingFolder), Category = nameof(Resources.Shell))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class OpenContainingFolder : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -756,6 +770,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._OpenCommandLineHere), Category = nameof(Resources.Shell))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class OpenCmdHere : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)

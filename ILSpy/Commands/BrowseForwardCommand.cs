@@ -16,18 +16,43 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.ComponentModel.Composition;
 using System.Windows.Input;
 
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Properties;
 
 namespace ICSharpCode.ILSpy
 {
 	[ExportToolbarCommand(ToolTip = nameof(Resources.Forward), ToolbarIcon = "Images/Forward", ToolbarCategory = nameof(Resources.Navigation), ToolbarOrder = 1)]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class BrowseForwardCommand : CommandWrapper
 	{
-		public BrowseForwardCommand()
+		private readonly AssemblyTreeModel assemblyTreeModel;
+
+		[ImportingConstructor]
+		public BrowseForwardCommand(AssemblyTreeModel assemblyTreeModel)
 			: base(NavigationCommands.BrowseForward)
 		{
+			this.assemblyTreeModel = assemblyTreeModel;
 		}
+
+		protected override void OnCanExecute(object sender, CanExecuteRoutedEventArgs e)
+		{
+			base.OnCanExecute(sender, e);
+
+			e.Handled = true;
+			e.CanExecute = assemblyTreeModel.CanNavigateForward;
+		}
+
+		protected override void OnExecute(object sender, ExecutedRoutedEventArgs e)
+		{
+			if (assemblyTreeModel.CanNavigateForward)
+			{
+				e.Handled = true;
+				assemblyTreeModel.NavigateHistory(true);
+			}
+		}
+
 	}
 }

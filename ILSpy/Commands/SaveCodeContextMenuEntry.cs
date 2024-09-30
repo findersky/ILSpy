@@ -30,10 +30,15 @@ using ICSharpCode.ILSpy.ViewModels;
 
 using Microsoft.Win32;
 using ICSharpCode.ILSpyX.TreeView;
+using System.ComponentModel.Composition;
+
+using ICSharpCode.ILSpy.Docking;
+
 
 namespace ICSharpCode.ILSpy.TextView
 {
 	[ExportContextMenuEntry(Header = nameof(Resources._SaveCode), Category = nameof(Resources.Save), Icon = "Images/Save")]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class SaveCodeContextMenuEntry : IContextMenuEntry
 	{
 		public void Execute(TextViewContext context)
@@ -58,8 +63,11 @@ namespace ICSharpCode.ILSpy.TextView
 
 		public static void Execute(IReadOnlyList<SharpTreeNode> selectedNodes)
 		{
-			var currentLanguage = MainWindow.Instance.CurrentLanguage;
-			var tabPage = Docking.DockWorkspace.Instance.ActiveTabPage;
+			var settingsService = SettingsService.Instance;
+			var dockWorkspace = Docking.DockWorkspace.Instance;
+
+			var currentLanguage = settingsService.SessionSettings.LanguageSettings.Language;
+			var tabPage = dockWorkspace.ActiveTabPage;
 			tabPage.ShowTextView(textView => {
 				if (selectedNodes.Count == 1 && selectedNodes[0] is ILSpyTreeNode singleSelection)
 				{
@@ -84,7 +92,7 @@ namespace ICSharpCode.ILSpy.TextView
 
 				// Fallback: if nobody was able to handle the request, use default behavior.
 				// try to save all nodes to disk.
-				var options = MainWindow.Instance.CreateDecompilationOptions();
+				var options = settingsService.CreateDecompilationOptions(dockWorkspace.ActiveTabPage);
 				options.FullDecompilation = true;
 				textView.SaveToDisk(currentLanguage, selectedNodes.OfType<ILSpyTreeNode>(), options);
 			});

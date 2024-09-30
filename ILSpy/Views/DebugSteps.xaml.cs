@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.ComponentModel.Composition;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -7,11 +8,14 @@ using System.Windows.Input;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.ILSpy.Docking;
-using ICSharpCode.ILSpy.Options;
 using ICSharpCode.ILSpy.ViewModels;
+
+using TomsToolbox.Wpf.Composition.Mef;
 
 namespace ICSharpCode.ILSpy
 {
+	[DataTemplate(typeof(DebugStepsPaneModel))]
+	[PartCreationPolicy(CreationPolicy.NonShared)]
 	public partial class DebugSteps : UserControl
 	{
 		static readonly ILAstWritingOptions writingOptions = new ILAstWritingOptions {
@@ -24,20 +28,17 @@ namespace ICSharpCode.ILSpy
 #if DEBUG
 		ILAstLanguage language;
 #endif
-		FilterSettings filterSettings;
-
 		public DebugSteps()
 		{
 			InitializeComponent();
 
 #if DEBUG
-			DockWorkspace.Instance.PropertyChanged += DockWorkspace_PropertyChanged;
-			filterSettings = DockWorkspace.Instance.ActiveTabPage.FilterSettings;
-			filterSettings.PropertyChanged += FilterSettings_PropertyChanged;
-			MainWindow.Instance.SelectionChanged += SelectionChanged;
+			MessageBus<SettingsChangedEventArgs>.Subscribers += (sender, e) => Settings_PropertyChanged(sender, e);
+			MessageBus<AssemblyTreeSelectionChangedEventArgs>.Subscribers += SelectionChanged;
+
 			writingOptions.PropertyChanged += WritingOptions_PropertyChanged;
 
-			if (MainWindow.Instance.CurrentLanguage is ILAstLanguage l)
+			if (SettingsService.Instance.SessionSettings.LanguageSettings.Language is ILAstLanguage l)
 			{
 				l.StepperUpdated += ILAstStepperUpdated;
 				language = l;
@@ -46,24 +47,12 @@ namespace ICSharpCode.ILSpy
 #endif
 		}
 
-		private void DockWorkspace_PropertyChanged(object sender, PropertyChangedEventArgs e)
-		{
-			switch (e.PropertyName)
-			{
-				case nameof(DockWorkspace.Instance.ActiveTabPage):
-					filterSettings.PropertyChanged -= FilterSettings_PropertyChanged;
-					filterSettings = DockWorkspace.Instance.ActiveTabPage.FilterSettings;
-					filterSettings.PropertyChanged += FilterSettings_PropertyChanged;
-					break;
-			}
-		}
-
 		private void WritingOptions_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
 		{
 			DecompileAsync(lastSelectedStep);
 		}
 
-		private void SelectionChanged(object sender, SelectionChangedEventArgs e)
+		private void SelectionChanged(object sender, EventArgs e)
 		{
 			Dispatcher.Invoke(() => {
 				tree.ItemsSource = null;
@@ -71,16 +60,19 @@ namespace ICSharpCode.ILSpy
 			});
 		}
 
-		private void FilterSettings_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+		private void Settings_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
 		{
 #if DEBUG
-			if (e.PropertyName == "Language")
+			if (sender is not LanguageSettings)
+				return;
+
+			if (e.PropertyName == nameof(LanguageSettings.Language))
 			{
 				if (language != null)
 				{
 					language.StepperUpdated -= ILAstStepperUpdated;
 				}
-				if (MainWindow.Instance.CurrentLanguage is ILAstLanguage l)
+				if (SettingsService.Instance.SessionSettings.LanguageSettings.Language is ILAstLanguage l)
 				{
 					l.StepperUpdated += ILAstStepperUpdated;
 					language = l;
@@ -133,8 +125,8 @@ namespace ICSharpCode.ILSpy
 			lastSelectedStep = step;
 			var window = MainWindow.Instance;
 			var state = DockWorkspace.Instance.ActiveTabPage.GetState();
-			DockWorkspace.Instance.ActiveTabPage.ShowTextViewAsync(textView => textView.DecompileAsync(window.CurrentLanguage, window.SelectedNodes,
-				new DecompilationOptions(window.CurrentLanguageVersion, window.CurrentDecompilerSettings, window.CurrentDisplaySettings) {
+			DockWorkspace.Instance.ActiveTabPage.ShowTextViewAsync(textView => textView.DecompileAsync(window.AssemblyTreeModel.CurrentLanguage, window.AssemblyTreeModel.SelectedNodes,
+				new DecompilationOptions(window.AssemblyTreeModel.CurrentLanguageVersion, SettingsService.Instance.DecompilerSettings, SettingsService.Instance.DisplaySettings) {
 					StepLimit = step,
 					IsDebug = isDebug,
 					TextViewState = state as TextView.DecompilerTextViewState

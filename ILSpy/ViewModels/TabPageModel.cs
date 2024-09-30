@@ -17,12 +17,9 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 using ICSharpCode.ILSpy.TextView;
-using ICSharpCode.ILSpyX;
 
 namespace ICSharpCode.ILSpy.ViewModels
 {
@@ -33,29 +30,6 @@ namespace ICSharpCode.ILSpy.ViewModels
 			this.Title = Properties.Resources.NewTab;
 		}
 
-		private FilterSettings filterSettings;
-
-		public FilterSettings FilterSettings {
-			get => filterSettings;
-			set {
-				if (filterSettings != value)
-				{
-					filterSettings = value;
-					RaisePropertyChanged(nameof(FilterSettings));
-				}
-			}
-		}
-
-		public Language Language {
-			get => filterSettings.Language;
-			set => filterSettings.Language = value;
-		}
-
-		public LanguageVersion LanguageVersion {
-			get => filterSettings.LanguageVersion;
-			set => filterSettings.LanguageVersion = value;
-		}
-
 		private bool supportsLanguageSwitching = true;
 
 		public bool SupportsLanguageSwitching {
@@ -64,7 +38,7 @@ namespace ICSharpCode.ILSpy.ViewModels
 				if (supportsLanguageSwitching != value)
 				{
 					supportsLanguageSwitching = value;
-					RaisePropertyChanged(nameof(SupportsLanguageSwitching));
+					OnPropertyChanged(nameof(SupportsLanguageSwitching));
 				}
 			}
 		}
@@ -77,7 +51,7 @@ namespace ICSharpCode.ILSpy.ViewModels
 				if (content != value)
 				{
 					content = value;
-					RaisePropertyChanged(nameof(Content));
+					OnPropertyChanged(nameof(Content));
 				}
 			}
 		}

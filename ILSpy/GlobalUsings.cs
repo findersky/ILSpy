@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 AlphaSierraPapa for the SharpDevelop Team
+﻿// Copyright (c) 2024 Tom Englert for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,27 +16,4 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
-using System.Xml.Linq;
-
-namespace ICSharpCode.ILSpyX.Settings
-{
-	public interface IMiscSettings
-	{
-		public bool AllowMultipleInstances { get; set; }
-		public bool LoadPreviousAssemblies { get; set; }
-
-		public static void Save(XElement root, IMiscSettings miscSettings)
-		{
-			var section = new XElement("MiscSettings");
-			section.SetAttributeValue(nameof(miscSettings.AllowMultipleInstances), miscSettings.AllowMultipleInstances);
-			section.SetAttributeValue(nameof(miscSettings.LoadPreviousAssemblies), miscSettings.LoadPreviousAssemblies);
-
-			XElement? existingElement = root.Element("MiscSettings");
-			if (existingElement != null)
-				existingElement.ReplaceWith(section);
-			else
-				root.Add(section);
-		}
-	}
-}
+global using ICSharpCode.ILSpy.Util;

@@ -38,25 +38,18 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	/// </summary>
 	public abstract class ILSpyTreeNode : SharpTreeNode, ITreeNode
 	{
-		FilterSettings filterSettings;
 		bool childrenNeedFiltering;
 
-		public FilterSettings FilterSettings {
-			get { return filterSettings; }
-			set {
-				if (filterSettings != value)
-				{
-					filterSettings = value;
-					OnFilterSettingsChanged();
-				}
-			}
+		protected ILSpyTreeNode()
+		{
+			MessageBus<SettingsChangedEventArgs>.Subscribers += (sender, e) => Settings_Changed(sender, e);
 		}
 
-		public Language Language {
-			get { return filterSettings != null ? filterSettings.Language : Languages.AllLanguages[0]; }
-		}
+		LanguageSettings LanguageSettings => SettingsService.Instance.SessionSettings.LanguageSettings;
 
-		public virtual FilterResult Filter(FilterSettings settings)
+		public Language Language => LanguageSettings.Language;
+
+		public virtual FilterResult Filter(LanguageSettings settings)
 		{
 			if (string.IsNullOrEmpty(settings.SearchTerm))
 				return FilterResult.Match;
@@ -78,8 +71,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override void ActivateItemSecondary(IPlatformRoutedEventArgs e)
 		{
-			MainWindow.Instance.SelectNode(this, inNewTabPage: true);
-			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.RefreshDecompiledView);
+			MainWindow.Instance.AssemblyTreeModel.SelectNode(this, inNewTabPage: true);
+			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView);
 		}
 
 		/// <summary>
@@ -92,7 +85,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			return false;
 		}
 
-		internal protected override void OnChildrenChanged(NotifyCollectionChangedEventArgs e)
+		public override void OnChildrenChanged(NotifyCollectionChangedEventArgs e)
 		{
 			if (e.NewItems != null)
 			{
@@ -111,27 +104,21 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		void ApplyFilterToChild(ILSpyTreeNode child)
 		{
-			FilterResult r;
-			if (this.FilterSettings == null)
-				r = FilterResult.Match;
-			else
-				r = child.Filter(this.FilterSettings);
+			FilterResult r = child.Filter(this.LanguageSettings);
+
 			switch (r)
 			{
 				case FilterResult.Hidden:
 					child.IsHidden = true;
 					break;
 				case FilterResult.Match:
-					child.FilterSettings = StripSearchTerm(this.FilterSettings);
 					child.IsHidden = false;
 					break;
 				case FilterResult.Recurse:
-					child.FilterSettings = this.FilterSettings;
 					child.EnsureChildrenFiltered();
 					child.IsHidden = child.Children.All(c => c.IsHidden);
 					break;
 				case FilterResult.MatchAndRecurse:
-					child.FilterSettings = StripSearchTerm(this.FilterSettings);
 					child.EnsureChildrenFiltered();
 					child.IsHidden = child.Children.All(c => c.IsHidden);
 					break;
@@ -140,20 +127,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
-		static FilterSettings StripSearchTerm(FilterSettings filterSettings)
+		protected virtual void Settings_Changed(object sender, PropertyChangedEventArgs e)
 		{
-			if (filterSettings == null)
-				return null;
-			if (!string.IsNullOrEmpty(filterSettings.SearchTerm))
-			{
-				filterSettings = filterSettings.Clone();
-				filterSettings.SearchTerm = null;
-			}
-			return filterSettings;
-		}
+			if (sender is not ILSpy.LanguageSettings)
+				return;
+			if (e.PropertyName is not (nameof(LanguageSettings.Language) or nameof(LanguageSettings.LanguageVersion)))
+				return;
 
-		protected virtual void OnFilterSettingsChanged()
-		{
 			RaisePropertyChanged(nameof(Text));
 			if (IsVisible)
 			{
@@ -166,11 +146,6 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
-		/*protected override void OnIsVisibleChanged()
-		{
-			base.OnIsVisibleChanged();
-			EnsureChildrenFiltered();
-		}*/
 
 		internal void EnsureChildrenFiltered()
 		{
@@ -187,11 +162,11 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		protected string GetSuffixString(EntityHandle handle)
 		{
-			if (!MainWindow.Instance.CurrentDisplaySettings.ShowMetadataTokens)
+			if (!SettingsService.Instance.DisplaySettings.ShowMetadataTokens)
 				return string.Empty;
 
 			int token = MetadataTokens.GetToken(handle);
-			if (MainWindow.Instance.CurrentDisplaySettings.ShowMetadataTokensInBase10)
+			if (SettingsService.Instance.DisplaySettings.ShowMetadataTokensInBase10)
 				return " @" + token;
 			return " @" + token.ToString("x8");
 		}

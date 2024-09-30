@@ -16,47 +16,25 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.ComponentModel.Composition;
 using System.Xml.Linq;
 
 using ICSharpCode.ILSpyX.Settings;
+
+using TomsToolbox.Wpf.Composition.Mef;
 
 namespace ICSharpCode.ILSpy.Options
 {
 	/// <summary>
 	/// Interaction logic for DecompilerSettingsPanel.xaml
 	/// </summary>
-	[ExportOptionPage(Title = nameof(Properties.Resources.Decompiler), Order = 10)]
-	internal partial class DecompilerSettingsPanel : IOptionPage
+	[DataTemplate(typeof(DecompilerSettingsViewModel))]
+	[PartCreationPolicy(CreationPolicy.NonShared)]
+	internal partial class DecompilerSettingsPanel
 	{
 		public DecompilerSettingsPanel()
 		{
 			InitializeComponent();
-		}
-
-		public static Decompiler.DecompilerSettings LoadDecompilerSettings(ILSpySettings settings)
-		{
-			return ISettingsProvider.LoadDecompilerSettings(settings);
-		}
-
-		public void Load(ILSpySettings settings)
-		{
-			this.DataContext = new DecompilerSettingsViewModel(LoadDecompilerSettings(settings));
-		}
-
-		public void Save(XElement root)
-		{
-			var newSettings = ((DecompilerSettingsViewModel)this.DataContext).ToDecompilerSettings();
-			ISettingsProvider.SaveDecompilerSettings(root, newSettings);
-
-			MainWindow.Instance.CurrentDecompilerSettings = newSettings;
-			MainWindow.Instance.AssemblyListManager.ApplyWinRTProjections = newSettings.ApplyWindowsRuntimeProjections;
-			MainWindow.Instance.AssemblyListManager.UseDebugSymbols = newSettings.UseDebugSymbols;
-		}
-
-		public void LoadDefaults()
-		{
-			MainWindow.Instance.CurrentDecompilerSettings = new();
-			this.DataContext = new DecompilerSettingsViewModel(MainWindow.Instance.CurrentDecompilerSettings);
 		}
 	}
 }

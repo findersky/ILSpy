@@ -54,7 +54,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 			RegisterCommands();
 		}
 
-		public static ResourceKey DefaultItemContainerStyleKey { get; private set; }
+		public static ResourceKey DefaultItemContainerStyleKey { get; }
 
 		public SharpTreeView()
 		{
@@ -62,7 +62,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		}
 
 		public static readonly DependencyProperty RootProperty =
-			DependencyProperty.Register("Root", typeof(SharpTreeNode), typeof(SharpTreeView));
+			DependencyProperty.Register(nameof(Root), typeof(SharpTreeNode), typeof(SharpTreeView));
 
 		public SharpTreeNode Root {
 			get { return (SharpTreeNode)GetValue(RootProperty); }
@@ -70,7 +70,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		}
 
 		public static readonly DependencyProperty ShowRootProperty =
-			DependencyProperty.Register("ShowRoot", typeof(bool), typeof(SharpTreeView),
+			DependencyProperty.Register(nameof(ShowRoot), typeof(bool), typeof(SharpTreeView),
 										new FrameworkPropertyMetadata(true));
 
 		public bool ShowRoot {
@@ -79,7 +79,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		}
 
 		public static readonly DependencyProperty ShowRootExpanderProperty =
-			DependencyProperty.Register("ShowRootExpander", typeof(bool), typeof(SharpTreeView),
+			DependencyProperty.Register(nameof(ShowRootExpander), typeof(bool), typeof(SharpTreeView),
 										new FrameworkPropertyMetadata(false));
 
 		public bool ShowRootExpander {
@@ -88,7 +88,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		}
 
 		public static readonly DependencyProperty AllowDropOrderProperty =
-			DependencyProperty.Register("AllowDropOrder", typeof(bool), typeof(SharpTreeView));
+			DependencyProperty.Register(nameof(AllowDropOrder), typeof(bool), typeof(SharpTreeView));
 
 		public bool AllowDropOrder {
 			get { return (bool)GetValue(AllowDropOrderProperty); }
@@ -96,7 +96,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		}
 
 		public static readonly DependencyProperty ShowLinesProperty =
-			DependencyProperty.Register("ShowLines", typeof(bool), typeof(SharpTreeView),
+			DependencyProperty.Register(nameof(ShowLines), typeof(bool), typeof(SharpTreeView),
 										new FrameworkPropertyMetadata(true));
 
 		public bool ShowLines {
@@ -158,6 +158,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 			if (flattener != null)
 			{
 				flattener.Stop();
+				flattener.CollectionChanged -= flattener_CollectionChanged;
 			}
 			if (Root != null)
 			{
@@ -818,9 +819,9 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		/// </summary>
 		public IEnumerable<SharpTreeNode> GetTopLevelSelection()
 		{
-			var selection = this.SelectedItems.OfType<SharpTreeNode>();
-			var selectionHash = new HashSet<SharpTreeNode>(selection);
-			return selection.Where(item => item.Ancestors().All(a => !selectionHash.Contains(a)));
+			var selection = this.SelectedItems.OfType<SharpTreeNode>().ToHashSet();
+
+			return selection.Where(item => item.Ancestors().All(a => !selection.Contains(a)));
 		}
 
 		#endregion

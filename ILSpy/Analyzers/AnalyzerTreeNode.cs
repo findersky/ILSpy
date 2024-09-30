@@ -17,8 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
 
 using ICSharpCode.ILSpyX;
 using ICSharpCode.ILSpyX.TreeView;
@@ -27,23 +25,11 @@ namespace ICSharpCode.ILSpy.Analyzers
 {
 	public abstract class AnalyzerTreeNode : SharpTreeNode
 	{
-		private Language language;
-
-		public Language Language {
-			get { return language; }
-			set {
-				if (language != value)
-				{
-					language = value;
-					foreach (var child in this.Children.OfType<AnalyzerTreeNode>())
-						child.Language = value;
-				}
-			}
-		}
+		public Language Language => SettingsService.Instance.SessionSettings.LanguageSettings.Language;
 
 		public override bool CanDelete()
 		{
-			return Parent != null && Parent.IsRoot;
+			return Parent is { IsRoot: true };
 		}
 
 		public override void DeleteCore()
@@ -54,16 +40,6 @@ namespace ICSharpCode.ILSpy.Analyzers
 		public override void Delete()
 		{
 			DeleteCore();
-		}
-
-		internal protected override void OnChildrenChanged(NotifyCollectionChangedEventArgs e)
-		{
-			if (e.NewItems != null)
-			{
-				foreach (AnalyzerTreeNode a in e.NewItems.OfType<AnalyzerTreeNode>())
-					a.Language = this.Language;
-			}
-			base.OnChildrenChanged(e);
 		}
 
 		/// <summary>

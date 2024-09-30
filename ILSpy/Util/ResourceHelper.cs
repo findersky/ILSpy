@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 AlphaSierraPapa for the SharpDevelop Team
+﻿// Copyright (c) 2024 Tom Englert for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,31 +16,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Windows;
-using System.Windows.Input;
-
-namespace ICSharpCode.ILSpy.ViewModels
+namespace ICSharpCode.ILSpy.Util
 {
-	[ExportToolPane(ContentId = PaneContentId)]
-	public class SearchPaneModel : ToolPaneModel
+	internal static class ResourceHelper
 	{
-		public const string PaneContentId = "searchPane";
-
-		private SearchPaneModel()
+		internal static string GetString(string key)
 		{
-			ContentId = PaneContentId;
-			Title = Properties.Resources.SearchPane_Search;
-			Icon = "Images/Search";
-			ShortcutKey = new KeyGesture(Key.F, ModifierKeys.Control | ModifierKeys.Shift);
-			IsCloseable = true;
-		}
+			if (string.IsNullOrEmpty(key))
+				return null;
 
-		public override void Show()
-		{
-			base.Show();
-			MainWindow.Instance.SearchPane.Show();
-		}
+			string value = Properties.Resources.ResourceManager.GetString(key);
 
-		public override DataTemplate Template => (DataTemplate)MainWindow.Instance.FindResource("SearchPaneTemplate");
+			return !string.IsNullOrEmpty(value) ? value : key;
+		}
 	}
 }

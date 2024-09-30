@@ -16,14 +16,26 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.ComponentModel.Composition;
+
 using ICSharpCode.ILSpy.AppEnv;
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Properties;
 
 namespace ICSharpCode.ILSpy
 {
 	[ExportMainMenuCommand(ParentMenuID = nameof(Resources._File), Header = nameof(Resources.OpenFrom_GAC), MenuIcon = "Images/AssemblyListGAC", MenuCategory = nameof(Resources.Open), MenuOrder = 1)]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class OpenFromGacCommand : SimpleCommand
 	{
+		private readonly AssemblyTreeModel assemblyTreeModel;
+
+		[ImportingConstructor]
+		public OpenFromGacCommand(AssemblyTreeModel assemblyTreeModel)
+		{
+			this.assemblyTreeModel = assemblyTreeModel;
+		}
+
 		public override bool CanExecute(object parameter)
 		{
 			return AppEnvironment.IsWindows;
@@ -31,10 +43,14 @@ namespace ICSharpCode.ILSpy
 
 		public override void Execute(object parameter)
 		{
-			OpenFromGacDialog dlg = new OpenFromGacDialog();
-			dlg.Owner = MainWindow.Instance;
+			OpenFromGacDialog dlg = new OpenFromGacDialog {
+				Owner = MainWindow.Instance
+			};
+
 			if (dlg.ShowDialog() == true)
-				MainWindow.Instance.OpenFiles(dlg.SelectedFileNames);
+			{
+				assemblyTreeModel.OpenFiles(dlg.SelectedFileNames);
+			}
 		}
 	}
 }

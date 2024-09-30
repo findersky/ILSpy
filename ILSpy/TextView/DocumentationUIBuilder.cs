@@ -115,7 +115,7 @@ namespace ICSharpCode.ILSpy.TextView
 			// Paragraph sadly does not support TextWrapping.NoWrap
 			var text = new TextBlock {
 				FontFamily = GetCodeFont(),
-				FontSize = MainWindow.Instance.CurrentDisplaySettings.SelectedFontSize,
+				FontSize = SettingsService.Instance.DisplaySettings.SelectedFontSize,
 				TextAlignment = TextAlignment.Left
 			};
 			text.Inlines.AddRange(richText.CreateRuns(document));
@@ -338,7 +338,7 @@ namespace ICSharpCode.ILSpy.TextView
 		{
 			var h = new Hyperlink(new Run(ambience.ConvertSymbol(referencedEntity)));
 			h.Click += (sender, e) => {
-				MainWindow.Instance.JumpToReference(referencedEntity);
+				MessageBus.Send(this, new NavigateToReferenceEventArgs(referencedEntity));
 			};
 			return h;
 		}
@@ -381,7 +381,7 @@ namespace ICSharpCode.ILSpy.TextView
 				{
 					Hyperlink link = new Hyperlink();
 					link.Click += (sender, e) => {
-						MainWindow.Instance.JumpToReference(referencedEntity);
+						MessageBus.Send(this, new NavigateToReferenceEventArgs(referencedEntity));
 					};
 					AddSpan(link, element.Children);
 				}
@@ -435,7 +435,7 @@ namespace ICSharpCode.ILSpy.TextView
 
 		FontFamily GetCodeFont()
 		{
-			return MainWindow.Instance.CurrentDisplaySettings.SelectedFont;
+			return SettingsService.Instance.DisplaySettings.SelectedFont;
 		}
 
 		public void AddInline(Inline inline)

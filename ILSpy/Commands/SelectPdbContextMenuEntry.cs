@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using System.ComponentModel.Composition;
 using System.IO;
 using System.Linq;
 
@@ -27,6 +28,7 @@ using Microsoft.Win32;
 namespace ICSharpCode.ILSpy
 {
 	[ExportContextMenuEntry(Header = nameof(Resources.SelectPDB))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	class SelectPdbContextMenuEntry : IContextMenuEntry
 	{
 		public async void Execute(TextViewContext context)
@@ -46,8 +48,10 @@ namespace ICSharpCode.ILSpy
 				await assembly.LoadDebugInfo(dlg.FileName);
 			}
 
-			MainWindow.Instance.SelectNode(MainWindow.Instance.FindNodeByPath(new[] { assembly.FileName }, true));
-			MainWindow.Instance.RefreshDecompiledView();
+			var node = (AssemblyTreeNode)MainWindow.Instance.AssemblyTreeModel.FindNodeByPath(new[] { assembly.FileName }, true);
+			node.UpdateToolTip();
+			MainWindow.Instance.AssemblyTreeModel.SelectNode(node);
+			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
 		}
 
 		public bool IsEnabled(TextViewContext context) => true;

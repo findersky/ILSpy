@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.ComponentModel.Composition;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -28,6 +29,7 @@ using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
@@ -38,6 +40,7 @@ using Microsoft.Win32;
 namespace ICSharpCode.ILSpy
 {
 	[ExportContextMenuEntry(Header = nameof(Resources.GeneratePortable))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	class GeneratePdbContextMenuEntry : IContextMenuEntry
 	{
 		public void Execute(TextViewContext context)
@@ -71,9 +74,10 @@ namespace ICSharpCode.ILSpy
 			dlg.InitialDirectory = Path.GetDirectoryName(assembly.FileName);
 			if (dlg.ShowDialog() != true)
 				return;
-			DecompilationOptions options = MainWindow.Instance.CreateDecompilationOptions();
+			DockWorkspace dockWorkspace = DockWorkspace.Instance;
+			DecompilationOptions options = SettingsService.Instance.CreateDecompilationOptions(dockWorkspace.ActiveTabPage);
 			string fileName = dlg.FileName;
-			Docking.DockWorkspace.Instance.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
+			dockWorkspace.RunWithCancellation(ct => Task<AvalonEditTextOutput>.Factory.StartNew(() => {
 				AvalonEditTextOutput output = new AvalonEditTextOutput();
 				Stopwatch stopwatch = Stopwatch.StartNew();
 				options.CancellationToken = ct;
@@ -103,18 +107,19 @@ namespace ICSharpCode.ILSpy
 	}
 
 	[ExportMainMenuCommand(ParentMenuID = nameof(Resources._File), Header = nameof(Resources.GeneratePortable), MenuCategory = nameof(Resources.Save))]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	class GeneratePdbMainMenuEntry : SimpleCommand
 	{
 		public override bool CanExecute(object parameter)
 		{
-			return MainWindow.Instance.SelectedNodes?.Count() == 1
-				&& MainWindow.Instance.SelectedNodes?.FirstOrDefault() is AssemblyTreeNode tn
+			return MainWindow.Instance.AssemblyTreeModel.SelectedNodes?.Count() == 1
+				&& MainWindow.Instance.AssemblyTreeModel.SelectedNodes?.FirstOrDefault() is AssemblyTreeNode tn
 				&& !tn.LoadedAssembly.HasLoadError;
 		}
 
 		public override void Execute(object parameter)
 		{
-			var assembly = (MainWindow.Instance.SelectedNodes?.FirstOrDefault() as AssemblyTreeNode)?.LoadedAssembly;
+			var assembly = (MainWindow.Instance.AssemblyTreeModel.SelectedNodes?.FirstOrDefault() as AssemblyTreeNode)?.LoadedAssembly;
 			if (assembly == null)
 				return;
 			GeneratePdbContextMenuEntry.GeneratePdbForAssembly(assembly);

@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.ComponentModel.Composition;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -36,11 +37,12 @@ using ICSharpCode.ILSpyX.Settings;
 namespace ICSharpCode.ILSpy
 {
 	[ExportMainMenuCommand(ParentMenuID = nameof(Resources._Help), Header = nameof(Resources._About), MenuOrder = 99999)]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	sealed class AboutPage : SimpleCommand
 	{
 		public override void Execute(object parameter)
 		{
-			MainWindow.Instance.NavigateTo(
+			MainWindow.Instance.AssemblyTreeModel.NavigateTo(
 				new RequestNavigateEventArgs(new Uri("resource://aboutpage"), null),
 				inNewTabPage: true
 			);
@@ -52,7 +54,7 @@ namespace ICSharpCode.ILSpy
 				Title = Resources.About,
 				EnableHyperlinks = true
 			};
-			output.WriteLine(Resources.ILSpyVersion + DecompilerVersionInfo.FullVersion);
+			output.WriteLine(Resources.ILSpyVersion + DecompilerVersionInfo.FullVersionWithCommitHash);
 
 			string prodVersion = GetDotnetProductVersion();
 			output.WriteLine(Resources.NETFrameworkVersion + prodVersion);
@@ -74,7 +76,7 @@ namespace ICSharpCode.ILSpy
 				CheckBox checkBox = new CheckBox();
 				checkBox.Margin = new Thickness(4);
 				checkBox.Content = Resources.AutomaticallyCheckUpdatesEveryWeek;
-				UpdateSettings settings = new UpdateSettings(ILSpySettings.Load());
+				UpdateSettings settings = new UpdateSettings(SettingsService.Instance.SpySettings);
 				checkBox.SetBinding(CheckBox.IsCheckedProperty, new Binding("AutomaticUpdateCheckEnabled") { Source = settings });
 				return new StackPanel {
 					Margin = new Thickness(0, 4, 0, 0),

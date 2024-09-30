@@ -18,18 +18,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.Linq;
 using System.Windows.Threading;
 
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Properties;
-using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
+
+using TomsToolbox.Essentials;
 
 namespace ICSharpCode.ILSpy.Commands
 {
 	[ExportContextMenuEntry(Header = nameof(Resources.DecompileToNewPanel), InputGestureText = "MMB", Icon = "images/Search", Category = nameof(Resources.Analyze), Order = 90)]
+	[PartCreationPolicy(CreationPolicy.Shared)]
 	internal sealed class DecompileInNewViewCommand : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -51,18 +54,18 @@ namespace ICSharpCode.ILSpy.Commands
 		{
 			if (context.SelectedTreeNodes != null)
 			{
-				if (context.TreeView != MainWindow.Instance.AssemblyTreeView)
+				if (context.TreeView.DataContext != MainWindow.Instance.AssemblyTreeModel)
 				{
-					return context.SelectedTreeNodes.OfType<IMemberTreeNode>().Select(FindTreeNode).Where(n => n != null);
+					return context.SelectedTreeNodes.OfType<IMemberTreeNode>().Select(FindTreeNode).ExceptNullItems();
 				}
 				else
 				{
-					return context.SelectedTreeNodes.OfType<ILSpyTreeNode>().Where(n => n != null);
+					return context.SelectedTreeNodes.OfType<ILSpyTreeNode>();
 				}
 			}
 			else if (context.Reference?.Reference is IEntity entity)
 			{
-				if (MainWindow.Instance.FindTreeNode(entity) is ILSpyTreeNode node)
+				if (MainWindow.Instance.AssemblyTreeModel.FindTreeNode(entity) is { } node)
 				{
 					return new[] { node };
 				}
@@ -73,7 +76,7 @@ namespace ICSharpCode.ILSpy.Commands
 			{
 				if (node is ILSpyTreeNode ilspyNode)
 					return ilspyNode;
-				return MainWindow.Instance.FindTreeNode(node.Member);
+				return MainWindow.Instance.AssemblyTreeModel.FindTreeNode(node.Member);
 			}
 		}
 
@@ -82,8 +85,9 @@ namespace ICSharpCode.ILSpy.Commands
 			if (nodes.Length == 0)
 				return;
 
-			MainWindow.Instance.SelectNodes(nodes, inNewTabPage: true);
-			MainWindow.Instance.Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)MainWindow.Instance.RefreshDecompiledView);
+			DockWorkspace.Instance.AddTabPage();
+
+			MainWindow.Instance.AssemblyTreeModel.SelectNodes(nodes);
 		}
 	}
 }
