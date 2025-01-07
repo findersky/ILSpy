@@ -16,7 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -33,20 +33,27 @@ namespace ICSharpCode.ILSpy.Search
 	}
 
 	[ExportToolPane]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	[Export]
+	[Shared]
 	public class SearchPaneModel : ToolPaneModel
 	{
-		private string searchTerm;
 		public const string PaneContentId = "searchPane";
 
-		public SearchPaneModel()
+		private readonly SettingsService settingsService;
+		private string searchTerm;
+
+		public SearchPaneModel(SettingsService settingsService)
 		{
+			this.settingsService = settingsService;
 			ContentId = PaneContentId;
 			Title = Properties.Resources.SearchPane_Search;
 			Icon = "Images/Search";
 			ShortcutKey = new(Key.F, ModifierKeys.Control | ModifierKeys.Shift);
 			IsCloseable = true;
+
+			MessageBus<ShowSearchPageEventArgs>.Subscribers += (_, e) => {
+				SearchTerm = e.SearchTerm;
+				Show();
+			};
 		}
 
 		public SearchModeModel[] SearchModes { get; } = [
@@ -64,7 +71,7 @@ namespace ICSharpCode.ILSpy.Search
 			new() { Mode = SearchMode.Namespace, Image = Images.Namespace, Name = "Namespace" }
 		];
 
-		public SessionSettings SessionSettings => SettingsService.Instance.SessionSettings;
+		public SessionSettings SessionSettings => settingsService.SessionSettings;
 
 		public string SearchTerm {
 			get => searchTerm;

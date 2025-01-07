@@ -1,23 +1,29 @@
 ﻿using System;
 using System.ComponentModel;
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.IL.Transforms;
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.ViewModels;
 
-using TomsToolbox.Wpf.Composition.Mef;
+using TomsToolbox.Wpf.Composition.AttributedModel;
 
 namespace ICSharpCode.ILSpy
 {
 	[DataTemplate(typeof(DebugStepsPaneModel))]
-	[PartCreationPolicy(CreationPolicy.NonShared)]
+	[NonShared]
 	public partial class DebugSteps : UserControl
 	{
+		private readonly AssemblyTreeModel assemblyTreeModel;
+		private readonly SettingsService settingsService;
+		private readonly LanguageService languageService;
+		private readonly DockWorkspace dockWorkspace;
+
 		static readonly ILAstWritingOptions writingOptions = new ILAstWritingOptions {
 			UseFieldSugar = true,
 			UseLogicOperationSugar = true
@@ -28,8 +34,13 @@ namespace ICSharpCode.ILSpy
 #if DEBUG
 		ILAstLanguage language;
 #endif
-		public DebugSteps()
+		public DebugSteps(AssemblyTreeModel assemblyTreeModel, SettingsService settingsService, LanguageService languageService, DockWorkspace dockWorkspace)
 		{
+			this.assemblyTreeModel = assemblyTreeModel;
+			this.settingsService = settingsService;
+			this.languageService = languageService;
+			this.dockWorkspace = dockWorkspace;
+
 			InitializeComponent();
 
 #if DEBUG
@@ -38,7 +49,7 @@ namespace ICSharpCode.ILSpy
 
 			writingOptions.PropertyChanged += WritingOptions_PropertyChanged;
 
-			if (SettingsService.Instance.SessionSettings.LanguageSettings.Language is ILAstLanguage l)
+			if (languageService.Language is ILAstLanguage l)
 			{
 				l.StepperUpdated += ILAstStepperUpdated;
 				language = l;
@@ -66,13 +77,13 @@ namespace ICSharpCode.ILSpy
 			if (sender is not LanguageSettings)
 				return;
 
-			if (e.PropertyName == nameof(LanguageSettings.Language))
+			if (e.PropertyName == nameof(LanguageSettings.LanguageId))
 			{
 				if (language != null)
 				{
 					language.StepperUpdated -= ILAstStepperUpdated;
 				}
-				if (SettingsService.Instance.SessionSettings.LanguageSettings.Language is ILAstLanguage l)
+				if (languageService.Language is ILAstLanguage l)
 				{
 					l.StepperUpdated += ILAstStepperUpdated;
 					language = l;
@@ -123,10 +134,9 @@ namespace ICSharpCode.ILSpy
 		void DecompileAsync(int step, bool isDebug = false)
 		{
 			lastSelectedStep = step;
-			var window = MainWindow.Instance;
-			var state = DockWorkspace.Instance.ActiveTabPage.GetState();
-			DockWorkspace.Instance.ActiveTabPage.ShowTextViewAsync(textView => textView.DecompileAsync(window.AssemblyTreeModel.CurrentLanguage, window.AssemblyTreeModel.SelectedNodes,
-				new DecompilationOptions(window.AssemblyTreeModel.CurrentLanguageVersion, SettingsService.Instance.DecompilerSettings, SettingsService.Instance.DisplaySettings) {
+			var state = dockWorkspace.ActiveTabPage.GetState();
+			dockWorkspace.ActiveTabPage.ShowTextViewAsync(textView => textView.DecompileAsync(assemblyTreeModel.CurrentLanguage, assemblyTreeModel.SelectedNodes,
+				new DecompilationOptions(assemblyTreeModel.CurrentLanguageVersion, settingsService.DecompilerSettings, settingsService.DisplaySettings) {
 					StepLimit = step,
 					IsDebug = isDebug,
 					TextViewState = state as TextView.DecompilerTextViewState

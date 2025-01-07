@@ -20,7 +20,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -30,6 +30,7 @@ using System.Runtime.CompilerServices;
 
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -37,6 +38,10 @@ using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpyX;
 
 using ILCompiler.Reflection.ReadyToRun;
+
+using TomsToolbox.Composition;
+
+using MetadataReader = System.Reflection.Metadata.MetadataReader;
 
 namespace ICSharpCode.ILSpy.ReadyToRun
 {
@@ -92,12 +97,16 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		public void WriteReference(IMember member, string text, bool isDefinition = false)
 		{
 		}
+
+		public void WriteReference(MetadataFile metadata, Handle handle, string text, string protocol = "decompile", bool isDefinition = false)
+		{
+		}
 	}
 #endif
 
 	[Export(typeof(Language))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	internal class ReadyToRunLanguage : Language
+	[Shared]
+	internal class ReadyToRunLanguage(SettingsService settingsService, IExportProvider exportProvider) : Language
 	{
 		private static readonly ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry> readyToRunReaders = new ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry>();
 
@@ -175,7 +184,7 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 							.GroupBy(m => m.MethodHandle)
 							.ToDictionary(g => g.Key, g => g.ToArray());
 				}
-				var displaySettings = SettingsService.Instance.DisplaySettings;
+				var displaySettings = settingsService.DisplaySettings;
 				bool showMetadataTokens = displaySettings.ShowMetadataTokens;
 				bool showMetadataTokensInBase10 = displaySettings.ShowMetadataTokensInBase10;
 #if STRESS
@@ -205,7 +214,7 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 								file = ((IlSpyAssemblyMetadata)readyToRunMethod.ComponentReader).Module;
 							}
 
-							new ReadyToRunDisassembler(output, disassemblingReader, runtimeFunction).Disassemble(file, bitness, (ulong)runtimeFunction.StartAddress, showMetadataTokens, showMetadataTokensInBase10);
+							new ReadyToRunDisassembler(output, disassemblingReader, runtimeFunction, settingsService).Disassemble(file, bitness, (ulong)runtimeFunction.StartAddress, showMetadataTokens, showMetadataTokensInBase10);
 						}
 					}
 				}
@@ -218,7 +227,7 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 
 		public override RichText GetRichTextTooltip(IEntity entity)
 		{
-			return Languages.ILLanguage.GetRichTextTooltip(entity);
+			return exportProvider.GetExportedValue<LanguageService>().ILLanguage.GetRichTextTooltip(entity);
 		}
 
 		private ReadyToRunReaderCacheEntry GetReader(LoadedAssembly assembly, MetadataFile file)

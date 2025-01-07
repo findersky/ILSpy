@@ -16,11 +16,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.IO;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.ProjectDecompiler;
+using ICSharpCode.ILSpy.AssemblyTree;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TreeNodes;
 
@@ -28,8 +29,8 @@ using Microsoft.Win32;
 namespace ICSharpCode.ILSpy
 {
 	[ExportContextMenuEntry(Header = nameof(Resources.SelectPDB))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	class SelectPdbContextMenuEntry : IContextMenuEntry
+	[Shared]
+	class SelectPdbContextMenuEntry(AssemblyTreeModel assemblyTreeModel) : IContextMenuEntry
 	{
 		public async void Execute(TextViewContext context)
 		{
@@ -48,10 +49,10 @@ namespace ICSharpCode.ILSpy
 				await assembly.LoadDebugInfo(dlg.FileName);
 			}
 
-			var node = (AssemblyTreeNode)MainWindow.Instance.AssemblyTreeModel.FindNodeByPath(new[] { assembly.FileName }, true);
+			var node = (AssemblyTreeNode)assemblyTreeModel.FindNodeByPath(new[] { assembly.FileName }, true);
 			node.UpdateToolTip();
-			MainWindow.Instance.AssemblyTreeModel.SelectNode(node);
-			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
+			assemblyTreeModel.SelectNode(node);
+			assemblyTreeModel.RefreshDecompiledView();
 		}
 
 		public bool IsEnabled(TextViewContext context) => true;

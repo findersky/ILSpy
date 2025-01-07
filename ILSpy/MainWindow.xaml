@@ -18,6 +18,9 @@
 		xmlns:themes="clr-namespace:ICSharpCode.ILSpy.Themes"
 		xmlns:toms="urn:TomsToolbox"
 		xmlns:viewModels="clr-namespace:ICSharpCode.ILSpy.ViewModels"
+		xmlns:composition="urn:TomsToolbox.Composition"
+		xmlns:commands="clr-namespace:ICSharpCode.ILSpy.Commands"
+		xmlns:analyzers="clr-namespace:ICSharpCode.ILSpy.Analyzers"
 		d:DataContext="{d:DesignInstance local:MainWindowViewModel}">
 	<Window.Resources>
 
@@ -36,7 +39,7 @@
 	</b:Interaction.Behaviors>
 
 	<Window.InputBindings>
-		<KeyBinding Key="R" Modifiers="Control" Command="{x:Static local:ILSpyCommands.Analyze}" />
+		<KeyBinding Key="R" Modifiers="Control" Command="{composition:Import analyzers:AnalyzeCommand}" />
 		<KeyBinding Key="Z" Modifiers="Control" Command="{x:Static NavigationCommands.BrowseBack}" />
 	</Window.InputBindings>
 
@@ -46,126 +49,11 @@
 
 	<DockPanel>
 		<!-- Main menu -->
-		<Menu DockPanel.Dock="Top" Name="mainMenu" Height="23" KeyboardNavigation.TabNavigation="None">
-			<MenuItem Header="{x:Static properties:Resources._File}" Tag="_File" />
-			<!-- contents of file menu are added using MEF -->
-			<MenuItem Header="{x:Static properties:Resources._View}" Tag="_View">
-				<MenuItem Header="{x:Static properties:Resources.Show_publiconlyTypesMembers}" IsCheckable="True"
-						  IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisPublicOnly}" />
-				<MenuItem Header="{x:Static properties:Resources.Show_internalTypesMembers}" IsCheckable="True"
-						  IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisPublicAndInternal}" />
-				<MenuItem Header="{x:Static properties:Resources.Show_allTypesAndMembers}" IsCheckable="True"
-						  IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisAll}" />
-				<Separator />
-				<MenuItem Header="{x:Static properties:Resources.Theme}" ItemsSource="{x:Static themes:ThemeManager.AllThemes}">
-					<MenuItem.ItemContainerStyle>
-						<Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource {x:Type MenuItem}}">
-							<Setter Property="Command" Value="{x:Static local:ILSpyCommands.SetTheme}" />
-							<Setter Property="CommandParameter" Value="{Binding}" />
-							<Setter Property="IsCheckable" Value="True" />
-							<!-- Required by AvalonDock's MenuItem style to show the checkmark -->
-							<Setter Property="IsChecked">
-								<Setter.Value>
-									<MultiBinding Converter="{x:Static toms:BinaryOperationConverter.Equality}" Mode="OneWay">
-										<Binding />
-										<Binding Path="DataContext.SessionSettings.Theme" RelativeSource="{RelativeSource FindAncestor, AncestorType=Window}"/>
-									</MultiBinding>
-								</Setter.Value>
-							</Setter>
-						</Style>
-					</MenuItem.ItemContainerStyle>
-				</MenuItem>
-				<MenuItem Header="{x:Static properties:Resources.UILanguage}">
-					<MenuItem Header="{x:Static properties:Resources.UILanguage_System}" IsCheckable="True"
-							  IsChecked="{Binding SessionSettings.CurrentCulture, Converter={controls:CultureSelectionConverter}, ConverterParameter={x:Null}}" />
-					<MenuItem Header="English" IsCheckable="True"
-							  IsChecked="{Binding SessionSettings.CurrentCulture, Converter={controls:CultureSelectionConverter}, ConverterParameter=en-US}" />
-					<MenuItem Header="中文" IsCheckable="True"
-							  IsChecked="{Binding SessionSettings.CurrentCulture, Converter={controls:CultureSelectionConverter}, ConverterParameter=zh-Hans}" />
-				</MenuItem>
-			</MenuItem>
-			<MenuItem Header="{x:Static properties:Resources._Window}" Tag="_Window" />
-		</Menu>
+		<ContentControl DockPanel.Dock="Top" Content="{composition:Import controls:MainMenu}"/>
 		<!-- ToolBar -->
-		<ToolBar
-			Name="toolBar"
-			DockPanel.Dock="Top" ToolBarTray.IsLocked="True" KeyboardNavigation.TabNavigation="None">
-			<ToolBar.Resources>
-				<!-- Make images transparent if menu command is disabled -->
-				<Style TargetType="{x:Type Image}">
-					<Style.Triggers>
-						<DataTrigger
-							Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type ButtonBase}, AncestorLevel=1}, Path=IsEnabled}"
-							Value="False">
-							<Setter Property="Opacity" Value="0.30" />
-						</DataTrigger>
-					</Style.Triggers>
-				</Style>
-				<Style TargetType="{x:Type Image}" x:Key="DarkModeAwareImageStyle">
-					<Setter Property="Effect" Value="{DynamicResource {x:Static themes:ResourceKeys.ThemeAwareButtonEffect}}" />
-					<Style.Triggers>
-						<DataTrigger
-							Binding="{Binding RelativeSource={RelativeSource AncestorType={x:Type ButtonBase}, AncestorLevel=1}, Path=IsEnabled}"
-							Value="False">
-							<Setter Property="Opacity" Value="0.30" />
-						</DataTrigger>
-					</Style.Triggers>
-				</Style>
-			</ToolBar.Resources>
-			<!-- 'Navigation' toolbar category is inserted here -->
-			<Separator />
-			<!-- 'Open' toolbar category is inserted here -->
-			<Separator />
-			<ComboBox Name="assemblyListComboBox" Width="100" MaxDropDownHeight="Auto"
-					  ItemsSource="{Binding AssemblyListManager.AssemblyLists}"
-					  ToolTip="{x:Static properties:Resources.SelectAssemblyListDropdownTooltip}"
-					  SelectedItem="{Binding SessionSettings.ActiveAssemblyList}" />
-			<Button Command="{x:Static local:ILSpyCommands.ManageAssemblyListsCommand}"
-					ToolTip="{x:Static properties:Resources.ManageAssemblyLists}">
-				<Image Width="16" Height="16" Source="{controls:XamlResource Images/AssemblyList}"
-					   Style="{StaticResource DarkModeAwareImageStyle}" />
-			</Button>
-			<Separator />
-			<CheckBox IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisPublicOnly}"
-					  ToolTip="{x:Static properties:Resources.ShowPublicOnlyTypesMembers}">
-				<Image Width="16" Height="16" Source="{controls:XamlResource Images/ShowPublicOnly}"
-					   Style="{StaticResource DarkModeAwareImageStyle}" />
-			</CheckBox>
-			<CheckBox IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisPublicAndInternal}"
-					  ToolTip="{x:Static properties:Resources.ShowInternalTypesMembers}">
-				<Image Width="16" Height="16" Source="{controls:XamlResource Images/ShowPrivateInternal}"
-					   Style="{StaticResource DarkModeAwareImageStyle}" />
-			</CheckBox>
-			<CheckBox IsChecked="{Binding SessionSettings.LanguageSettings.ApiVisAll}"
-					  ToolTip="{x:Static properties:Resources.ShowAllTypesAndMembers}">
-				<Image Width="16" Height="16" Source="{controls:XamlResource Images/ShowAll}"
-					   Style="{StaticResource DarkModeAwareImageStyle}" />
-			</CheckBox>
-			<Separator />
-			<ComboBox Name="languageComboBox" DisplayMemberPath="Name" Width="100" MaxDropDownHeight="Auto"
-					  IsEnabled="{Binding Workspace.ActiveTabPage.SupportsLanguageSwitching}"
-					  ItemsSource="{x:Static local:Languages.AllLanguages}"
-					  ToolTip="{x:Static properties:Resources.SelectLanguageDropdownTooltip}"
-					  SelectedItem="{Binding SessionSettings.LanguageSettings.Language}" />
-			<ComboBox Name="languageVersionComboBox" DisplayMemberPath="DisplayName" Width="120" MaxDropDownHeight="Auto"
-					  ToolTip="{x:Static properties:Resources.SelectVersionDropdownTooltip}"
-					  Visibility="{Binding SelectedItem.HasLanguageVersions, ElementName=languageComboBox, Converter={toms:BooleanToVisibilityConverter}}"
-					  IsEnabled="{Binding Workspace.ActiveTabPage.SupportsLanguageSwitching}"
-					  ItemsSource="{Binding SelectedItem.LanguageVersions, ElementName=languageComboBox, UpdateSourceTrigger=PropertyChanged}"
-					  SelectedItem="{Binding SessionSettings.LanguageSettings.LanguageVersion, UpdateSourceTrigger=PropertyChanged}" />
-		</ToolBar>
+		<ContentControl DockPanel.Dock="Top" Content="{composition:Import controls:MainToolBar}" />
 		<!-- Update panel -->
-		<Border DockPanel.Dock="Top" BorderBrush="Black" BorderThickness="1" Name="updatePanel" Visibility="Collapsed">
-			<DockPanel KeyboardNavigation.TabNavigation="Contained">
-				<Button DockPanel.Dock="Right" Click="UpdatePanelCloseButtonClick" MinWidth="0">X</Button>
-				<StackPanel Orientation="Horizontal">
-					<TextBlock Name="updatePanelMessage" Margin="4,0" VerticalAlignment="Center"
-							   Text="{x:Static properties:Resources.ILSpyVersionAvailable}" />
-					<Button Name="downloadOrCheckUpdateButton" Click="DownloadOrCheckUpdateButtonClick"
-							Content="{x:Static properties:Resources.Download}" />
-				</StackPanel>
-			</DockPanel>
-		</Border>
+		<ContentControl DockPanel.Dock="Top" Content="{composition:Import viewModels:UpdatePanelViewModel}" />
 		<!-- Status bar -->
 		<StatusBar x:Name="statusBar" DockPanel.Dock="Bottom" Height="26" Visibility="Collapsed">
 			<StatusBarItem DockPanel.Dock="Right">
@@ -177,10 +65,8 @@
 			</StatusBarItem>
 		</StatusBar>
 
-		<avalondock:DockingManager x:Name="dockManager"
+		<avalondock:DockingManager x:Name="DockManager"
 								   DataContext="{Binding Workspace}"
-								   AnchorablesSource="{Binding ToolPanes}"
-								   DocumentsSource="{Binding TabPages}"
 								   ActiveContent="{Binding ActiveTabPage, Mode=TwoWay, Converter={docking:TabPageGuardConverter}}"
 								   AllowMixedOrientation="True">
 

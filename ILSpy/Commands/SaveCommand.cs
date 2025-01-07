@@ -16,29 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.Linq;
 using System.Windows.Input;
 
 using ICSharpCode.ILSpy.AssemblyTree;
+using ICSharpCode.ILSpy.Docking;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 
 namespace ICSharpCode.ILSpy
 {
 	[ExportMainMenuCommand(ParentMenuID = nameof(Resources._File), Header = nameof(Resources._SaveCode), MenuIcon = "Images/Save", MenuCategory = nameof(Resources.Save), MenuOrder = 0)]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	sealed class SaveCommand : CommandWrapper
+	[Shared]
+	sealed class SaveCommand(AssemblyTreeModel assemblyTreeModel, LanguageService languageService, DockWorkspace dockWorkspace) : CommandWrapper(ApplicationCommands.Save)
 	{
-		private AssemblyTreeModel assemblyTreeModel;
-
-		[ImportingConstructor]
-		public SaveCommand(AssemblyTreeModel assemblyTreeModel)
-			: base(ApplicationCommands.Save)
-		{
-			this.assemblyTreeModel = assemblyTreeModel;
-		}
-
 		protected override void OnCanExecute(object sender, CanExecuteRoutedEventArgs e)
 		{
 			e.Handled = true;
@@ -47,7 +39,7 @@ namespace ICSharpCode.ILSpy
 
 		protected override void OnExecute(object sender, ExecutedRoutedEventArgs e)
 		{
-			SaveCodeContextMenuEntry.Execute(assemblyTreeModel.SelectedNodes.ToList());
+			SaveCodeContextMenuEntry.Execute(assemblyTreeModel.SelectedNodes.ToList(), languageService, dockWorkspace);
 		}
 	}
 }

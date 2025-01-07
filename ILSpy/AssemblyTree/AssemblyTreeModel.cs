@@ -16,41 +16,37 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Generic;
 using System;
-using System.Collections.ObjectModel;
-using System.ComponentModel.Composition;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Composition;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Navigation;
 using System.Windows.Threading;
 
+using ICSharpCode.Decompiler.Documentation;
+using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.Docking;
+using ICSharpCode.Decompiler.TypeSystem.Implementation;
+using ICSharpCode.ILSpy.AppEnv;
 using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpy.TextView;
 using ICSharpCode.ILSpy.TreeNodes;
+using ICSharpCode.ILSpy.Updates;
 using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.ILSpyX;
-using ICSharpCode.ILSpyX.Settings;
 using ICSharpCode.ILSpyX.TreeView;
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Linq;
-using ICSharpCode.Decompiler.Metadata;
 
-using System.Reflection.Metadata.Ecma335;
-using System.Windows;
-using ICSharpCode.Decompiler.Documentation;
-using ICSharpCode.Decompiler.TypeSystem.Implementation;
-using System.Reflection.Metadata;
-using System.Text;
-using System.Windows.Navigation;
-
-using ICSharpCode.ILSpy.AppEnv;
-using ICSharpCode.ILSpy.Search;
-using ICSharpCode.Decompiler;
-
+using TomsToolbox.Composition;
 using TomsToolbox.Essentials;
 using TomsToolbox.Wpf;
 
@@ -59,8 +55,7 @@ using TomsToolbox.Wpf;
 namespace ICSharpCode.ILSpy.AssemblyTree
 {
 	[ExportToolPane]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	[Export]
+	[Shared]
 	public class AssemblyTreeModel : ToolPaneModel
 	{
 		public const string PaneContentId = "assemblyListPane";
@@ -71,9 +66,16 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 		private readonly NavigationHistory<NavigationState> history = new();
 		private bool isNavigatingHistory;
+		private readonly SettingsService settingsService;
+		private readonly LanguageService languageService;
+		private readonly IExportProvider exportProvider;
 
-		public AssemblyTreeModel()
+		public AssemblyTreeModel(SettingsService settingsService, LanguageService languageService, IExportProvider exportProvider)
 		{
+			this.settingsService = settingsService;
+			this.languageService = languageService;
+			this.exportProvider = exportProvider;
+
 			Title = Resources.Assemblies;
 			ContentId = PaneContentId;
 			IsCloseable = false;
@@ -81,11 +83,20 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 			MessageBus<NavigateToReferenceEventArgs>.Subscribers += JumpToReference;
 			MessageBus<SettingsChangedEventArgs>.Subscribers += (sender, e) => Settings_PropertyChanged(sender, e);
+			MessageBus<ApplySessionSettingsEventArgs>.Subscribers += ApplySessionSettings;
+			MessageBus<ActiveTabPageChangedEventArgs>.Subscribers += ActiveTabPageChanged;
+			MessageBus<ResetLayoutEventArgs>.Subscribers += ResetLayout;
+			MessageBus<NavigateToEventArgs>.Subscribers += (_, e) => NavigateTo(e.Request, e.InNewTabPage);
+			MessageBus<MainWindowLoadedEventArgs>.Subscribers += (_, _) => {
+				Initialize();
+				Show();
+			};
 
-			var selectionChangeThrottle = new DispatcherThrottle(DispatcherPriority.Input, TreeView_SelectionChanged);
-			SelectedItems.CollectionChanged += (_, _) => selectionChangeThrottle.Tick();
+			EventManager.RegisterClassHandler(typeof(Window), Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler((_, e) => NavigateTo(e)));
 
-			refreshThrottle = new DispatcherThrottle(DispatcherPriority.Background, RefreshInternal);
+			refreshThrottle = new(DispatcherPriority.Background, RefreshInternal);
+
+			AssemblyList = settingsService.CreateEmptyAssemblyList();
 		}
 
 		private void Settings_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -96,6 +107,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				{
 					case nameof(SessionSettings.ActiveAssemblyList):
 						ShowAssemblyList(sessionSettings.ActiveAssemblyList);
+						RefreshDecompiledView();
 						break;
 					case nameof(SessionSettings.Theme):
 						// update syntax highlighting and force reload (AvalonEdit does not automatically refresh on highlighting change)
@@ -111,7 +123,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			{
 				switch (e.PropertyName)
 				{
-					case nameof(LanguageSettings.Language) or nameof(LanguageSettings.LanguageVersion):
+					case nameof(LanguageSettings.LanguageId) or nameof(LanguageSettings.LanguageVersionId):
 						RefreshDecompiledView();
 						break;
 					default:
@@ -121,7 +133,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			}
 		}
 
-		public AssemblyList? AssemblyList { get; private set; }
+		public AssemblyList AssemblyList { get; private set; }
 
 		private SharpTreeNode? root;
 		public SharpTreeNode? Root {
@@ -129,13 +141,23 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			set => SetProperty(ref root, value);
 		}
 
-		private SharpTreeNode? selectedItem;
 		public SharpTreeNode? SelectedItem {
-			get => selectedItem;
-			set => SetProperty(ref selectedItem, value);
+			get => SelectedItems.FirstOrDefault();
+			set => SelectedItems = value is null ? [] : [value];
 		}
 
-		public ObservableCollection<SharpTreeNode> SelectedItems { get; } = [];
+		private SharpTreeNode[] selectedItems = [];
+		public SharpTreeNode[] SelectedItems {
+			get => selectedItems;
+			set {
+				if (selectedItems.SequenceEqual(value))
+					return;
+
+				selectedItems = value;
+				OnPropertyChanged();
+				TreeView_SelectionChanged();
+			}
+		}
 
 		public string[]? SelectedPath => GetPathForNode(SelectedItem);
 
@@ -145,27 +167,26 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		{
 			LoadAssemblies(args.AssembliesToLoad, commandLineLoadedAssemblies, focusNode: false);
 			if (args.Language != null)
-				SettingsService.Instance.SessionSettings.LanguageSettings.Language = Languages.GetLanguage(args.Language);
+				languageService.Language = languageService.GetLanguage(args.Language);
 			return true;
 		}
 
 		/// <summary>
 		/// Called on startup or when passed arguments via WndProc from a second instance.
-		/// In the format case, spySettings is non-null; in the latter it is null.
+		/// In the format case, updateSettings is non-null; in the latter it is null.
 		/// </summary>
-		private void HandleCommandLineArgumentsAfterShowList(CommandLineArguments args, ISettingsProvider? spySettings = null)
+		private async Task HandleCommandLineArgumentsAfterShowList(CommandLineArguments args, UpdateSettings? updateSettings = null)
 		{
-			var sessionSettings = SettingsService.Instance.SessionSettings;
+			var sessionSettings = settingsService.SessionSettings;
 
 			var relevantAssemblies = commandLineLoadedAssemblies.ToList();
 			commandLineLoadedAssemblies.Clear(); // clear references once we don't need them anymore
-			NavigateOnLaunch(args.NavigateTo, sessionSettings.ActiveTreeViewPath, spySettings, relevantAssemblies);
+
+			await NavigateOnLaunch(args.NavigateTo, sessionSettings.ActiveTreeViewPath, updateSettings, relevantAssemblies);
+
 			if (args.Search != null)
 			{
-				var searchPane = App.ExportProvider.GetExportedValue<SearchPaneModel>();
-
-				searchPane.SearchTerm = args.Search;
-				searchPane.Show();
+				MessageBus.Send(this, new ShowSearchPageEventArgs(args.Search));
 			}
 		}
 
@@ -173,7 +194,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		{
 			var cmdArgs = CommandLineArguments.Create(args);
 
-			await Dispatcher.InvokeAsync(() => {
+			await Dispatcher.InvokeAsync(async () => {
 
 				if (!HandleCommandLineArguments(cmdArgs))
 					return;
@@ -185,11 +206,11 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 					window.WindowState = WindowState.Normal;
 				}
 
-				HandleCommandLineArgumentsAfterShowList(cmdArgs);
+				await HandleCommandLineArgumentsAfterShowList(cmdArgs);
 			});
 		}
 
-		private async void NavigateOnLaunch(string? navigateTo, string[]? activeTreeViewPath, ISettingsProvider? spySettings, List<LoadedAssembly> relevantAssemblies)
+		private async Task NavigateOnLaunch(string? navigateTo, string[]? activeTreeViewPath, UpdateSettings? updateSettings, List<LoadedAssembly> relevantAssemblies)
 		{
 			var initialSelection = SelectedItem;
 			if (navigateTo != null)
@@ -205,7 +226,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 						{
 							// FindNamespaceNode() blocks the UI if the assembly is not yet loaded,
 							// so use an async wait instead.
-							await asm.GetMetadataFileAsync().Catch<Exception>(ex => { });
+							await asm.GetMetadataFileAsync().Catch<Exception>(_ => { });
 							NamespaceTreeNode nsNode = asmNode.FindNamespaceNode(namespaceName);
 							if (nsNode != null)
 							{
@@ -228,9 +249,11 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				else
 				{
 					IEntity? mr = await Task.Run(() => FindEntityInRelevantAssemblies(navigateTo, relevantAssemblies));
+
 					// Make sure we wait for assemblies being loaded...
 					// BeginInvoke in LoadedAssembly.LookupReferencedAssemblyInternal
 					await Dispatcher.InvokeAsync(delegate { }, DispatcherPriority.Normal);
+
 					if (mr is { ParentModule.MetadataFile: not null })
 					{
 						found = true;
@@ -244,7 +267,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				{
 					AvalonEditTextOutput output = new AvalonEditTextOutput();
 					output.Write($"Cannot find '{navigateTo}' in command line specified assemblies.");
-					DockWorkspace.Instance.ShowText(output);
+					DockWorkspace.ShowText(output);
 				}
 			}
 			else if (relevantAssemblies.Count == 1)
@@ -257,10 +280,10 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 					SelectNode(asmNode);
 				}
 			}
-			else if (spySettings != null)
+			else if (updateSettings != null)
 			{
 				SharpTreeNode? node = null;
-				if (activeTreeViewPath?.Length > 0 && AssemblyList != null)
+				if (activeTreeViewPath?.Length > 0)
 				{
 					foreach (var asm in AssemblyList.GetAssemblies())
 					{
@@ -268,7 +291,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 						{
 							// FindNodeByPath() blocks the UI if the assembly is not yet loaded,
 							// so use an async wait instead.
-							await asm.GetMetadataFileAsync().Catch<Exception>(ex => { });
+							await asm.GetMetadataFileAsync().Catch<Exception>(_ => { });
 						}
 					}
 					node = FindNodeByPath(activeTreeViewPath, true);
@@ -280,11 +303,11 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 						SelectNode(node);
 
 						// only if not showing the about page, perform the update check:
-						await MainWindow.Instance.ShowMessageIfUpdatesAvailableAsync(spySettings);
+						MessageBus.Send(this, new CheckIfUpdateAvailableEventArgs());
 					}
 					else
 					{
-						DockWorkspace.Instance.ActiveTabPage.ShowTextView(AboutPage.Display);
+						MessageBus.Send(this, new ShowAboutPageEventArgs(DockWorkspace.ActiveTabPage));
 					}
 				}
 			}
@@ -353,11 +376,11 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 		public void Initialize()
 		{
-			AssemblyList = SettingsService.Instance.LoadInitialAssemblyList();
+			AssemblyList = settingsService.LoadInitialAssemblyList();
 
 			HandleCommandLineArguments(App.CommandLineArguments);
 
-			var loadPreviousAssemblies = SettingsService.Instance.MiscSettings.LoadPreviousAssemblies;
+			var loadPreviousAssemblies = settingsService.MiscSettings.LoadPreviousAssemblies;
 			if (AssemblyList.GetAssemblies().Length == 0
 				&& AssemblyList.ListName == AssemblyListManager.DefaultListName
 				&& loadPreviousAssemblies)
@@ -367,7 +390,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 			ShowAssemblyList(AssemblyList);
 
-			var sessionSettings = SettingsService.Instance.SessionSettings;
+			var sessionSettings = settingsService.SessionSettings;
 			if (sessionSettings.ActiveAutoLoadedAssembly != null
 				&& File.Exists(sessionSettings.ActiveAutoLoadedAssembly))
 			{
@@ -377,47 +400,50 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			Dispatcher.BeginInvoke(DispatcherPriority.Loaded, OpenAssemblies);
 		}
 
-		private void OpenAssemblies()
+		private async Task OpenAssemblies()
 		{
-			HandleCommandLineArgumentsAfterShowList(App.CommandLineArguments, SettingsService.Instance.SpySettings);
+			await HandleCommandLineArgumentsAfterShowList(App.CommandLineArguments, settingsService.GetSettings<UpdateSettings>());
 
-			AvalonEditTextOutput output = new();
-			if (FormatExceptions(App.StartupExceptions.ToArray(), output))
-				DockWorkspace.Instance.ShowText(output);
+			if (FormatExceptions(App.StartupExceptions.ToArray(), out var output))
+			{
+				output.Title = "Startup errors";
+
+				DockWorkspace.AddTabPage();
+				DockWorkspace.ShowText(output);
+			}
 		}
 
-		private static bool FormatExceptions(App.ExceptionData[] exceptions, ITextOutput output)
+		private static bool FormatExceptions(App.ExceptionData[] exceptions, [NotNullWhen(true)] out AvalonEditTextOutput? output)
 		{
-			var stringBuilder = new StringBuilder();
-			var result = exceptions.FormatExceptions(stringBuilder);
-			if (result)
-			{
-				output.Write(stringBuilder.ToString());
-			}
-			return result;
+			output = null;
+
+			var result = exceptions.FormatExceptions();
+			if (result.IsNullOrEmpty())
+				return false;
+
+			output = new();
+			output.Write(result);
+			return true;
+
 		}
 
 		private void ShowAssemblyList(string name)
 		{
-			AssemblyList list = SettingsService.Instance.AssemblyListManager.LoadList(name);
+			AssemblyList list = settingsService.AssemblyListManager.LoadList(name);
 			//Only load a new list when it is a different one
-			if (list.ListName != AssemblyList?.ListName)
+			if (list.ListName != AssemblyList.ListName)
 			{
 				ShowAssemblyList(list);
-				SelectNode(Root);
+				SelectNode(Root?.Children.FirstOrDefault());
 			}
 		}
 
 		private void ShowAssemblyList(AssemblyList assemblyList)
 		{
 			history.Clear();
-			if (this.AssemblyList != null)
-			{
-				this.AssemblyList.CollectionChanged -= assemblyList_CollectionChanged;
-			}
 
-			this.AssemblyList = assemblyList;
-
+			AssemblyList.CollectionChanged -= assemblyList_CollectionChanged;
+			AssemblyList = assemblyList;
 			assemblyList.CollectionChanged += assemblyList_CollectionChanged;
 
 			assemblyListTreeNode = new(assemblyList) {
@@ -500,7 +526,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 			if (inNewTabPage)
 			{
-				DockWorkspace.Instance.AddTabPage();
+				DockWorkspace.AddTabPage();
 				SelectedItem = null;
 			}
 
@@ -512,6 +538,10 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			{
 				activeView?.ScrollIntoView(node);
 				SelectedItem = node;
+
+				Dispatcher.BeginInvoke(DispatcherPriority.Background, () => {
+					activeView?.ScrollIntoView(node);
+				});
 			}
 		}
 
@@ -527,32 +557,12 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				return;
 			}
 
-			if (SelectedItems.SequenceEqual(nodesList))
+			foreach (var node in nodesList)
 			{
-				return;
+				activeView?.ScrollIntoView(node);
 			}
 
-			if (this.isNavigatingHistory)
-			{
-				SelectedItems.Clear();
-				foreach (var node in nodesList)
-				{
-					activeView?.ScrollIntoView(node);
-					SelectedItems.Add(node);
-				}
-			}
-			else
-			{
-				// defer selection change, so it does not interfere with the focus of the tab page.
-				Dispatcher.BeginInvoke(() => {
-					SelectedItems.Clear();
-					foreach (var node in nodesList)
-					{
-						activeView?.ScrollIntoView(node);
-						SelectedItems.Add(node);
-					}
-				});
-			}
+			SelectedItems = nodesList.ToArray();
 		}
 
 		/// <summary>
@@ -630,6 +640,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		private void JumpToReference(object? sender, NavigateToReferenceEventArgs e)
 		{
 			JumpToReferenceAsync(e.Reference, e.InNewTabPage).HandleExceptions();
+			IsActive = true;
 		}
 
 		/// <summary>
@@ -646,11 +657,9 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			switch (reference)
 			{
 				case Decompiler.Disassembler.OpCodeInfo opCode:
-					MainWindow.OpenLink(opCode.Link);
+					GlobalUtils.OpenLink(opCode.Link);
 					break;
 				case EntityReference unresolvedEntity:
-					if (AssemblyList is null)
-						break;
 					string protocol = unresolvedEntity.Protocol;
 					var file = unresolvedEntity.ResolveAssembly(AssemblyList);
 					if (file == null)
@@ -659,8 +668,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 					}
 					if (protocol != "decompile")
 					{
-						var protocolHandlers = App.ExportProvider.GetExportedValues<IProtocolHandler>();
-						foreach (var handler in protocolHandlers)
+						foreach (var handler in exportProvider.GetExportedValues<IProtocolHandler>())
 						{
 							var node = handler.Resolve(protocol, file, unresolvedEntity.Handle, out bool newTabPage);
 							if (node != null)
@@ -696,8 +704,6 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				AssemblyTreeNode? lastNode = null;
 
 				var assemblyList = AssemblyList;
-				if (assemblyList is null)
-					return;
 
 				foreach (string file in fileNames)
 				{
@@ -714,7 +720,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 						{
 							lastNode = node;
 							activeView?.ScrollIntoView(node);
-							SelectedItems.Add(node);
+							SelectedItems = [.. SelectedItems, node];
 						}
 					}
 				}
@@ -729,9 +735,14 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 		private void TreeView_SelectionChanged()
 		{
-			if (SelectedItems.Count > 0)
+			if (SelectedItems.Length <= 0)
 			{
-				var activeTabPage = DockWorkspace.Instance.ActiveTabPage;
+				// To cancel any pending decompilation requests and show an empty tab
+				DecompileSelectedNodes();
+			}
+			else
+			{
+				var activeTabPage = DockWorkspace.ActiveTabPage;
 
 				if (!isNavigatingHistory)
 				{
@@ -777,13 +788,13 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			}
 		}
 
-		private void DecompileSelectedNodes(DecompilerTextViewState? newState = null)
+		public void DecompileSelectedNodes(DecompilerTextViewState? newState = null)
 		{
-			var activeTabPage = DockWorkspace.Instance.ActiveTabPage;
+			var activeTabPage = DockWorkspace.ActiveTabPage;
 
 			activeTabPage.SupportsLanguageSwitching = true;
 
-			if (SelectedItems.Count == 1)
+			if (SelectedItems.Length == 1)
 			{
 				if (SelectedItem is ILSpyTreeNode node && node.View(activeTabPage))
 					return;
@@ -794,66 +805,68 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				return;
 			}
 
-			var options = SettingsService.Instance.CreateDecompilationOptions(activeTabPage);
+			var options = activeTabPage.CreateDecompilationOptions();
 			options.TextViewState = newState;
 			activeTabPage.ShowTextViewAsync(textView => textView.DecompileAsync(this.CurrentLanguage, this.SelectedNodes, options));
 		}
 
 		public void RefreshDecompiledView()
 		{
-			DecompileSelectedNodes(DockWorkspace.Instance.ActiveTabPage.GetState() as DecompilerTextViewState);
+			DecompileSelectedNodes(DockWorkspace.ActiveTabPage.GetState() as DecompilerTextViewState);
 		}
 
-		public Language CurrentLanguage => SettingsService.Instance.SessionSettings.LanguageSettings.Language;
+		public Language CurrentLanguage => languageService.Language;
 
-		public LanguageVersion CurrentLanguageVersion => SettingsService.Instance.SessionSettings.LanguageSettings.LanguageVersion;
+		public LanguageVersion? CurrentLanguageVersion => languageService.LanguageVersion;
 
-		public IEnumerable<ILSpyTreeNode> SelectedNodes {
-			get {
-				return GetTopLevelSelection().OfType<ILSpyTreeNode>();
-			}
-		}
+		public IEnumerable<ILSpyTreeNode> SelectedNodes => GetTopLevelSelection().OfType<ILSpyTreeNode>();
 
 		#endregion
 
 		public void NavigateHistory(bool forward)
 		{
-			isNavigatingHistory = true;
-			this.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => isNavigatingHistory = false);
+			try
+			{
+				isNavigatingHistory = true;
 
-			TabPageModel tabPage = DockWorkspace.Instance.ActiveTabPage;
-			var state = tabPage.GetState();
-			if (state != null)
-				history.UpdateCurrent(new NavigationState(tabPage, state));
-			var newState = forward ? history.GoForward() : history.GoBack();
+				TabPageModel tabPage = DockWorkspace.ActiveTabPage;
+				var state = tabPage.GetState();
+				if (state != null)
+					history.UpdateCurrent(new NavigationState(tabPage, state));
+				var newState = forward ? history.GoForward() : history.GoBack();
 
-			TabPageModel activeTabPage = newState.TabPage;
+				TabPageModel activeTabPage = newState.TabPage;
 
-			if (!DockWorkspace.Instance.TabPages.Contains(activeTabPage))
-				DockWorkspace.Instance.AddTabPage(activeTabPage);
-			else
-				DockWorkspace.Instance.ActiveTabPage = activeTabPage;
+				if (!DockWorkspace.TabPages.Contains(activeTabPage))
+					DockWorkspace.AddTabPage(activeTabPage);
+				else
+					DockWorkspace.ActiveTabPage = activeTabPage;
 
-			SelectNodes(newState.TreeNodes);
+				SelectNodes(newState.TreeNodes);
+			}
+			finally
+			{
+				isNavigatingHistory = false;
+			}
 		}
 
 		public bool CanNavigateBack => history.CanNavigateBack;
 
 		public bool CanNavigateForward => history.CanNavigateForward;
 
-		public void NavigateTo(RequestNavigateEventArgs e, bool inNewTabPage = false)
+		private void NavigateTo(RequestNavigateEventArgs e, bool inNewTabPage = false)
 		{
 			if (e.Uri.Scheme == "resource")
 			{
 				if (inNewTabPage)
 				{
-					DockWorkspace.Instance.AddTabPage();
+					DockWorkspace.AddTabPage();
 				}
 
 				if (e.Uri.Host == "aboutpage")
 				{
 					RecordHistory();
-					DockWorkspace.Instance.ActiveTabPage.ShowTextView(AboutPage.Display);
+					MessageBus.Send(this, new ShowAboutPageEventArgs(DockWorkspace.ActiveTabPage));
 					e.Handled = true;
 					return;
 				}
@@ -877,7 +890,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 					}
 				}
 				RecordHistory();
-				DockWorkspace.Instance.ShowText(output);
+				DockWorkspace.ShowText(output);
 				e.Handled = true;
 			}
 
@@ -885,7 +898,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			{
 				if (isNavigatingHistory)
 					return;
-				TabPageModel tabPage = DockWorkspace.Instance.ActiveTabPage;
+				TabPageModel tabPage = DockWorkspace.ActiveTabPage;
 				var currentState = tabPage.GetState();
 				if (currentState != null)
 					history.UpdateCurrent(new NavigationState(tabPage, currentState));
@@ -907,11 +920,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 			{
 				var path = GetPathForNode(SelectedItem);
 
-				if (AssemblyList != null)
-				{
-					ShowAssemblyList(SettingsService.Instance.AssemblyListManager.LoadList(AssemblyList.ListName));
-				}
-
+				ShowAssemblyList(settingsService.AssemblyListManager.LoadList(AssemblyList.ListName));
 				SelectNode(FindNodeByPath(path, true), inNewTabPage: false);
 
 				RefreshDecompiledView();
@@ -920,7 +929,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 
 		private void UnselectAll()
 		{
-			SelectedItems.Clear();
+			SelectedItems = [];
 		}
 
 		private IEnumerable<SharpTreeNode> GetTopLevelSelection()
@@ -940,7 +949,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 		{
 			using (activeView?.LockUpdates())
 			{
-				AssemblyList?.Sort(AssemblyComparer.Instance);
+				AssemblyList.Sort(AssemblyComparer.Instance);
 			}
 		}
 
@@ -985,6 +994,49 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				UnselectAll();
 
 			LoadAssemblies(fileNames, focusNode: focusNode);
+		}
+
+		private void ApplySessionSettings(object? sender, ApplySessionSettingsEventArgs e)
+		{
+			var settings = e.SessionSettings;
+
+			settings.ActiveAssemblyList = AssemblyList.ListName;
+			settings.ActiveTreeViewPath = SelectedPath;
+			settings.ActiveAutoLoadedAssembly = GetAutoLoadedAssemblyNode(SelectedItem);
+		}
+
+		private static string? GetAutoLoadedAssemblyNode(SharpTreeNode? node)
+		{
+			var assemblyTreeNode = node?
+				.AncestorsAndSelf()
+				.OfType<AssemblyTreeNode>()
+				.FirstOrDefault();
+
+			var loadedAssembly = assemblyTreeNode?.LoadedAssembly;
+
+			return loadedAssembly is not { IsLoaded: true, IsAutoLoaded: true }
+				? null
+				: loadedAssembly.FileName;
+		}
+
+		private void ActiveTabPageChanged(object? sender, ActiveTabPageChangedEventArgs e)
+		{
+			if (e.ViewState is not { } state)
+				return;
+
+			if (state.DecompiledNodes != null)
+			{
+				SelectNodes(state.DecompiledNodes);
+			}
+			else
+			{
+				NavigateTo(new(state.ViewedUri, null));
+			}
+
+		}
+		private void ResetLayout(object? sender, ResetLayoutEventArgs e)
+		{
+			RefreshDecompiledView();
 		}
 	}
 }

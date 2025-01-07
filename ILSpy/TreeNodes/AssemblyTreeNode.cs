@@ -18,7 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -217,10 +217,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					switch (loadResult.MetadataFile.Kind)
 					{
 						case MetadataFile.MetadataFileKind.PortableExecutable:
-							LoadChildrenForPEFile(loadResult.MetadataFile);
-							break;
 						case MetadataFile.MetadataFileKind.WebCIL:
-							LoadChildrenForWebCilFile((WebCilFile)loadResult.MetadataFile);
+							LoadChildrenForExecutableFile(loadResult.MetadataFile);
 							break;
 						default:
 							var metadata = loadResult.MetadataFile;
@@ -244,7 +242,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			}
 		}
 
-		void LoadChildrenForPEFile(MetadataFile module)
+		void LoadChildrenForExecutableFile(MetadataFile module)
 		{
 			typeSystem = LoadedAssembly.GetTypeSystemOrNull();
 			var assembly = (MetadataModule)typeSystem.MainModule;
@@ -263,73 +261,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				ns.Children.Clear();
 			}
 			namespaces.Clear();
-			bool useNestedStructure = SettingsService.Instance.DisplaySettings.UseNestedNamespaceNodes;
-			foreach (var type in assembly.TopLevelTypeDefinitions.OrderBy(t => t.ReflectionName, NaturalStringComparer.Instance))
-			{
-				var ns = GetOrCreateNamespaceTreeNode(type.Namespace);
-				TypeTreeNode node = new TypeTreeNode(type, this);
-				typeDict[(TypeDefinitionHandle)type.MetadataToken] = node;
-				ns.Children.Add(node);
-			}
-			foreach (NamespaceTreeNode ns in namespaces.Values
-				.Where(ns => ns.Children.Count > 0 && ns.Parent == null)
-				.OrderBy(n => n.Name, NaturalStringComparer.Instance))
-			{
-				this.Children.Add(ns);
-				SetPublicAPI(ns);
-			}
-
-			NamespaceTreeNode GetOrCreateNamespaceTreeNode(string @namespace)
-			{
-				if (!namespaces.TryGetValue(@namespace, out NamespaceTreeNode ns))
-				{
-					if (useNestedStructure)
-					{
-						int decimalIndex = @namespace.LastIndexOf('.');
-						if (decimalIndex < 0)
-						{
-							var escapedNamespace = Language.EscapeName(@namespace);
-							ns = new NamespaceTreeNode(escapedNamespace);
-						}
-						else
-						{
-							var parentNamespaceTreeNode = GetOrCreateNamespaceTreeNode(@namespace.Substring(0, decimalIndex));
-							var escapedInnerNamespace = Language.EscapeName(@namespace.Substring(decimalIndex + 1));
-							ns = new NamespaceTreeNode(escapedInnerNamespace);
-							parentNamespaceTreeNode.Children.Add(ns);
-						}
-					}
-					else
-					{
-						var escapedNamespace = Language.EscapeName(@namespace);
-						ns = new NamespaceTreeNode(escapedNamespace);
-					}
-					namespaces.Add(@namespace, ns);
-				}
-				return ns;
-			}
-		}
-
-		void LoadChildrenForWebCilFile(WebCilFile module)
-		{
-			typeSystem = LoadedAssembly.GetTypeSystemOrNull();
-			var assembly = (MetadataModule)typeSystem.MainModule;
-			this.Children.Add(new MetadataTreeNode(module, Resources.Metadata));
-			Decompiler.DebugInfo.IDebugInfoProvider debugInfo = LoadedAssembly.GetDebugInfoOrNull();
-			if (debugInfo is PortableDebugInfoProvider ppdb
-				&& ppdb.GetMetadataReader() is System.Reflection.Metadata.MetadataReader reader)
-			{
-				this.Children.Add(new MetadataTreeNode(ppdb.ToMetadataFile(), $"Debug Metadata ({(ppdb.IsEmbedded ? "Embedded" : "From portable PDB")})"));
-			}
-			this.Children.Add(new ReferenceFolderTreeNode(module, this));
-			if (module.Resources.Any())
-				this.Children.Add(new ResourceListTreeNode(module));
-			foreach (NamespaceTreeNode ns in namespaces.Values)
-			{
-				ns.Children.Clear();
-			}
-			namespaces.Clear();
-			bool useNestedStructure = SettingsService.Instance.DisplaySettings.UseNestedNamespaceNodes;
+			bool useNestedStructure = SettingsService.DisplaySettings.UseNestedNamespaceNodes;
 			foreach (var type in assembly.TopLevelTypeDefinitions.OrderBy(t => t.ReflectionName, NaturalStringComparer.Instance))
 			{
 				var ns = GetOrCreateNamespaceTreeNode(type.Namespace);
@@ -547,7 +479,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 			dlg.Filter = language.Name + " project|*" + language.ProjectFileExtension + "|" + language.Name + " single file|*" + language.FileExtension + "|All files|*.*";
 			if (dlg.ShowDialog() == true)
 			{
-				var options = SettingsService.Instance.CreateDecompilationOptions(DockWorkspace.Instance.ActiveTabPage);
+				var options = DockWorkspace.ActiveTabPage.CreateDecompilationOptions();
 				options.FullDecompilation = true;
 				if (dlg.FilterIndex == 1)
 				{
@@ -580,7 +512,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._Remove), Icon = "images/Delete")]
-	[PartCreationPolicy(CreationPolicy.Shared)]
+	[Shared]
 	sealed class RemoveAssembly : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -607,8 +539,8 @@ namespace ICSharpCode.ILSpy.TreeNodes
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._Reload), Icon = "images/Refresh")]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	sealed class ReloadAssembly : IContextMenuEntry
+	[Shared]
+	sealed class ReloadAssembly(AssemblyTreeModel assemblyTreeModel) : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
 		{
@@ -636,14 +568,14 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					la.AssemblyList.ReloadAssembly(la.FileName);
 				}
 			}
-			MainWindow.Instance.AssemblyTreeModel.SelectNodes(paths.Select(p => MainWindow.Instance.AssemblyTreeModel.FindNodeByPath(p, true)).ToArray());
-			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
+			assemblyTreeModel.SelectNodes(paths.Select(p => assemblyTreeModel.FindNodeByPath(p, true)).ToArray());
+			assemblyTreeModel.RefreshDecompiledView();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._LoadDependencies), Category = nameof(Resources.Dependencies))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	sealed class LoadDependencies : IContextMenuEntry
+	[Shared]
+	sealed class LoadDependencies(AssemblyTreeModel assemblyTreeModel) : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
 		{
@@ -677,13 +609,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				}
 			}
 			await Task.WhenAll(tasks);
-			MainWindow.Instance.AssemblyTreeModel.RefreshDecompiledView();
+			assemblyTreeModel.RefreshDecompiledView();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._AddMainList), Category = nameof(Resources.Dependencies))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
-	sealed class AddToMainList : IContextMenuEntry
+	[Shared]
+	sealed class AddToMainList(AssemblyTreeModel assemblyTreeModel) : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
 		{
@@ -712,12 +644,13 @@ namespace ICSharpCode.ILSpy.TreeNodes
 					node.RaisePropertyChanged(nameof(ILSpyTreeNode.IsAutoLoaded));
 				}
 			}
-			MainWindow.Instance.AssemblyTreeModel.AssemblyList.RefreshSave();
+
+			assemblyTreeModel.AssemblyList.RefreshSave();
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._OpenContainingFolder), Category = nameof(Resources.Shell))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
+	[Shared]
 	sealed class OpenContainingFolder : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -763,14 +696,14 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				var path = node.LoadedAssembly.FileName;
 				if (File.Exists(path))
 				{
-					MainWindow.ExecuteCommand("explorer.exe", $"/select,\"{path}\"");
+					GlobalUtils.ExecuteCommand("explorer.exe", $"/select,\"{path}\"");
 				}
 			}
 		}
 	}
 
 	[ExportContextMenuEntry(Header = nameof(Resources._OpenCommandLineHere), Category = nameof(Resources.Shell))]
-	[PartCreationPolicy(CreationPolicy.Shared)]
+	[Shared]
 	sealed class OpenCmdHere : IContextMenuEntry
 	{
 		public bool IsVisible(TextViewContext context)
@@ -805,7 +738,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 				var path = Path.GetDirectoryName(node.LoadedAssembly.FileName);
 				if (Directory.Exists(path))
 				{
-					MainWindow.ExecuteCommand("cmd.exe", $"/k \"cd {path}\"");
+					GlobalUtils.ExecuteCommand("cmd.exe", $"/k \"cd {path}\"");
 				}
 			}
 		}

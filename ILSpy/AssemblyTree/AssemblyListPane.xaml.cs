@@ -16,11 +16,15 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.ComponentModel.Composition;
+using System.Composition;
 using System.Windows;
 using System.Windows.Threading;
 
-using TomsToolbox.Wpf.Composition.Mef;
+using ICSharpCode.ILSpy.ViewModels;
+using ICSharpCode.ILSpyX.TreeView;
+
+using TomsToolbox.Wpf;
+using TomsToolbox.Wpf.Composition.AttributedModel;
 
 namespace ICSharpCode.ILSpy.AssemblyTree
 {
@@ -28,7 +32,7 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 	/// Interaction logic for AssemblyListPane.xaml
 	/// </summary>
 	[DataTemplate(typeof(AssemblyTreeModel))]
-	[PartCreationPolicy(CreationPolicy.NonShared)]
+	[NonShared]
 	public partial class AssemblyListPane
 	{
 		public AssemblyListPane()
@@ -53,10 +57,25 @@ namespace ICSharpCode.ILSpy.AssemblyTree
 				var selected = model.SelectedItem;
 				if (selected != null)
 				{
-					this.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => {
+					this.BeginInvoke(DispatcherPriority.Background, () => {
 						ScrollIntoView(selected);
 						this.SelectedItem = selected;
 					});
+				}
+			}
+			else if (e.Property == Pane.IsActiveProperty)
+			{
+				if (!true.Equals(e.NewValue))
+					return;
+
+				if (SelectedItem is SharpTreeNode selectedItem)
+				{
+					// defer focusing, so it does not interfere with selection via mouse click
+					this.BeginInvoke(() => FocusNode(selectedItem));
+				}
+				else
+				{
+					Focus();
 				}
 			}
 		}
