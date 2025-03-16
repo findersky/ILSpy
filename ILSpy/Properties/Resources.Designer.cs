@@ -1326,6 +1326,15 @@ namespace ICSharpCode.ILSpy.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Sort custom attributes.
+        /// </summary>
+        public static string DecompilerSettings_SortCustomAttributes {
+            get {
+                return ResourceManager.GetString("DecompilerSettings.SortCustomAttributes", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Detect switch on integer even if IL code does not use a jump table.
         /// </summary>
         public static string DecompilerSettings_SparseIntegerSwitch {
@@ -1719,6 +1728,15 @@ namespace ICSharpCode.ILSpy.Properties {
         public static string EnableFoldingBlocksBraces {
             get {
                 return ResourceManager.GetString("EnableFoldingBlocksBraces", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Enable smooth scrolling.
+        /// </summary>
+        public static string EnableSmoothScrolling {
+            get {
+                return ResourceManager.GetString("EnableSmoothScrolling", resourceCulture);
             }
         }
         

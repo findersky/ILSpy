@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Siegfried Pammer
+﻿// Copyright (c) 2024 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,47 +16,35 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Runtime.InteropServices;
+using System.IO;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Threading.Tasks;
 
-namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
+using ICSharpCode.Decompiler.Metadata;
+
+namespace ICSharpCode.ILSpyX.FileLoaders
 {
-	[StructLayout(LayoutKind.Sequential, Size = 1)]
-	public struct EmptyStruct
+	public sealed class PEFileLoader : IFileLoader
 	{
-	}
-
-	public class Structs
-	{
-#if CS100
-		public StructWithDefaultCtor M()
+		public async Task<LoadResult?> Load(string fileName, Stream stream, FileLoadContext context)
 		{
-			return default(StructWithDefaultCtor);
+			if (stream.Length < 2 || stream.ReadByte() != 'M' || stream.ReadByte() != 'Z')
+			{
+				return null;
+			}
+
+			return await LoadPEFile(fileName, stream, context).ConfigureAwait(false);
 		}
 
-		public StructWithDefaultCtor M2()
+		public static Task<LoadResult> LoadPEFile(string fileName, Stream stream, FileLoadContext context)
 		{
-			return new StructWithDefaultCtor();
-		}
-#endif
-	}
-
-#if CS100
-	public struct StructWithDefaultCtor
-	{
-		public int X;
-
-		public StructWithDefaultCtor()
-		{
-			X = 42;
+			MetadataReaderOptions options = context.ApplyWinRTProjections
+				? MetadataReaderOptions.ApplyWindowsRuntimeProjections
+				: MetadataReaderOptions.None;
+			stream.Position = 0;
+			PEFile module = new PEFile(fileName, stream, PEStreamOptions.PrefetchEntireImage | PEStreamOptions.LeaveOpen, metadataOptions: options);
+			return Task.FromResult(new LoadResult { MetadataFile = module });
 		}
 	}
-#endif
-
-#if CS110
-	public struct StructWithRequiredMembers
-	{
-		public required string FirstName;
-		public required string LastName { get; set; }
-	}
-#endif
 }
