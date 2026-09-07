@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,92 +17,57 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Windows.Input;
 
-using ICSharpCode.AvalonEdit.Document;
-using ICSharpCode.AvalonEdit.Rendering;
+using Avalonia.Input;
+
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Rendering;
 
 namespace ICSharpCode.ILSpy.TextView
 {
 	/// <summary>
-	/// Creates hyperlinks in the text view.
+	/// Creates clickable hyperlink elements in the text view from a
+	/// <see cref="TextSegmentCollection{ReferenceSegment}"/> emitted by the decompiler.
 	/// </summary>
 	sealed class ReferenceElementGenerator : VisualLineElementGenerator
 	{
 		readonly Predicate<ReferenceSegment> isLink;
 
+		public TextSegmentCollection<ReferenceSegment>? References { get; set; }
+
 		/// <summary>
-		/// The collection of references (hyperlinks).
+		/// Lets the hosting view decide the cursor for a reference under the pointer,
+		/// factoring in key modifiers and settings. Falls back to hand-for-links when unset.
 		/// </summary>
-		public TextSegmentCollection<ReferenceSegment> References { get; set; }
+		public Action<InputElement, ReferenceSegment, KeyModifiers>? QueryCursor { get; set; }
 
 		public ReferenceElementGenerator(Predicate<ReferenceSegment> isLink)
 		{
-			if (isLink == null)
-				throw new ArgumentNullException(nameof(isLink));
-			this.isLink = isLink;
+			this.isLink = isLink ?? throw new ArgumentNullException(nameof(isLink));
 		}
 
 		public override int GetFirstInterestedOffset(int startOffset)
 		{
-			if (this.References == null)
+			if (References == null)
 				return -1;
-			// inform AvalonEdit about the next position where we want to build a hyperlink
-			var segment = this.References.FindFirstSegmentWithStartAfter(startOffset);
+			var segment = References.FindFirstSegmentWithStartAfter(startOffset);
 			return segment != null ? segment.StartOffset : -1;
 		}
 
-		public override VisualLineElement ConstructElement(int offset)
+		public override VisualLineElement? ConstructElement(int offset)
 		{
-			if (this.References == null)
+			if (References == null)
 				return null;
-			foreach (var segment in this.References.FindSegmentsContaining(offset))
+			foreach (var segment in References.FindSegmentsContaining(offset))
 			{
-				// skip all non-links
 				if (!isLink(segment))
 					continue;
-				// ensure that hyperlinks don't span several lines (VisualLineElements can't contain line breaks)
+				// Hyperlinks can't span line breaks — clamp to the current line.
 				int endOffset = Math.Min(segment.EndOffset, CurrentContext.VisualLine.LastDocumentLine.EndOffset);
-				// don't create hyperlinks with length 0
 				if (offset < endOffset)
-				{
 					return new VisualLineReferenceText(CurrentContext.VisualLine, endOffset - offset, this, segment);
-				}
 			}
 			return null;
-		}
-	}
-
-	/// <summary>
-	/// VisualLineElement that represents a piece of text and is a clickable link.
-	/// </summary>
-	sealed class VisualLineReferenceText : VisualLineText
-	{
-		readonly ReferenceElementGenerator parent;
-		readonly ReferenceSegment referenceSegment;
-
-		/// <summary>
-		/// Creates a visual line text element with the specified length.
-		/// It uses the <see cref="ITextRunConstructionContext.VisualLine"/> and its
-		/// <see cref="VisualLineElement.RelativeTextOffset"/> to find the actual text string.
-		/// </summary>
-		public VisualLineReferenceText(VisualLine parentVisualLine, int length, ReferenceElementGenerator parent, ReferenceSegment referenceSegment) : base(parentVisualLine, length)
-		{
-			this.parent = parent;
-			this.referenceSegment = referenceSegment;
-		}
-
-		/// <inheritdoc/>
-		protected override void OnQueryCursor(QueryCursorEventArgs e)
-		{
-			e.Handled = true;
-			e.Cursor = referenceSegment.IsLocal ? Cursors.Arrow : Cursors.Hand;
-		}
-
-		/// <inheritdoc/>
-		protected override VisualLineText CreateInstance(int length)
-		{
-			return new VisualLineReferenceText(ParentVisualLine, length, parent, referenceSegment);
 		}
 	}
 }

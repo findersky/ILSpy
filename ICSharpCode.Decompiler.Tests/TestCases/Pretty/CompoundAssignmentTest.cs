@@ -81,6 +81,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintField;
 			public long LongField;
 			public ulong UlongField;
+			public float FloatField;
+			public double DoubleField;
+			public decimal DecimalField;
 			public CustomClass CustomClassField;
 			public CustomStruct CustomStructField;
 
@@ -92,6 +95,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintProp { get; set; }
 			public long LongProp { get; set; }
 			public ulong UlongProp { get; set; }
+			public float FloatProp { get; set; }
+			public double DoubleProp { get; set; }
+			public decimal DecimalProp { get; set; }
 			public string StringProp { get; set; }
 
 			public CustomClass CustomClassProp { get; set; }
@@ -161,6 +167,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintField;
 			public long LongField;
 			public ulong UlongField;
+			public float FloatField;
+			public double DoubleField;
+			public decimal DecimalField;
 			public CustomClass CustomClassField;
 
 			public CustomClass CustomClassProp { get; set; }
@@ -172,6 +181,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintProp { get; set; }
 			public long LongProp { get; set; }
 			public ulong UlongProp { get; set; }
+			public float FloatProp { get; set; }
+			public double DoubleProp { get; set; }
+			public decimal DecimalProp { get; set; }
 
 			public static CustomStruct operator +(CustomStruct lhs, CustomStruct rhs)
 			{
@@ -242,6 +254,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintField;
 			public long LongField;
 			public ulong UlongField;
+			public float FloatField;
+			public double DoubleField;
+			public decimal DecimalField;
 
 			public CustomClass CustomClassProp { get; set; }
 			public CustomStruct CustomStructProp { get; set; }
@@ -253,6 +268,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public uint UintProp { get; set; }
 			public long LongProp { get; set; }
 			public ulong UlongProp { get; set; }
+
+			public float FloatProp { get; set; }
+			public double DoubleProp { get; set; }
+			public decimal DecimalProp { get; set; }
 		}
 
 		private int test1;
@@ -275,6 +294,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static uint uintField;
 		private static long longField;
 		private static ulong ulongField;
+		private static float floatField;
+		private static double doubleField;
+		private static decimal decimalField;
 
 		private static CustomClass CustomClassProp { get; set; }
 		private static CustomStruct CustomStructProp { get; set; }
@@ -286,6 +308,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		private static uint UintProp { get; set; }
 		private static long LongProp { get; set; }
 		private static ulong UlongProp { get; set; }
+		private static float FloatProp { get; set; }
+		private static double DoubleProp { get; set; }
+		private static decimal DecimalProp { get; set; }
 
 		public static int StaticProperty { get; set; }
 
@@ -361,6 +386,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 
 		private static ref ulong GetRefUlong()
+		{
+			throw new NotImplementedException();
+		}
+
+		private static ref float GetRefFloat()
+		{
+			throw new NotImplementedException();
+		}
+
+		private static ref double GetRefDouble()
+		{
+			throw new NotImplementedException();
+		}
+
+		private static ref decimal GetRefDecimal()
 		{
 			throw new NotImplementedException();
 		}
@@ -3879,6 +3919,733 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			X(--GetRefUlong());
 #endif
 		}
+
+
+		public static void FloatAddTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			p += 5f;
+			num += 5f;
+			Use(ref num);
+			floatField += 5f;
+			FloatProp += 5f;
+			c.FloatField += 5f;
+			c.FloatProp += 5f;
+			s.FloatField += 5f;
+			s.FloatProp += 5f;
+			customClassField.FloatField += 5f;
+			customClassField.FloatProp += 5f;
+			otherCustomStructField.FloatField += 5f;
+			otherCustomStructField.FloatProp += 5f;
+			CustomClassProp.FloatField += 5f;
+			CustomClassProp.FloatProp += 5f;
+			GetClass().FloatField += 5f;
+			GetClass().FloatProp += 5f;
+#if CS70
+			GetRefStruct().FloatField += 5f;
+			GetRefStruct().FloatProp += 5f;
+			GetRefFloat() += 5f;
+#endif
+		}
+
+		public static void FloatSubtractTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			p -= 5f;
+			num -= 5f;
+			Use(ref num);
+			floatField -= 5f;
+			FloatProp -= 5f;
+			c.FloatField -= 5f;
+			c.FloatProp -= 5f;
+			s.FloatField -= 5f;
+			s.FloatProp -= 5f;
+			customClassField.FloatField -= 5f;
+			customClassField.FloatProp -= 5f;
+			otherCustomStructField.FloatField -= 5f;
+			otherCustomStructField.FloatProp -= 5f;
+			CustomClassProp.FloatField -= 5f;
+			CustomClassProp.FloatProp -= 5f;
+			GetClass().FloatField -= 5f;
+			GetClass().FloatProp -= 5f;
+#if CS70
+			GetRefStruct().FloatField -= 5f;
+			GetRefStruct().FloatProp -= 5f;
+			GetRefFloat() -= 5f;
+#endif
+		}
+
+		public static void FloatMultiplyTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			p *= 5f;
+			num *= 5f;
+			Use(ref num);
+			floatField *= 5f;
+			FloatProp *= 5f;
+			c.FloatField *= 5f;
+			c.FloatProp *= 5f;
+			s.FloatField *= 5f;
+			s.FloatProp *= 5f;
+			customClassField.FloatField *= 5f;
+			customClassField.FloatProp *= 5f;
+			otherCustomStructField.FloatField *= 5f;
+			otherCustomStructField.FloatProp *= 5f;
+			CustomClassProp.FloatField *= 5f;
+			CustomClassProp.FloatProp *= 5f;
+			GetClass().FloatField *= 5f;
+			GetClass().FloatProp *= 5f;
+#if CS70
+			GetRefStruct().FloatField *= 5f;
+			GetRefStruct().FloatProp *= 5f;
+			GetRefFloat() *= 5f;
+#endif
+		}
+
+		public static void FloatDivideTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			p /= 5f;
+			num /= 5f;
+			Use(ref num);
+			floatField /= 5f;
+			FloatProp /= 5f;
+			c.FloatField /= 5f;
+			c.FloatProp /= 5f;
+			s.FloatField /= 5f;
+			s.FloatProp /= 5f;
+			customClassField.FloatField /= 5f;
+			customClassField.FloatProp /= 5f;
+			otherCustomStructField.FloatField /= 5f;
+			otherCustomStructField.FloatProp /= 5f;
+			CustomClassProp.FloatField /= 5f;
+			CustomClassProp.FloatProp /= 5f;
+			GetClass().FloatField /= 5f;
+			GetClass().FloatProp /= 5f;
+#if CS70
+			GetRefStruct().FloatField /= 5f;
+			GetRefStruct().FloatProp /= 5f;
+			GetRefFloat() /= 5f;
+#endif
+		}
+
+		public static void FloatModulusTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			p %= 5f;
+			num %= 5f;
+			Use(ref num);
+			floatField %= 5f;
+			FloatProp %= 5f;
+			c.FloatField %= 5f;
+			c.FloatProp %= 5f;
+			s.FloatField %= 5f;
+			s.FloatProp %= 5f;
+			customClassField.FloatField %= 5f;
+			customClassField.FloatProp %= 5f;
+			otherCustomStructField.FloatField %= 5f;
+			otherCustomStructField.FloatProp %= 5f;
+			CustomClassProp.FloatField %= 5f;
+			CustomClassProp.FloatProp %= 5f;
+			GetClass().FloatField %= 5f;
+			GetClass().FloatProp %= 5f;
+#if CS70
+			GetRefStruct().FloatField %= 5f;
+			GetRefStruct().FloatProp %= 5f;
+			GetRefFloat() %= 5f;
+#endif
+		}
+
+		public static void FloatPostIncTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			X(p++);
+			X(num++);
+			Use(ref num);
+			X(floatField++);
+			X(FloatProp++);
+			X(c.FloatField++);
+			X(c.FloatProp++);
+			X(s.FloatField++);
+			X(s.FloatProp++);
+			X(customClassField.FloatField++);
+			X(customClassField.FloatProp++);
+			X(otherCustomStructField.FloatField++);
+			X(otherCustomStructField.FloatProp++);
+			X(CustomClassProp.FloatField++);
+			X(CustomClassProp.FloatProp++);
+			X(GetClass().FloatField++);
+			X(GetClass().FloatProp++);
+#if CS70
+			X(GetRefStruct().FloatField++);
+			X(GetRefStruct().FloatProp++);
+			X(GetRefFloat()++);
+#endif
+		}
+
+		public static void FloatPreIncTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			X(++p);
+			X(++num);
+			Use(ref num);
+			X(++floatField);
+			X(++FloatProp);
+			X(++c.FloatField);
+			X(++c.FloatProp);
+			X(++s.FloatField);
+			X(++s.FloatProp);
+			X(++customClassField.FloatField);
+			X(++customClassField.FloatProp);
+			X(++otherCustomStructField.FloatField);
+			X(++otherCustomStructField.FloatProp);
+			X(++CustomClassProp.FloatField);
+			X(++CustomClassProp.FloatProp);
+			X(++GetClass().FloatField);
+			X(++GetClass().FloatProp);
+#if CS70
+			X(++GetRefStruct().FloatField);
+			X(++GetRefStruct().FloatProp);
+			X(++GetRefFloat());
+#endif
+		}
+		public static void FloatPostDecTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			X(p--);
+			X(num--);
+			Use(ref num);
+			X(floatField--);
+			X(FloatProp--);
+			X(c.FloatField--);
+			X(c.FloatProp--);
+			X(s.FloatField--);
+			X(s.FloatProp--);
+			X(customClassField.FloatField--);
+			X(customClassField.FloatProp--);
+			X(otherCustomStructField.FloatField--);
+			X(otherCustomStructField.FloatProp--);
+			X(CustomClassProp.FloatField--);
+			X(CustomClassProp.FloatProp--);
+			X(GetClass().FloatField--);
+			X(GetClass().FloatProp--);
+#if CS70
+			X(GetRefStruct().FloatField--);
+			X(GetRefStruct().FloatProp--);
+			X(GetRefFloat()--);
+#endif
+		}
+
+		public static void FloatPreDecTest(float p, CustomClass c, CustomStruct2 s)
+		{
+			float num = 0f;
+			X(--p);
+			X(--num);
+			Use(ref num);
+			X(--floatField);
+			X(--FloatProp);
+			X(--c.FloatField);
+			X(--c.FloatProp);
+			X(--s.FloatField);
+			X(--s.FloatProp);
+			X(--customClassField.FloatField);
+			X(--customClassField.FloatProp);
+			X(--otherCustomStructField.FloatField);
+			X(--otherCustomStructField.FloatProp);
+			X(--CustomClassProp.FloatField);
+			X(--CustomClassProp.FloatProp);
+			X(--GetClass().FloatField);
+			X(--GetClass().FloatProp);
+#if CS70
+			X(--GetRefStruct().FloatField);
+			X(--GetRefStruct().FloatProp);
+			X(--GetRefFloat());
+#endif
+		}
+
+		public static void DoubleAddTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			p += 5.0;
+			num += 5.0;
+			Use(ref num);
+			doubleField += 5.0;
+			DoubleProp += 5.0;
+			c.DoubleField += 5.0;
+			c.DoubleProp += 5.0;
+			s.DoubleField += 5.0;
+			s.DoubleProp += 5.0;
+			customClassField.DoubleField += 5.0;
+			customClassField.DoubleProp += 5.0;
+			otherCustomStructField.DoubleField += 5.0;
+			otherCustomStructField.DoubleProp += 5.0;
+			CustomClassProp.DoubleField += 5.0;
+			CustomClassProp.DoubleProp += 5.0;
+			GetClass().DoubleField += 5.0;
+			GetClass().DoubleProp += 5.0;
+#if CS70
+			GetRefStruct().DoubleField += 5.0;
+			GetRefStruct().DoubleProp += 5.0;
+			GetRefDouble() += 5.0;
+#endif
+		}
+
+		public static void DoubleSubtractTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			p -= 5.0;
+			num -= 5.0;
+			Use(ref num);
+			doubleField -= 5.0;
+			DoubleProp -= 5.0;
+			c.DoubleField -= 5.0;
+			c.DoubleProp -= 5.0;
+			s.DoubleField -= 5.0;
+			s.DoubleProp -= 5.0;
+			customClassField.DoubleField -= 5.0;
+			customClassField.DoubleProp -= 5.0;
+			otherCustomStructField.DoubleField -= 5.0;
+			otherCustomStructField.DoubleProp -= 5.0;
+			CustomClassProp.DoubleField -= 5.0;
+			CustomClassProp.DoubleProp -= 5.0;
+			GetClass().DoubleField -= 5.0;
+			GetClass().DoubleProp -= 5.0;
+#if CS70
+			GetRefStruct().DoubleField -= 5.0;
+			GetRefStruct().DoubleProp -= 5.0;
+			GetRefDouble() -= 5.0;
+#endif
+		}
+
+		public static void DoubleMultiplyTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			p *= 5.0;
+			num *= 5.0;
+			Use(ref num);
+			doubleField *= 5.0;
+			DoubleProp *= 5.0;
+			c.DoubleField *= 5.0;
+			c.DoubleProp *= 5.0;
+			s.DoubleField *= 5.0;
+			s.DoubleProp *= 5.0;
+			customClassField.DoubleField *= 5.0;
+			customClassField.DoubleProp *= 5.0;
+			otherCustomStructField.DoubleField *= 5.0;
+			otherCustomStructField.DoubleProp *= 5.0;
+			CustomClassProp.DoubleField *= 5.0;
+			CustomClassProp.DoubleProp *= 5.0;
+			GetClass().DoubleField *= 5.0;
+			GetClass().DoubleProp *= 5.0;
+#if CS70
+			GetRefStruct().DoubleField *= 5.0;
+			GetRefStruct().DoubleProp *= 5.0;
+			GetRefDouble() *= 5.0;
+#endif
+		}
+
+		public static void DoubleDivideTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			p /= 5.0;
+			num /= 5.0;
+			Use(ref num);
+			doubleField /= 5.0;
+			DoubleProp /= 5.0;
+			c.DoubleField /= 5.0;
+			c.DoubleProp /= 5.0;
+			s.DoubleField /= 5.0;
+			s.DoubleProp /= 5.0;
+			customClassField.DoubleField /= 5.0;
+			customClassField.DoubleProp /= 5.0;
+			otherCustomStructField.DoubleField /= 5.0;
+			otherCustomStructField.DoubleProp /= 5.0;
+			CustomClassProp.DoubleField /= 5.0;
+			CustomClassProp.DoubleProp /= 5.0;
+			GetClass().DoubleField /= 5.0;
+			GetClass().DoubleProp /= 5.0;
+#if CS70
+			GetRefStruct().DoubleField /= 5.0;
+			GetRefStruct().DoubleProp /= 5.0;
+			GetRefDouble() /= 5.0;
+#endif
+		}
+
+		public static void DoubleModulusTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			p %= 5.0;
+			num %= 5.0;
+			Use(ref num);
+			doubleField %= 5.0;
+			DoubleProp %= 5.0;
+			c.DoubleField %= 5.0;
+			c.DoubleProp %= 5.0;
+			s.DoubleField %= 5.0;
+			s.DoubleProp %= 5.0;
+			customClassField.DoubleField %= 5.0;
+			customClassField.DoubleProp %= 5.0;
+			otherCustomStructField.DoubleField %= 5.0;
+			otherCustomStructField.DoubleProp %= 5.0;
+			CustomClassProp.DoubleField %= 5.0;
+			CustomClassProp.DoubleProp %= 5.0;
+			GetClass().DoubleField %= 5.0;
+			GetClass().DoubleProp %= 5.0;
+#if CS70
+			GetRefStruct().DoubleField %= 5.0;
+			GetRefStruct().DoubleProp %= 5.0;
+			GetRefDouble() %= 5.0;
+#endif
+		}
+
+		public static void DoublePostIncTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			X(p++);
+			X(num++);
+			Use(ref num);
+			X(doubleField++);
+			X(DoubleProp++);
+			X(c.DoubleField++);
+			X(c.DoubleProp++);
+			X(s.DoubleField++);
+			X(s.DoubleProp++);
+			X(customClassField.DoubleField++);
+			X(customClassField.DoubleProp++);
+			X(otherCustomStructField.DoubleField++);
+			X(otherCustomStructField.DoubleProp++);
+			X(CustomClassProp.DoubleField++);
+			X(CustomClassProp.DoubleProp++);
+			X(GetClass().DoubleField++);
+			X(GetClass().DoubleProp++);
+#if CS70
+			X(GetRefStruct().DoubleField++);
+			X(GetRefStruct().DoubleProp++);
+			X(GetRefDouble()++);
+#endif
+		}
+
+		public static void DoublePreIncTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			X(++p);
+			X(++num);
+			Use(ref num);
+			X(++doubleField);
+			X(++DoubleProp);
+			X(++c.DoubleField);
+			X(++c.DoubleProp);
+			X(++s.DoubleField);
+			X(++s.DoubleProp);
+			X(++customClassField.DoubleField);
+			X(++customClassField.DoubleProp);
+			X(++otherCustomStructField.DoubleField);
+			X(++otherCustomStructField.DoubleProp);
+			X(++CustomClassProp.DoubleField);
+			X(++CustomClassProp.DoubleProp);
+			X(++GetClass().DoubleField);
+			X(++GetClass().DoubleProp);
+#if CS70
+			X(++GetRefStruct().DoubleField);
+			X(++GetRefStruct().DoubleProp);
+			X(++GetRefDouble());
+#endif
+		}
+		public static void DoublePostDecTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			X(p--);
+			X(num--);
+			Use(ref num);
+			X(doubleField--);
+			X(DoubleProp--);
+			X(c.DoubleField--);
+			X(c.DoubleProp--);
+			X(s.DoubleField--);
+			X(s.DoubleProp--);
+			X(customClassField.DoubleField--);
+			X(customClassField.DoubleProp--);
+			X(otherCustomStructField.DoubleField--);
+			X(otherCustomStructField.DoubleProp--);
+			X(CustomClassProp.DoubleField--);
+			X(CustomClassProp.DoubleProp--);
+			X(GetClass().DoubleField--);
+			X(GetClass().DoubleProp--);
+#if CS70
+			X(GetRefStruct().DoubleField--);
+			X(GetRefStruct().DoubleProp--);
+			X(GetRefDouble()--);
+#endif
+		}
+
+		public static void DoublePreDecTest(double p, CustomClass c, CustomStruct2 s)
+		{
+			double num = 0.0;
+			X(--p);
+			X(--num);
+			Use(ref num);
+			X(--doubleField);
+			X(--DoubleProp);
+			X(--c.DoubleField);
+			X(--c.DoubleProp);
+			X(--s.DoubleField);
+			X(--s.DoubleProp);
+			X(--customClassField.DoubleField);
+			X(--customClassField.DoubleProp);
+			X(--otherCustomStructField.DoubleField);
+			X(--otherCustomStructField.DoubleProp);
+			X(--CustomClassProp.DoubleField);
+			X(--CustomClassProp.DoubleProp);
+			X(--GetClass().DoubleField);
+			X(--GetClass().DoubleProp);
+#if CS70
+			X(--GetRefStruct().DoubleField);
+			X(--GetRefStruct().DoubleProp);
+			X(--GetRefDouble());
+#endif
+		}
+		public static void DecimalAddTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			p += 5m;
+			num += 5m;
+			Use(ref num);
+			decimalField += 5m;
+			DecimalProp += 5m;
+			c.DecimalField += 5m;
+			c.DecimalProp += 5m;
+			s.DecimalField += 5m;
+			s.DecimalProp += 5m;
+			customClassField.DecimalField += 5m;
+			customClassField.DecimalProp += 5m;
+			otherCustomStructField.DecimalField += 5m;
+			otherCustomStructField.DecimalProp += 5m;
+			CustomClassProp.DecimalField += 5m;
+			CustomClassProp.DecimalProp += 5m;
+			GetClass().DecimalField += 5m;
+			GetClass().DecimalProp += 5m;
+#if CS70
+			GetRefStruct().DecimalField += 5m;
+			GetRefStruct().DecimalProp += 5m;
+			GetRefDecimal() += 5m;
+#endif
+		}
+
+		public static void DecimalSubtractTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			p -= 5m;
+			num -= 5m;
+			Use(ref num);
+			decimalField -= 5m;
+			DecimalProp -= 5m;
+			c.DecimalField -= 5m;
+			c.DecimalProp -= 5m;
+			s.DecimalField -= 5m;
+			s.DecimalProp -= 5m;
+			customClassField.DecimalField -= 5m;
+			customClassField.DecimalProp -= 5m;
+			otherCustomStructField.DecimalField -= 5m;
+			otherCustomStructField.DecimalProp -= 5m;
+			CustomClassProp.DecimalField -= 5m;
+			CustomClassProp.DecimalProp -= 5m;
+			GetClass().DecimalField -= 5m;
+			GetClass().DecimalProp -= 5m;
+#if CS70
+			GetRefStruct().DecimalField -= 5m;
+			GetRefStruct().DecimalProp -= 5m;
+			GetRefDecimal() -= 5m;
+#endif
+		}
+
+		public static void DecimalMultiplyTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			p *= 5m;
+			num *= 5m;
+			Use(ref num);
+			decimalField *= 5m;
+			DecimalProp *= 5m;
+			c.DecimalField *= 5m;
+			c.DecimalProp *= 5m;
+			s.DecimalField *= 5m;
+			s.DecimalProp *= 5m;
+			customClassField.DecimalField *= 5m;
+			customClassField.DecimalProp *= 5m;
+			otherCustomStructField.DecimalField *= 5m;
+			otherCustomStructField.DecimalProp *= 5m;
+			CustomClassProp.DecimalField *= 5m;
+			CustomClassProp.DecimalProp *= 5m;
+			GetClass().DecimalField *= 5m;
+			GetClass().DecimalProp *= 5m;
+#if CS70
+			GetRefStruct().DecimalField *= 5m;
+			GetRefStruct().DecimalProp *= 5m;
+			GetRefDecimal() *= 5m;
+#endif
+		}
+
+		public static void DecimalDivideTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			p /= 5m;
+			num /= 5m;
+			Use(ref num);
+			decimalField /= 5m;
+			DecimalProp /= 5m;
+			c.DecimalField /= 5m;
+			c.DecimalProp /= 5m;
+			s.DecimalField /= 5m;
+			s.DecimalProp /= 5m;
+			customClassField.DecimalField /= 5m;
+			customClassField.DecimalProp /= 5m;
+			otherCustomStructField.DecimalField /= 5m;
+			otherCustomStructField.DecimalProp /= 5m;
+			CustomClassProp.DecimalField /= 5m;
+			CustomClassProp.DecimalProp /= 5m;
+			GetClass().DecimalField /= 5m;
+			GetClass().DecimalProp /= 5m;
+#if CS70
+			GetRefStruct().DecimalField /= 5m;
+			GetRefStruct().DecimalProp /= 5m;
+			GetRefDecimal() /= 5m;
+#endif
+		}
+
+		public static void DecimalModulusTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			p %= 5m;
+			num %= 5m;
+			Use(ref num);
+			decimalField %= 5m;
+			DecimalProp %= 5m;
+			c.DecimalField %= 5m;
+			c.DecimalProp %= 5m;
+			s.DecimalField %= 5m;
+			s.DecimalProp %= 5m;
+			customClassField.DecimalField %= 5m;
+			customClassField.DecimalProp %= 5m;
+			otherCustomStructField.DecimalField %= 5m;
+			otherCustomStructField.DecimalProp %= 5m;
+			CustomClassProp.DecimalField %= 5m;
+			CustomClassProp.DecimalProp %= 5m;
+			GetClass().DecimalField %= 5m;
+			GetClass().DecimalProp %= 5m;
+#if CS70
+			GetRefStruct().DecimalField %= 5m;
+			GetRefStruct().DecimalProp %= 5m;
+			GetRefDecimal() %= 5m;
+#endif
+		}
+
+		public static void DecimalPostIncTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			X(p++);
+			X(num++);
+			Use(ref num);
+			X(decimalField++);
+			X(DecimalProp++);
+			X(c.DecimalField++);
+			X(c.DecimalProp++);
+			X(s.DecimalField++);
+			X(s.DecimalProp++);
+			X(customClassField.DecimalField++);
+			X(customClassField.DecimalProp++);
+			X(otherCustomStructField.DecimalField++);
+			X(otherCustomStructField.DecimalProp++);
+			X(CustomClassProp.DecimalField++);
+			X(CustomClassProp.DecimalProp++);
+			X(GetClass().DecimalField++);
+			X(GetClass().DecimalProp++);
+#if CS70
+			X(GetRefStruct().DecimalField++);
+			X(GetRefStruct().DecimalProp++);
+			X(GetRefDecimal()++);
+#endif
+		}
+
+		public static void DecimalPreIncTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			X(++p);
+			X(++num);
+			Use(ref num);
+			X(++decimalField);
+			X(++DecimalProp);
+			X(++c.DecimalField);
+			X(++c.DecimalProp);
+			X(++s.DecimalField);
+			X(++s.DecimalProp);
+			X(++customClassField.DecimalField);
+			X(++customClassField.DecimalProp);
+			X(++otherCustomStructField.DecimalField);
+			X(++otherCustomStructField.DecimalProp);
+			X(++CustomClassProp.DecimalField);
+			X(++CustomClassProp.DecimalProp);
+			X(++GetClass().DecimalField);
+			X(++GetClass().DecimalProp);
+#if CS70
+			X(++GetRefStruct().DecimalField);
+			X(++GetRefStruct().DecimalProp);
+			X(++GetRefDecimal());
+#endif
+		}
+		public static void DecimalPostDecTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			X(p--);
+			X(num--);
+			Use(ref num);
+			X(decimalField--);
+			X(DecimalProp--);
+			X(c.DecimalField--);
+			X(c.DecimalProp--);
+			X(s.DecimalField--);
+			X(s.DecimalProp--);
+			X(customClassField.DecimalField--);
+			X(customClassField.DecimalProp--);
+			X(otherCustomStructField.DecimalField--);
+			X(otherCustomStructField.DecimalProp--);
+			X(CustomClassProp.DecimalField--);
+			X(CustomClassProp.DecimalProp--);
+			X(GetClass().DecimalField--);
+			X(GetClass().DecimalProp--);
+#if CS70
+			X(GetRefStruct().DecimalField--);
+			X(GetRefStruct().DecimalProp--);
+			X(GetRefDecimal()--);
+#endif
+		}
+
+		public static void DecimalPreDecTest(decimal p, CustomClass c, CustomStruct2 s)
+		{
+			decimal num = 0m;
+			X(--p);
+			X(--num);
+			Use(ref num);
+			X(--decimalField);
+			X(--DecimalProp);
+			X(--c.DecimalField);
+			X(--c.DecimalProp);
+			X(--s.DecimalField);
+			X(--s.DecimalProp);
+			X(--customClassField.DecimalField);
+			X(--customClassField.DecimalProp);
+			X(--otherCustomStructField.DecimalField);
+			X(--otherCustomStructField.DecimalProp);
+			X(--CustomClassProp.DecimalField);
+			X(--CustomClassProp.DecimalProp);
+			X(--GetClass().DecimalField);
+			X(--GetClass().DecimalProp);
+#if CS70
+			X(--GetRefStruct().DecimalField);
+			X(--GetRefStruct().DecimalProp);
+			X(--GetRefDecimal());
+#endif
+		}
+
 		public static void CustomClassAddTest(CustomClass p, CustomClass c, CustomStruct2 s)
 		{
 			CustomClass num = null;
@@ -4257,7 +5024,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 		public static void CustomStructAddTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p += default(CustomStruct);
 			num += default(CustomStruct);
 			Use(ref num);
@@ -4284,7 +5055,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructSubtractTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p -= default(CustomStruct);
 			num -= default(CustomStruct);
 			Use(ref num);
@@ -4311,7 +5086,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructMultiplyTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p *= default(CustomStruct);
 			num *= default(CustomStruct);
 			Use(ref num);
@@ -4338,7 +5117,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructDivideTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p /= default(CustomStruct);
 			num /= default(CustomStruct);
 			Use(ref num);
@@ -4365,7 +5148,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructModulusTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p %= default(CustomStruct);
 			num %= default(CustomStruct);
 			Use(ref num);
@@ -4392,7 +5179,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructLeftShiftTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p <<= 5;
 			num <<= 5;
 			Use(ref num);
@@ -4419,7 +5210,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructRightShiftTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p >>= 5;
 			num >>= 5;
 			Use(ref num);
@@ -4472,7 +5267,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructBitAndTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p &= default(CustomStruct);
 			num &= default(CustomStruct);
 			Use(ref num);
@@ -4499,7 +5298,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructBitOrTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p |= default(CustomStruct);
 			num |= default(CustomStruct);
 			Use(ref num);
@@ -4526,7 +5329,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructBitXorTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			p ^= default(CustomStruct);
 			num ^= default(CustomStruct);
 			Use(ref num);
@@ -4553,7 +5360,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructPostIncTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			X(p++);
 			X(num++);
 			Use(ref num);
@@ -4580,7 +5391,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructPreIncTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			X(++p);
 			X(++num);
 			Use(ref num);
@@ -4606,7 +5421,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 		public static void CustomStructPostDecTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			X(p--);
 			X(num--);
 			Use(ref num);
@@ -4633,7 +5452,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void CustomStructPreDecTest(CustomStruct p, CustomClass c, CustomStruct2 s)
 		{
+#if CS71
+			CustomStruct num = default;
+#else
 			CustomStruct num = default(CustomStruct);
+#endif
 			X(--p);
 			X(--num);
 			Use(ref num);
@@ -4946,5 +5769,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			CustomStruct2 customStruct = GetStruct();
 			customStruct.IntProp += value;
 		}
+
+#if ROSLYN2
+		public static string PreIncrementWithMethodCall(int value)
+		{
+			return (++value).ToString();
+		}
+#endif
+
+#if CS72
+		public static string PreIncrementWithInParameter(int value)
+		{
+			PreIncrementWithInParameter_Helper(++value);
+			return value.ToString();
+		}
+		public static void PreIncrementWithInParameter_Helper(in int value)
+		{
+		}
+#endif
 	}
 }

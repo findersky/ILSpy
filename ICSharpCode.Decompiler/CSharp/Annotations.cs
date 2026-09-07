@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -20,11 +20,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp
 {
@@ -134,30 +135,12 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// Retrieves the <see cref="ISymbol"/> associated with this AstNode, or null if no symbol
 		/// is associated with the node.
 		/// </summary>
-		public static ISymbol GetSymbol(this AstNode node)
+		public static ISymbol? GetSymbol(this AstNode node)
 		{
 			var rr = node.Annotation<ResolveResult>();
-			if (rr is MethodGroupResolveResult)
+			if (rr is MethodGroupResolveResult mgrr)
 			{
-				// delegate construction?
-				var newObj = node.Annotation<NewObj>();
-				if (newObj != null)
-				{
-					var funcptr = newObj.Arguments.ElementAtOrDefault(1);
-					if (funcptr is LdFtn ldftn)
-					{
-						return ldftn.Method;
-					}
-					else if (funcptr is LdVirtFtn ldVirtFtn)
-					{
-						return ldVirtFtn.Method;
-					}
-				}
-				var ldVirtDelegate = node.Annotation<LdVirtDelegate>();
-				if (ldVirtDelegate != null)
-				{
-					return ldVirtDelegate.Method;
-				}
+				return mgrr.ChosenMethod;
 			}
 			return rr?.GetSymbol();
 		}
@@ -175,7 +158,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// Retrieves the <see cref="ILVariable"/> associated with this <see cref="IdentifierExpression"/>,
 		/// or <c>null</c> if no variable is associated with this identifier.
 		/// </summary>
-		public static ILVariable GetILVariable(this IdentifierExpression expr)
+		public static ILVariable? GetILVariable(this IdentifierExpression expr)
 		{
 			if (expr.Annotation<ResolveResult>() is ILVariableResolveResult rr)
 				return rr.Variable;
@@ -187,7 +170,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// Retrieves the <see cref="ILVariable"/> associated with this <see cref="VariableInitializer"/>,
 		/// or <c>null</c> if no variable is associated with this initializer.
 		/// </summary>
-		public static ILVariable GetILVariable(this VariableInitializer vi)
+		public static ILVariable? GetILVariable(this VariableInitializer vi)
 		{
 			if (vi.Annotation<ResolveResult>() is ILVariableResolveResult rr)
 				return rr.Variable;
@@ -199,7 +182,7 @@ namespace ICSharpCode.Decompiler.CSharp
 		/// Retrieves the <see cref="ILVariable"/> associated with this <see cref="ForeachStatement"/>,
 		/// or <c>null</c> if no variable is associated with this foreach statement.
 		/// </summary>
-		public static ILVariable GetILVariable(this ForeachStatement loop)
+		public static ILVariable? GetILVariable(this ForeachStatement loop)
 		{
 			if (loop.Annotation<ResolveResult>() is ILVariableResolveResult rr)
 				return rr.Variable;
@@ -232,8 +215,13 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			foreach (object annotation in other.Annotations)
 			{
+				// The trivia holder must not be shared between nodes: each trivia's Parent points at
+				// its single owning node. Trivia is deep-copied onto the target instead.
+				if (annotation is AstNode.NodeTrivia)
+					continue;
 				node.AddAnnotation(annotation);
 			}
+			node.CopyTriviaFrom(other);
 			return node;
 		}
 
@@ -248,24 +236,6 @@ namespace ICSharpCode.Decompiler.CSharp
 				node.AddAnnotation(annotation);
 			}
 			return node;
-		}
-	}
-
-	/// <summary>
-	/// Represents a reference to a local variable.
-	/// </summary>
-	public class ILVariableResolveResult : ResolveResult
-	{
-		public readonly ILVariable Variable;
-
-		public ILVariableResolveResult(ILVariable v) : base(v.Type)
-		{
-			this.Variable = v;
-		}
-
-		public ILVariableResolveResult(ILVariable v, IType type) : base(type)
-		{
-			this.Variable = v ?? throw new ArgumentNullException(nameof(v));
 		}
 	}
 
@@ -299,6 +269,27 @@ namespace ICSharpCode.Decompiler.CSharp
 		public ImplicitReturnAnnotation(Leave leave)
 		{
 			this.Leave = leave;
+		}
+	}
+
+	/// <summary>
+	/// Annotates a field/auto-property/event initializer that the decompiler lifted to the
+	/// declaration site with the copies of the same initializer found in the other constructors.
+	/// In IL a member initializer runs in every instance constructor that does not chain to
+	/// this(...), so the initializer's expression appears once per such constructor. The decompiler
+	/// lifts it from a single constructor and discards the rest; this annotation preserves the
+	/// discarded copies so <see cref="SequencePointBuilder"/> can map the initializer's source
+	/// location onto every constructor that runs it, not just the one it was lifted from. Each entry
+	/// is one other constructor's copy of the initializer expression (still carrying that
+	/// constructor's IL annotations).
+	/// </summary>
+	public class MemberInitializerInOtherConstructorsAnnotation
+	{
+		public readonly IReadOnlyList<Expression> Initializers;
+
+		public MemberInitializerInOtherConstructorsAnnotation(IReadOnlyList<Expression> initializers)
+		{
+			this.Initializers = initializers;
 		}
 	}
 

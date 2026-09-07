@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.CodeDom.Compiler;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -52,21 +51,50 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		static readonly CompilerOptions[] noRoslynOptions =
+		static readonly CompilerOptions[] noRoslynOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize
-		};
+		});
 
-		static readonly CompilerOptions[] roslynOnlyOptions =
+		static readonly CompilerOptions[] roslynOnlyOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] defaultOptions =
+		// the field keyword requires a C# 14 compiler
+		static readonly CompilerOptions[] roslynLatestOnlyOptions = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		// init accessors require C# 9 and the IsExternalInit marker, which .NET Framework 4.0 lacks
+		static readonly CompilerOptions[] initAccessorOptions = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		// top-level statements require C# 9 and cannot target .NET Framework 4.0
+		static readonly CompilerOptions[] topLevelProgramOptions = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		static readonly CompilerOptions[] defaultOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
@@ -74,7 +102,7 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
 		[Test]
 		public async Task NoArrayInitializers([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
@@ -98,6 +126,36 @@ namespace ICSharpCode.Decompiler.Tests
 			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings(CSharp.LanguageVersion.CSharp9_0) {
 				ExtensionMethods = false
 			});
+		}
+
+		[Test]
+		public async Task NoAutomaticProperties([ValueSource(nameof(roslynLatestOnlyOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings {
+				AutomaticProperties = false
+			});
+		}
+
+		[Test]
+		public async Task NoGetterOnlyAutomaticProperties([ValueSource(nameof(roslynLatestOnlyOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings {
+				GetterOnlyAutomaticProperties = false
+			});
+		}
+
+		[Test]
+		public async Task NoFieldKeyword([ValueSource(nameof(roslynLatestOnlyOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings {
+				FieldKeyword = false
+			});
+		}
+
+		[Test]
+		public async Task NoInitAccessors([ValueSource(nameof(initAccessorOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings(CSharp.LanguageVersion.CSharp8_0));
 		}
 
 		[Test]
@@ -132,35 +190,57 @@ namespace ICSharpCode.Decompiler.Tests
 			});
 		}
 
-		async Task RunForLibrary([CallerMemberName] string testName = null, AssemblerOptions asmOptions = AssemblerOptions.None, CompilerOptions cscOptions = CompilerOptions.None, DecompilerSettings decompilerSettings = null)
+		[Test]
+		public async Task NoUnsignedRightShift([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
 		{
-			await Run(testName, asmOptions | AssemblerOptions.Library, cscOptions | CompilerOptions.Library, decompilerSettings);
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings(CSharp.LanguageVersion.CSharp6));
 		}
 
-		async Task Run([CallerMemberName] string testName = null, AssemblerOptions asmOptions = AssemblerOptions.None, CompilerOptions cscOptions = CompilerOptions.None, DecompilerSettings decompilerSettings = null)
+		[Test]
+		public async Task NoNewOfT([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
-			var ilFile = Path.Combine(TestCasePath, testName) + Tester.GetSuffix(cscOptions) + ".il";
+			await RunForLibrary(cscOptions: cscOptions, decompilerSettings: new DecompilerSettings(CSharp.LanguageVersion.CSharp1));
+		}
+
+		// Top-level statements are not reconstructed; the entry point becomes an ordinary method,
+		// which C# only accepts as an entry point if it is called 'Main'. Compiled as executables,
+		// because top-level statements require one and the entry point token has to be set.
+
+		[Test]
+		public async Task TopLevelProgram([ValueSource(nameof(topLevelProgramOptions))] CompilerOptions cscOptions)
+		{
+			await Run(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task TopLevelProgramAsync([ValueSource(nameof(topLevelProgramOptions))] CompilerOptions cscOptions)
+		{
+			await Run(cscOptions: cscOptions);
+		}
+
+		async Task RunForLibrary([CallerMemberName] string testName = null, CompilerOptions cscOptions = CompilerOptions.None, DecompilerSettings decompilerSettings = null)
+		{
+			await Run(testName, cscOptions | CompilerOptions.Library, decompilerSettings);
+		}
+
+		async Task Run([CallerMemberName] string testName = null, CompilerOptions cscOptions = CompilerOptions.None, DecompilerSettings decompilerSettings = null)
+		{
 			var csFile = Path.Combine(TestCasePath, testName + ".cs");
 			var expectedFile = Path.Combine(TestCasePath, testName + ".Expected.cs");
+			var exeFile = TestsAssemblyOutput.GetFilePath(TestCasePath, testName, Tester.GetSuffix(cscOptions) + ".exe");
 
-			if (!File.Exists(ilFile))
+			CompilerResults output = null;
+			try
 			{
-				// re-create .il file if necessary
-				Helpers.CompilerResults output = null;
-				try
-				{
-					output = await Tester.CompileCSharp(csFile, cscOptions).ConfigureAwait(false);
-					await Tester.Disassemble(output.PathToAssembly, ilFile, asmOptions).ConfigureAwait(false);
-				}
-				finally
-				{
-					if (output != null)
-						output.DeleteTempFiles();
-				}
+				output = await Tester.CompileCSharp(csFile, cscOptions, exeFile).ConfigureAwait(false);
+			}
+			finally
+			{
+				if (output != null)
+					output.DeleteTempFiles();
 			}
 
-			var executable = await Tester.AssembleIL(ilFile, asmOptions).ConfigureAwait(false);
-			var decompiled = await Tester.DecompileCSharp(executable, decompilerSettings).ConfigureAwait(false);
+			var decompiled = await Tester.DecompileCSharp(exeFile, decompilerSettings).ConfigureAwait(false);
 
 			CodeAssert.FilesAreEqual(expectedFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).ToArray());
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));

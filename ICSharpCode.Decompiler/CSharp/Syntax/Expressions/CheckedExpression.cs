@@ -1,4 +1,4 @@
-﻿// 
+// 
 // CheckedExpression.cs
 //  
 // Author:
@@ -24,61 +24,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// checked(Expression)
+	/// <c>checked_expression ::= 'checked' '(' expression ')'</c> (C# grammar §12.8.20)
 	/// </summary>
-	public class CheckedExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class CheckedExpression : Expression
 	{
-		public readonly static TokenRole CheckedKeywordRole = new TokenRole("checked");
+		public const string CheckedKeyword = "checked";
 
-		public CSharpTokenNode CheckedToken {
-			get { return GetChildByRole(CheckedKeywordRole); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public CheckedExpression()
-		{
-		}
-
-		public CheckedExpression(Expression expression)
-		{
-			AddChild(expression, Roles.Expression);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitCheckedExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitCheckedExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitCheckedExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			CheckedExpression o = other as CheckedExpression;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

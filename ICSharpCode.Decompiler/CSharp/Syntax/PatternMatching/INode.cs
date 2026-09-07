@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 {
@@ -25,13 +28,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 	/// </summary>
 	public interface INode
 	{
-		Role Role { get; }
-		INode FirstChild { get; }
-		INode NextSibling { get; }
-		bool IsNull { get; }
+		bool DoMatch(INode? other, Match match);
 
-		bool DoMatch(INode other, Match match);
-		bool DoMatchCollection(Role role, INode pos, Match match, BacktrackingInfo backtrackingInfo);
+		/// <summary>
+		/// Matches this pattern node against the collection element at <paramref name="pos"/>.
+		/// Deterministic nodes return whether the element matched (the caller then advances by one);
+		/// non-deterministic nodes (Repeat, OptionalNode) push their alternative continuation indices
+		/// onto the backtracking stack instead.
+		/// </summary>
+		bool DoMatchCollection(IReadOnlyList<INode> other, int pos, Match match, BacktrackingInfo backtrackingInfo);
 	}
 
 	public static class PatternExtensions
@@ -48,7 +53,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 		/// However, it is also possible to match two ASTs without any pattern nodes -
 		/// doing so will produce a successful match if the two ASTs are structurally identical.
 		/// </remarks>
-		public static Match Match(this INode pattern, INode other)
+		public static Match Match(this INode pattern, INode? other)
 		{
 			if (pattern == null)
 				throw new ArgumentNullException(nameof(pattern));
@@ -59,7 +64,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 				return default(PatternMatching.Match);
 		}
 
-		public static bool IsMatch(this INode pattern, INode other)
+		public static bool IsMatch(this INode pattern, INode? other)
 		{
 			if (pattern == null)
 				throw new ArgumentNullException(nameof(pattern));

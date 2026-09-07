@@ -20,6 +20,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Composition;
 using System.Diagnostics;
 using System.IO;
@@ -27,19 +28,22 @@ using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
-using ICSharpCode.AvalonEdit.Highlighting;
+using AvaloniaEdit.Highlighting;
+
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.Decompiler.Output;
 using ICSharpCode.Decompiler.Solution;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.Util;
 using ICSharpCode.ILSpyX;
 
 using ILCompiler.Reflection.ReadyToRun;
 
-using TomsToolbox.Composition;
+using ICSharpCode.ILSpy;
+using ICSharpCode.ILSpy.Languages;
 
 using MetadataReader = System.Reflection.Metadata.MetadataReader;
 
@@ -78,7 +82,7 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 		{
 		}
 
-		public void WriteLocalReference(string text, object reference, bool isDefinition = false)
+		public void WriteLocalReference(string text, object reference, bool isDefinition = false, bool isHoverOnly = false)
 		{
 		}
 
@@ -106,7 +110,10 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 
 	[Export(typeof(Language))]
 	[Shared]
-	internal class ReadyToRunLanguage(SettingsService settingsService, IExportProvider exportProvider) : Language
+	[method: ImportingConstructor]
+	// LanguageService is taken Lazy because it imports Language[] -- a direct LanguageService
+	// dependency creates a constructor-injection cycle that System.Composition refuses.
+	internal class ReadyToRunLanguage(SettingsService settingsService, Lazy<LanguageService> languageService) : Language
 	{
 		private static readonly ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry> readyToRunReaders = new ConditionalWeakTable<MetadataFile, ReadyToRunReaderCacheEntry>();
 
@@ -225,9 +232,9 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 			}
 		}
 
-		public override RichText GetRichTextTooltip(IEntity entity)
+		public override RichText GetRichText(IEntity entity, ConversionFlags conversionFlags, bool boldTypeNames = false)
 		{
-			return exportProvider.GetExportedValue<LanguageService>().ILLanguage.GetRichTextTooltip(entity);
+			return languageService.Value.GetLanguage("IL").GetRichText(entity, conversionFlags, boldTypeNames);
 		}
 
 		private ReadyToRunReaderCacheEntry GetReader(LoadedAssembly assembly, MetadataFile file)
@@ -240,14 +247,15 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 					result = new ReadyToRunReaderCacheEntry();
 					try
 					{
-						if (file is not PEFile module)
+						if ((file is not PEFile module) || (module.Reader == null))
 						{
 							result.readyToRunReader = null;
 							result.failureReason = "File is not a valid PE file.";
 						}
 						else
 						{
-							result.readyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), new StandaloneAssemblyMetadata(module.Reader), module.Reader, module.FileName);
+							ReadOnlyMemory<byte> content = module.Reader.GetEntireImage().GetContent().AsMemory();
+							result.readyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), new StandaloneAssemblyMetadata(module.Reader), module.Reader, module.FileName, content);
 							if (result.readyToRunReader.Machine != Machine.Amd64 && result.readyToRunReader.Machine != Machine.I386)
 							{
 								result.failureReason = $"Architecture {result.readyToRunReader.Machine} is not currently supported.";
@@ -255,8 +263,19 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 							}
 							else if (result.readyToRunReader.OwnerCompositeExecutable != null)
 							{
-								string compositePath = Path.Combine(Path.GetDirectoryName(module.FileName), result.readyToRunReader.OwnerCompositeExecutable);
-								result.compositeReadyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), compositePath);
+								string compositeModuleName = Path.GetFileNameWithoutExtension(result.readyToRunReader.OwnerCompositeExecutable);
+								PEFile compositeFile = assembly.GetAssemblyResolver().ResolveModule(assembly.GetMetadataFileOrNull(), compositeModuleName) as PEFile;
+								if (compositeFile == null)
+								{
+									result.readyToRunReader = null;
+									result.failureReason = "Composite File is not a valid PE file.";
+								}
+								else
+								{
+									ReadOnlyMemory<byte> compositeContent = compositeFile.Reader.GetEntireImage().GetContent().AsMemory();
+									result.compositeReadyToRunReader = new ReadyToRunReader(new ReadyToRunAssemblyResolver(assembly), compositeModuleName, compositeContent);
+								}
+
 							}
 						}
 					}
@@ -283,12 +302,16 @@ namespace ICSharpCode.ILSpy.ReadyToRun
 
 			public IAssemblyMetadata FindAssembly(MetadataReader metadataReader, AssemblyReferenceHandle assemblyReferenceHandle, string parentFile)
 			{
-				return GetAssemblyMetadata(assemblyResolver.Resolve(new Decompiler.Metadata.AssemblyReference(metadataReader, assemblyReferenceHandle)));
+				// Only the reader is handed in, so the reference is resolved by name: an
+				// AssemblyReference is tied to the file that declares it.
+				var reference = metadataReader.GetAssemblyReference(assemblyReferenceHandle);
+				var name = Decompiler.Metadata.AssemblyNameReference.Parse(reference.GetFullAssemblyName(metadataReader));
+				return GetAssemblyMetadata(assemblyResolver.Resolve(name));
 			}
 
 			public IAssemblyMetadata FindAssembly(string simpleName, string parentFile)
 			{
-				return GetAssemblyMetadata(assemblyResolver.ResolveModule(loadedAssembly.GetMetadataFileOrNull(), simpleName + ".dll"));
+				return GetAssemblyMetadata(assemblyResolver.ResolveModule(loadedAssembly.GetMetadataFileOrNull(), simpleName));
 			}
 
 			private IAssemblyMetadata GetAssemblyMetadata(MetadataFile module)

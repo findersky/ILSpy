@@ -1,4 +1,22 @@
-﻿using System;
+// Copyright (c) 2018 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
 using System.Collections.Immutable;
 using System.IO;
 using System.IO.MemoryMappedFiles;
@@ -456,13 +474,27 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// See NRExtensions.HasOnlyReadOnlyProperties: an anonymous type with a settable property
+		/// cannot be written as a C# anonymous type, so its declaration must not be hidden.
+		/// </summary>
+		static bool HasOnlyReadOnlyProperties(TypeDefinition type, MetadataReader metadata)
+		{
+			foreach (var handle in type.GetProperties())
+			{
+				if (!metadata.GetPropertyDefinition(handle).GetAccessors().Setter.IsNil)
+					return false;
+			}
+			return true;
+		}
+
 		public static bool IsAnonymousType(this TypeDefinition type, MetadataReader metadata)
 		{
 			string name = metadata.GetString(type.Name);
 			if (type.Namespace.IsNil && type.HasGeneratedName(metadata)
 				&& (name.Contains("AnonType") || name.Contains("AnonymousType")))
 			{
-				return type.IsCompilerGenerated(metadata);
+				return type.IsCompilerGenerated(metadata) && HasOnlyReadOnlyProperties(type, metadata);
 			}
 			return false;
 		}
@@ -471,9 +503,20 @@ namespace ICSharpCode.Decompiler
 
 		public static bool IsGeneratedName(this StringHandle handle, MetadataReader metadata)
 		{
-			return !handle.IsNil
-				&& (metadata.GetString(handle).StartsWith("<", StringComparison.Ordinal)
-				|| metadata.GetString(handle).Contains("$"));
+			return !handle.IsNil && IsGeneratedName(metadata.GetString(handle));
+		}
+
+		/// <summary>
+		/// Detects the mangled names compilers give to entities that have no user-written
+		/// declaration. The C# compiler prefixes them with '&lt;', the VB compiler separates
+		/// the parts with '$' (VB$AnonymousType_0, VB$StateMachine_1_Foo). Neither character
+		/// is legal in a C# or VB identifier.
+		/// Note that a name may legitimately contain '&lt;' without being generated: explicit
+		/// implementations of generic interface members are named after the interface.
+		/// </summary>
+		internal static bool IsGeneratedName(string name)
+		{
+			return name.StartsWith("<", StringComparison.Ordinal) || name.Contains("$");
 		}
 
 		public static bool HasGeneratedName(this MethodDefinitionHandle handle, MetadataReader metadata)
@@ -639,7 +682,7 @@ namespace ICSharpCode.Decompiler
 			var sectionData = pefile.GetSectionData(rva);
 			if (sectionData.Length == 0 && size != 0)
 				throw new BadImageFormatException($"Field data (rva=0x{rva:x}) could not be found"
-					+ "in any section!");
+					+ " in any section!");
 			if (size < 0 || size > sectionData.Length)
 				throw new BadImageFormatException($"Invalid size {size} for field data!");
 			return sectionData.GetReader(0, size);

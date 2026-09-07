@@ -1,4 +1,4 @@
-﻿// 
+// 
 // NamedExpression.cs
 //  
 // Author:
@@ -24,72 +24,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// name = expression
-	/// This isn't the same as 'assign' even though it has the same syntax.
-	/// This expression is used in object initializers and for named attribute arguments [Attr(FieldName = value)].
+	/// No standalone expression production: 'name = value' as used in object initializers (member_initializer), anonymous-object members (member_declarator), and named attribute arguments.
+	/// <c>named_expression ::= identifier '=' expression</c>
 	/// </summary>
-	public class NamedExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class NamedExpression : Expression
 	{
-		public NamedExpression()
-		{
-		}
+		[Slot("Identifier")]
+		public partial string Name { get; set; }
 
-		public NamedExpression(string name, Expression expression)
-		{
-			this.Name = name;
-			this.Expression = expression;
-		}
-
-		public string Name {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier NameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public CSharpTokenNode AssignToken {
-			get { return GetChildByRole(Roles.Assign); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitNamedExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitNamedExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitNamedExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as NamedExpression;
-			return o != null && MatchString(this.Name, o.Name) && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

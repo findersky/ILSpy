@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ParenthesizedExpression.cs
 //
 // Author:
@@ -24,76 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// ( Expression )
+	/// <c>parenthesized_expression ::= '(' expression ')'</c> (C# grammar §12.8.5)
 	/// </summary>
-	public class ParenthesizedExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ParenthesizedExpression : Expression
 	{
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public ParenthesizedExpression()
-		{
-		}
-
-		public ParenthesizedExpression(Expression expr)
-		{
-			Expression = expr;
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitParenthesizedExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitParenthesizedExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitParenthesizedExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ParenthesizedExpression o = other as ParenthesizedExpression;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
-
-		/// <summary>
-		/// Gets whether the expression acts like a parenthesized expression,
-		/// i.e. whether information about the expected type (for lambda type inference) flows
-		/// into the inner expression.
-		/// </summary>
-		/// <returns>Returns true for ParenthesizedExpression, CheckedExpression or UncheckedExpression; false otherwise.</returns>
-		public static bool ActsAsParenthesizedExpression(AstNode expression)
-		{
-			return expression is ParenthesizedExpression || expression is CheckedExpression || expression is UncheckedExpression;
-		}
-
-		/// <summary>
-		/// Unpacks the given expression if it is a ParenthesizedExpression, CheckedExpression or UncheckedExpression.
-		/// </summary>
-		public static Expression UnpackParenthesizedExpression(Expression expr)
-		{
-			while (ActsAsParenthesizedExpression(expr))
-				expr = expr.GetChildByRole(Roles.Expression);
-			return expr;
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

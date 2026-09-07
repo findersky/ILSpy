@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ComposedType.cs
 //
 // Author:
@@ -24,139 +24,59 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
-using ICSharpCode.Decompiler.CSharp.Resolver;
-using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class ComposedType : AstType
+	/// <summary>
+	/// <c>array_type ::= non_array_type rank_specifier+</c> (C# grammar §8.2.1)
+	/// <c>pointer_type ::= dataptr_type | funcptr_type | voidptr_type</c> (C# grammar §24.3.1)
+	/// <c>nullable_reference_type ::= non_nullable_reference_type nullable_type_annotation</c> (C# grammar §8.2.1)
+	/// <c>nullable_value_type ::= non_nullable_value_type nullable_type_annotation</c> (C# grammar §8.3.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class ComposedType : AstType
 	{
-		public static readonly Role<AttributeSection> AttributeRole = EntityDeclaration.AttributeRole;
-		public static readonly TokenRole RefRole = new TokenRole("ref");
-		public static readonly TokenRole ReadonlyRole = new TokenRole("readonly");
-		public static readonly TokenRole NullableRole = new TokenRole("?");
-		public static readonly TokenRole PointerRole = new TokenRole("*");
-		public static readonly Role<ArraySpecifier> ArraySpecifierRole = new Role<ArraySpecifier>("ArraySpecifier", null);
-		public AstNodeCollection<AttributeSection> Attributes {
-			get { return base.GetChildrenByRole(AttributeRole); }
-		}
+		public const string RefKeyword = "ref";
+		public const string ReadonlyKeyword = "readonly";
+		public const string NullableToken = "?";
+		public const string PointerToken = "*";
+		[Slot("AttributeSection")]
+		public partial AstNodeCollection<AttributeSection> Attributes { get; }
 
 		/// <summary>
 		/// Gets/sets whether this type has a 'ref' specifier.
 		/// This is used for C# 7 ref locals/ref return.
 		/// Parameters use ParameterDeclaration.ParameterModifier instead.
 		/// </summary>
-		public bool HasRefSpecifier {
-			get {
-				return !GetChildByRole(RefRole).IsNull;
-			}
-			set {
-				SetChildByRole(RefRole, value ? new CSharpTokenNode(TextLocation.Empty, null) : null);
-			}
-		}
+		public bool HasRefSpecifier { get; set; }
 
 		/// <summary>
 		/// Gets/sets whether this type has a 'readonly' specifier.
 		/// This is used for C# 7.2 'ref readonly' locals/ref return.
 		/// Parameters use ParameterDeclaration.ParameterModifier instead.
 		/// </summary>
-		public bool HasReadOnlySpecifier {
-			get {
-				return !GetChildByRole(ReadonlyRole).IsNull;
-			}
-			set {
-				SetChildByRole(ReadonlyRole, value ? new CSharpTokenNode(TextLocation.Empty, null) : null);
-			}
-		}
+		public bool HasReadOnlySpecifier { get; set; }
 
-		public AstType BaseType {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
+		[Slot("Type")]
+		public partial AstType BaseType { get; set; }
 
-		public bool HasNullableSpecifier {
-			get {
-				return !GetChildByRole(NullableRole).IsNull;
-			}
-			set {
-				SetChildByRole(NullableRole, value ? new CSharpTokenNode(TextLocation.Empty, null) : null);
-			}
-		}
+		public bool HasNullableSpecifier { get; set; }
 
-		public bool HasOnlyNullableSpecifier {
-			get {
-				return HasNullableSpecifier && !HasRefSpecifier && !HasReadOnlySpecifier && PointerRank == 0 && ArraySpecifiers.Count == 0;
-			}
-		}
+		// Non-negativity is verified by CheckInvariant rather than an eager setter guard.
+		public int PointerRank { get; set; }
 
-		public CSharpTokenNode NullableSpecifierToken {
-			get {
-				return GetChildByRole(NullableRole);
-			}
-		}
+		[Slot("ArraySpecifier")]
+		public partial AstNodeCollection<ArraySpecifier> ArraySpecifiers { get; }
 
-		public int PointerRank {
-			get {
-				return GetChildrenByRole(PointerRole).Count;
-			}
-			set {
-				if (value < 0)
-					throw new ArgumentOutOfRangeException();
-				int d = this.PointerRank;
-				while (d > value)
-				{
-					GetChildByRole(PointerRole).Remove();
-					d--;
-				}
-				while (d < value)
-				{
-					InsertChildBefore(GetChildByRole(PointerRole), new CSharpTokenNode(TextLocation.Empty, PointerRole), PointerRole);
-					d++;
-				}
-			}
-		}
-
-		public AstNodeCollection<ArraySpecifier> ArraySpecifiers {
-			get { return GetChildrenByRole(ArraySpecifierRole); }
-		}
-
-		public AstNodeCollection<CSharpTokenNode> PointerTokens {
-			get { return GetChildrenByRole(PointerRole); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitComposedType(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitComposedType(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitComposedType(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ComposedType o = other as ComposedType;
-			return o != null
-				&& this.HasNullableSpecifier == o.HasNullableSpecifier
-				&& this.PointerRank == o.PointerRank
-				&& this.HasRefSpecifier == o.HasRefSpecifier
-				&& this.HasReadOnlySpecifier == o.HasReadOnlySpecifier
-				&& this.BaseType.DoMatch(o.BaseType, match)
-				&& this.ArraySpecifiers.DoMatch(o.ArraySpecifiers, match);
-		}
-
-		public override string ToString(CSharpFormattingOptions formattingOptions)
+		public override string ToString(CSharpFormattingOptions? formattingOptions)
 		{
 			StringBuilder b = new StringBuilder();
 			if (this.HasRefSpecifier)
@@ -191,7 +111,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public override AstType MakeArrayType(int dimensions)
 		{
-			InsertChildBefore(this.ArraySpecifiers.FirstOrDefault(), new ArraySpecifier(dimensions), ArraySpecifierRole);
+			InsertChildBefore(this.ArraySpecifiers.FirstOrDefault(), new ArraySpecifier(dimensions), Slots.ArraySpecifier);
 			return this;
 		}
 
@@ -201,43 +121,21 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return this;
 		}
 
-		public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider = null)
+		internal override void CheckInvariant()
 		{
-			if (interningProvider == null)
-				interningProvider = InterningProvider.Dummy;
-			ITypeReference t = this.BaseType.ToTypeReference(lookupMode, interningProvider);
-			if (this.HasNullableSpecifier)
-			{
-				t = interningProvider.Intern(NullableType.Create(t));
-			}
-			int pointerRank = this.PointerRank;
-			for (int i = 0; i < pointerRank; i++)
-			{
-				t = interningProvider.Intern(new PointerTypeReference(t));
-			}
-			foreach (var a in this.ArraySpecifiers.Reverse())
-			{
-				t = interningProvider.Intern(new ArrayTypeReference(t, a.Dimensions));
-			}
-			if (this.HasRefSpecifier)
-			{
-				t = interningProvider.Intern(new ByReferenceTypeReference(t));
-			}
-			return t;
+			base.CheckInvariant();
+			// PointerRank is the number of '*' specifiers; a transform that corrupts it
+			// (e.g. an unbalanced decrement) is caught here at the offending transform.
+			Debug.Assert(PointerRank >= 0, "ComposedType.PointerRank must not be negative");
 		}
 	}
 
 	/// <summary>
-	/// [,,,]
+	/// <c>rank_specifier ::= '[' ','* ']'</c> (C# grammar §8.2.1)
 	/// </summary>
-	public class ArraySpecifier : AstNode
+	[DecompilerAstNode]
+	public sealed partial class ArraySpecifier : AstNode
 	{
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
-
 		public ArraySpecifier()
 		{
 		}
@@ -247,55 +145,18 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.Dimensions = dimensions;
 		}
 
-		public CSharpTokenNode LBracketToken {
-			get { return GetChildByRole(Roles.LBracket); }
-		}
+		public int Dimensions { get; set; } = 1;
 
-		public int Dimensions {
-			get { return 1 + GetChildrenByRole(Roles.Comma).Count; }
-			set {
-				int d = this.Dimensions;
-				while (d > value)
-				{
-					GetChildByRole(Roles.Comma).Remove();
-					d--;
-				}
-				while (d < value)
-				{
-					InsertChildBefore(GetChildByRole(Roles.Comma), new CSharpTokenNode(TextLocation.Empty, Roles.Comma), Roles.Comma);
-					d++;
-				}
-			}
-		}
-
-		public CSharpTokenNode RBracketToken {
-			get { return GetChildByRole(Roles.RBracket); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitArraySpecifier(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitArraySpecifier(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitArraySpecifier(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ArraySpecifier o = other as ArraySpecifier;
-			return o != null && this.Dimensions == o.Dimensions;
-		}
-
-		public override string ToString(CSharpFormattingOptions formattingOptions)
+		public override string ToString(CSharpFormattingOptions? formattingOptions)
 		{
 			return "[" + new string(',', this.Dimensions - 1) + "]";
+		}
+
+		internal override void CheckInvariant()
+		{
+			base.CheckInvariant();
+			// A rank specifier always has at least one dimension ('[]' is rank 1); the output relies on it.
+			Debug.Assert(Dimensions >= 1, "ArraySpecifier.Dimensions must be at least 1");
 		}
 	}
 }

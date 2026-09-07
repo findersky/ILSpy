@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -21,90 +21,74 @@ using System.Threading;
 
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.Properties;
 using ICSharpCode.ILSpyX;
+using ICSharpCode.ILSpyX.Analyzers;
 
-using SRM = System.Reflection.Metadata;
+using ICSharpCode.ILSpy.Languages;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
 	/// <summary>
-	/// Lists the sub types of a class.
+	/// Lists the derived types of a class — every loaded type whose direct base list contains
+	/// our target. Lazy: the assembly-list scan only runs when the user expands the node. The
+	/// scan is synchronous; small assembly lists complete in milliseconds. A future task can
+	/// switch to a background-loaded variant when this proves slow under real workloads.
 	/// </summary>
-	sealed class DerivedTypesTreeNode : ILSpyTreeNode
+	public sealed class DerivedTypesTreeNode : ILSpyTreeNode
 	{
 		readonly AssemblyList list;
 		readonly ITypeDefinition type;
-		readonly ThreadingSupport threading;
 
 		public DerivedTypesTreeNode(AssemblyList list, ITypeDefinition type)
 		{
 			this.list = list;
 			this.type = type;
-			this.LazyLoading = true;
-			this.threading = new ThreadingSupport();
+			LazyLoading = true;
 		}
 
-		public override object Text => Resources.DerivedTypes;
+		public override object Text => ICSharpCode.ILSpy.Properties.Resources.DerivedTypes;
+
+		public override object? NavigationText => $"{Text} ({Language.TypeToString(type)})";
 
 		public override object Icon => Images.SubTypes;
 
 		protected override void LoadChildren()
 		{
-			threading.LoadChildren(this, FetchChildren);
+			foreach (var entry in FindDerivedTypes(list, LanguageService.CurrentLanguage, type, CancellationToken.None))
+				Children.Add(entry);
 		}
 
-		IEnumerable<ILSpyTreeNode> FetchChildren(CancellationToken cancellationToken)
+		internal static IEnumerable<DerivedTypesEntryNode> FindDerivedTypes(AssemblyList list, Language language, ITypeDefinition type, CancellationToken cancellationToken)
 		{
-			// FetchChildren() runs on the main thread; but the enumerator will be consumed on a background thread
-			return FindDerivedTypes(list, type, cancellationToken);
-		}
+			var context = new AnalyzerContext {
+				CancellationToken = cancellationToken,
+				Language = language,
+				AssemblyList = list,
+			};
+			var scope = context.GetScopeOf(type);
 
-		internal static IEnumerable<DerivedTypesEntryNode> FindDerivedTypes(AssemblyList list, ITypeDefinition type,
-			CancellationToken cancellationToken)
-		{
-			var definitionMetadata = type.ParentModule.MetadataFile.Metadata;
-			var metadataToken = (SRM.TypeDefinitionHandle)type.MetadataToken;
-			var assemblies = list.GetAllAssemblies().GetAwaiter().GetResult();
-			foreach (var loadedAssembly in assemblies)
+			foreach (var td in scope.GetTypesInScope(cancellationToken))
 			{
-				var module = loadedAssembly.GetMetadataFileOrNull();
-				if (module == null)
-					continue;
-				var metadata = module.Metadata;
-				var assembly = module.GetTypeSystemOrNull()?.MainModule as MetadataModule;
-				if (assembly == null)
-					continue;
-				foreach (var h in metadata.TypeDefinitions)
+				cancellationToken.ThrowIfCancellationRequested();
+				foreach (var baseType in td.DirectBaseTypes)
 				{
-					cancellationToken.ThrowIfCancellationRequested();
-					var td = metadata.GetTypeDefinition(h);
-					foreach (var iface in td.GetInterfaceImplementations())
+					if (baseType.FullName == type.FullName && baseType.TypeParameterCount == type.TypeParameterCount)
 					{
-						var ifaceImpl = metadata.GetInterfaceImplementation(iface);
-						if (!ifaceImpl.Interface.IsNil && IsSameType(metadata, ifaceImpl.Interface, definitionMetadata, metadataToken))
-							yield return new DerivedTypesEntryNode(list, assembly.GetDefinition(h));
-					}
-					SRM.EntityHandle baseType = td.GetBaseTypeOrNil();
-					if (!baseType.IsNil && IsSameType(metadata, baseType, definitionMetadata, metadataToken))
-					{
-						yield return new DerivedTypesEntryNode(list, assembly.GetDefinition(h));
+						yield return new DerivedTypesEntryNode(list, td);
+						break;
 					}
 				}
 			}
-			yield break;
-		}
-
-		static bool IsSameType(SRM.MetadataReader referenceMetadata, SRM.EntityHandle typeRef,
-							   SRM.MetadataReader definitionMetadata, SRM.TypeDefinitionHandle typeDef)
-		{
-			// FullName contains only namespace, name and type parameter count, therefore this should suffice.
-			return typeRef.GetFullTypeName(referenceMetadata) == typeDef.GetFullTypeName(definitionMetadata);
 		}
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			threading.Decompile(language, output, options, EnsureLazyChildren);
+			EnsureLazyChildren();
+			foreach (var child in Children)
+			{
+				if (child is ILSpyTreeNode node)
+					node.Decompile(language, output, options);
+			}
 		}
 	}
 }

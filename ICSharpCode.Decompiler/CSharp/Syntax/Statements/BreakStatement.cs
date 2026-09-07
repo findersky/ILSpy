@@ -1,4 +1,4 @@
-﻿// 
+// 
 // BreakStatement.cs
 //
 // Author:
@@ -24,43 +24,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// break;
+	/// <c>break_statement ::= 'break' ';'</c> (C# grammar §13.10.2)
 	/// </summary>
-	public class BreakStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class BreakStatement : Statement
 	{
-		public static readonly TokenRole BreakKeywordRole = new TokenRole("break");
-
-		public CSharpTokenNode BreakToken {
-			get { return GetChildByRole(BreakKeywordRole); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitBreakStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitBreakStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitBreakStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			BreakStatement o = other as BreakStatement;
-			return o != null;
-		}
+		public const string BreakKeyword = "break";
 	}
 }

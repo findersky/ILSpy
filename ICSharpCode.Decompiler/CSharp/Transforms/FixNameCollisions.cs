@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2016 Daniel Grunwald
+// Copyright (c) 2016 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -15,6 +15,8 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+
+#nullable enable
 
 using System.Collections.Generic;
 using System.Linq;
@@ -40,8 +42,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			foreach (var typeDecl in rootNode.DescendantsAndSelf.OfType<TypeDeclaration>())
 			{
 				var memberNames = typeDecl.Members.Select(m => {
-					var type = m.GetChildByRole(EntityDeclaration.PrivateImplementationTypeRole);
-					return type.IsNull ? m.Name : type + "." + m.Name;
+					var type = m.GetChild(Slots.PrivateImplementationType);
+					return type is null ? m.Name : type + "." + m.Name;
 				}).ToHashSet();
 				// memberNames does not include fields or non-custom events because those
 				// don't have a single name, but a list of VariableInitializers.
@@ -50,15 +52,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (fieldDecl.Variables.Count != 1)
 						continue;
 					string oldName = fieldDecl.Variables.Single().Name;
-					ISymbol symbol = fieldDecl.GetSymbol();
-					if (memberNames.Contains(oldName) && ((IField)symbol).Accessibility == Accessibility.Private)
+					ISymbol? symbol = fieldDecl.GetSymbol();
+					if (memberNames.Contains(oldName) && symbol is IField { Accessibility: Accessibility.Private })
 					{
 						string newName = PickNewName(memberNames, oldName);
-						if (symbol != null)
-						{
-							fieldDecl.Variables.Single().Name = newName;
-							renamedSymbols[symbol] = newName;
-						}
+						context.Step($"Rename field '{oldName}' to '{newName}'", fieldDecl);
+						fieldDecl.Variables.Single().Name = newName;
+						renamedSymbols[symbol] = newName;
 					}
 				}
 			}
@@ -67,10 +67,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (node is IdentifierExpression || node is MemberReferenceExpression)
 				{
-					ISymbol symbol = node.GetSymbol();
-					if (symbol != null && renamedSymbols.TryGetValue(symbol, out string newName))
+					ISymbol? symbol = node.GetSymbol();
+					if (symbol != null && renamedSymbols.TryGetValue(symbol, out string? newName))
 					{
-						node.GetChildByRole(Roles.Identifier).Name = newName;
+						// An IdentifierExpression / MemberReferenceExpression always carries its name identifier.
+						context.Step($"Rename field reference to '{newName}'", node);
+						node.GetChild(Slots.Identifier)!.Name = newName;
 					}
 				}
 			}

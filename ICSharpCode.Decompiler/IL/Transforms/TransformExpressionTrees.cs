@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -135,6 +135,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					var newLambda = (ILFunction)lambda();
 					SetExpressionTreeFlag(newLambda, (CallInstruction)instruction);
 					instruction.ReplaceWith(newLambda);
+					context.EndStep(newLambda);
 					return true;
 				}
 				return false;
@@ -182,7 +183,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				lambdaStack.Push(function);
 				var convertedBody = bodyInstruction();
 				lambdaStack.Pop();
-				container.ExpectedResultType = convertedBody.ResultType;
+				container.ExpectedResultType = type;
 				container.Blocks.Add(new Block() { Instructions = { new Leave(container, convertedBody) } });
 				// Replace all other usages of the parameter variable
 				foreach (var mapping in parameterMapping)
@@ -751,7 +752,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				targetType = fallbackInstType;
 			}
-			return (() => new NullCoalescingInstruction(kind, trueInst(), fallbackInst()) {
+			return (() => new NullCoalescingInstruction(targetType, kind, trueInst(), fallbackInst()) {
 				UnderlyingResultType = trueInstTypeNonNullable.GetStackType()
 			}, targetType);
 		}
@@ -819,7 +820,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return (null, SpecialType.UnknownType);
 			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(trueInstType, falseInstType))
 				return (null, SpecialType.UnknownType);
-			return (() => new IfInstruction(condition(), trueInst(), falseInst()), trueInstType);
+			return (() => new IfInstruction(condition(), trueInst(), falseInst(), trueInstType), trueInstType);
 		}
 
 		(Func<ILInstruction>, IType) ConvertConstant(CallInstruction invocation)
@@ -1007,7 +1008,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				case 2:
 					var resultType = context.TypeSystem.FindType(KnownTypeCode.Boolean);
-					return (() => and ? IfInstruction.LogicAnd(left(), right()) : IfInstruction.LogicOr(left(), right()), resultType);
+					return (() => and ? IfInstruction.LogicAnd(left(), right(), context.TypeSystem) : IfInstruction.LogicOr(left(), right(), context.TypeSystem), resultType);
 				case 3:
 					if (!MatchGetMethodFromHandle(invocation.Arguments[2], out method))
 						return (null, SpecialType.UnknownType);
@@ -1073,7 +1074,6 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 				return initializerBlock;
 			}
-
 
 			return (BuildBlock, ctor.DeclaringType);
 		}

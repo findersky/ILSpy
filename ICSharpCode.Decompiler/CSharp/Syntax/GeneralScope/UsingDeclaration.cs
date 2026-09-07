@@ -1,4 +1,4 @@
-﻿// 
+// 
 // UsingDeclaration.cs
 //
 // Author:
@@ -24,34 +24,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Text;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// using Import;
+	/// <code>
+	/// using_directive ::=
+	///       'using' type ';'
+	///     | 'using' 'static' type ';'
+	/// </code>
+	/// (C# grammar §14.6.3, §14.6.4)
 	/// </summary>
-	public class UsingDeclaration : AstNode
+	[DecompilerAstNode]
+	public sealed partial class UsingDeclaration : AstNode
 	{
-		public static readonly TokenRole UsingKeywordRole = new TokenRole("using");
-		public static readonly Role<AstType> ImportRole = new Role<AstType>("Import", AstType.Null);
+		public const string UsingKeyword = "using";
 
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
+		[Slot("Import")]
+		public partial AstType Import { get; set; }
 
-		public CSharpTokenNode UsingToken {
-			get { return GetChildByRole(UsingKeywordRole); }
-		}
-
-		public AstType Import {
-			get { return GetChildByRole(ImportRole); }
-			set { SetChildByRole(ImportRole, value); }
-		}
-
+		// Computed from Import (which is matched); exclude to avoid a redundant compare.
+		[ExcludeFromMatch]
 		public string Namespace {
 			get { return ConstructNamespace(Import); }
 		}
@@ -73,8 +70,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					stack.Push(".");
 				}
 			}
-			if (type is SimpleType)
-				stack.Push(((SimpleType)type).Identifier);
+			if (type is SimpleType simpleType)
+				stack.Push(simpleType.Identifier ?? string.Empty);
 
 			var result = new StringBuilder();
 			while (stack.Count > 0)
@@ -82,43 +79,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return result.ToString();
 		}
 
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public UsingDeclaration()
-		{
-		}
-
 		public UsingDeclaration(string nameSpace)
 		{
-			AddChild(AstType.Create(nameSpace), ImportRole);
-		}
-
-		public UsingDeclaration(AstType import)
-		{
-			AddChild(import, ImportRole);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitUsingDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitUsingDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitUsingDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			UsingDeclaration o = other as UsingDeclaration;
-			return o != null && this.Import.DoMatch(o.Import, match);
+			AddChild(AstType.Create(nameSpace), Slots.Import);
 		}
 	}
 }

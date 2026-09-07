@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -22,6 +22,8 @@ using System.IO;
 using System.Text;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 {
@@ -71,7 +73,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			isAtStartOfLine = false;
 		}
 
-		public override void WriteKeyword(Role role, string keyword)
+		public override void WriteKeyword(string keyword)
 		{
 			WriteIndentation();
 			column += keyword.Length;
@@ -80,7 +82,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			isAtStartOfLine = false;
 		}
 
-		public override void WriteToken(Role role, string token)
+		public override void WriteToken(string token)
 		{
 			WriteIndentation();
 			column += token.Length;
@@ -204,7 +206,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			}
 		}
 
-		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
+		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string? argument)
 		{
 			// pre-processor directive must start on its own line
 			if (!isAtStartOfLine)
@@ -230,10 +232,10 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			TextWriter writer = new StringWriter();
 			TextWriterTokenWriter tokenWriter = new TextWriterTokenWriter(writer);
 			tokenWriter.WritePrimitiveValue(value);
-			return writer.ToString();
+			return writer.ToString()!;
 		}
 
-		public override void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None)
+		public override void WritePrimitiveValue(object? value, LiteralFormat format = LiteralFormat.None)
 		{
 			if (value == null)
 			{
@@ -263,7 +265,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 
 			if (value is string)
 			{
-				string tmp = ConvertString(value.ToString());
+				string tmp = ConvertString(value.ToString()!);
 				column += tmp.Length + 2;
 				Length += tmp.Length + 2;
 				textWriter.Write('"');
@@ -302,7 +304,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 					textWriter.Write("float");
 					column += 5;
 					Length += 5;
-					WriteToken(Roles.Dot, ".");
+					WriteToken(".");
 					if (float.IsPositiveInfinity(f))
 					{
 						textWriter.Write("PositiveInfinity");
@@ -345,7 +347,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 					textWriter.Write("double");
 					column += 6;
 					Length += 6;
-					WriteToken(Roles.Dot, ".");
+					WriteToken(".");
 					if (double.IsPositiveInfinity(f))
 					{
 						textWriter.Write("PositiveInfinity");
@@ -409,7 +411,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			else
 			{
 				textWriter.Write(value.ToString());
-				int length = value.ToString().Length;
+				int length = value.ToString()!.Length;
 				column += length;
 				Length += length;
 			}
@@ -437,7 +439,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		/// Gets the escape sequence for the specified character.
 		/// </summary>
 		/// <remarks>This method does not convert ' or ".</remarks>
-		static string ConvertChar(char ch)
+		static string? ConvertChar(char ch)
 		{
 			switch (ch)
 			{
@@ -499,7 +501,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			StringBuilder sb = new StringBuilder();
 			foreach (char ch in str)
 			{
-				string s = ch == '"' ? "\\\"" : ConvertChar(ch);
+				string? s = ch == '"' ? "\\\"" : ConvertChar(ch);
 				if (s != null)
 					sb.Append(s);
 				else

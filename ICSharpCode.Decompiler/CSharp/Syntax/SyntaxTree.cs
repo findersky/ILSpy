@@ -1,4 +1,4 @@
-﻿// 
+// 
 // SyntaxTree.cs
 //
 // Author:
@@ -24,71 +24,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 
-using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class SyntaxTree : AstNode
+	/// <summary>
+	/// <c>compilation_unit ::= extern_alias_directive* using_directive* global_attributes? compilation_unit_body</c> (C# grammar §14.2)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class SyntaxTree : AstNode
 	{
-		public static readonly Role<AstNode> MemberRole = new Role<AstNode>("Member", AstNode.Null);
-
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
-
-		string fileName;
-
-		/// <summary>
-		/// Gets/Sets the file name of this syntax tree.
-		/// </summary>
-		public string FileName {
-			get { return fileName; }
-			set {
-				ThrowIfFrozen();
-				fileName = value;
-			}
-		}
-
-		public AstNodeCollection<AstNode> Members {
-			get { return GetChildrenByRole(MemberRole); }
-		}
-
-		IList<string> conditionalSymbols = null;
-
-		/// <summary>
-		/// Gets the conditional symbols used to parse the source file. Note that this list contains
-		/// the conditional symbols at the start of the first token in the file - including the ones defined
-		/// in the source file.
-		/// </summary>
-		public IList<string> ConditionalSymbols {
-			get {
-				return conditionalSymbols ?? EmptyList<string>.Instance;
-			}
-			internal set {
-				conditionalSymbols = value;
-			}
-		}
-
-		/// <summary>
-		/// Gets the expression that was on top of the parse stack.
-		/// This is the only way to get an expression that isn't part of a statment.
-		/// (eg. when an error follows an expression).
-		/// 
-		/// This is used for code completion to 'get the expression before a token - like ., &lt;, ('.
-		/// </summary>
-		public AstNode TopExpression {
-			get;
-			internal set;
-		}
-
-		public SyntaxTree()
-		{
-		}
+		[Slot("Member")]
+		public partial AstNodeCollection<AstNode> Members { get; }
 
 		/// <summary>
 		/// Gets all defined types in this syntax tree.
@@ -110,32 +61,10 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				foreach (var child in curNode.Children)
 				{
 					if (!(child is Statement || child is Expression) &&
-						(child.Role != Roles.TypeMemberRole || ((child is TypeDeclaration || child is DelegateDeclaration) && includeInnerTypes)))
+						(child.Slot?.Kind != Slots.TypeMember || ((child is TypeDeclaration || child is DelegateDeclaration) && includeInnerTypes)))
 						nodeStack.Push(child);
 				}
 			}
-		}
-
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			SyntaxTree o = other as SyntaxTree;
-			return o != null && this.Members.DoMatch(o.Members, match);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitSyntaxTree(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitSyntaxTree(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitSyntaxTree(this, data);
 		}
 	}
 }

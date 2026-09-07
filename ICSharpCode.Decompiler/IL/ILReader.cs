@@ -159,6 +159,7 @@ namespace ICSharpCode.Decompiler.IL
 		BitSet isBranchTarget = null!;
 		BlockContainer mainContainer = null!;
 		int currentInstructionStart;
+		bool isRuntimeAsync;
 
 		Dictionary<int, ImportedBlock> blocksByOffset = new Dictionary<int, ImportedBlock>();
 		Queue<ImportedBlock> importQueue = new Queue<ImportedBlock>();
@@ -172,6 +173,8 @@ namespace ICSharpCode.Decompiler.IL
 			if (methodDefinitionHandle.IsNil)
 				throw new ArgumentException("methodDefinitionHandle.IsNil");
 			this.method = module.GetDefinition(methodDefinitionHandle);
+			this.isRuntimeAsync = (module.TypeSystemOptions & TypeSystemOptions.RuntimeAsync) != 0
+				&& (module.metadata.GetMethodDefinition(methodDefinitionHandle).ImplAttributes & SRMExtensions.MethodImplAsync) != 0;
 			if (genericContext.ClassTypeParameters == null && genericContext.MethodTypeParameters == null)
 			{
 				// no generic context specified: use the method's own type parameters
@@ -187,7 +190,16 @@ namespace ICSharpCode.Decompiler.IL
 			this.reader = body.GetILReader();
 			this.currentStack = ImmutableStack<ILVariable>.Empty;
 			this.expressionStack.Clear();
-			this.methodReturnStackType = method.ReturnType.GetStackType();
+			IType methodReturnType;
+			if (isRuntimeAsync)
+			{
+				methodReturnType = TaskType.UnpackAnyTask(compilation, method.ReturnType);
+			}
+			else
+			{
+				methodReturnType = method.ReturnType;
+			}
+			this.methodReturnStackType = methodReturnType.GetStackType();
 			InitParameterVariables();
 			localVariables = InitLocalVariables();
 			foreach (var v in localVariables)
@@ -195,7 +207,7 @@ namespace ICSharpCode.Decompiler.IL
 				v.InitialValueIsInitialized = body.LocalVariablesInitialized;
 				v.UsesInitialValue = true;
 			}
-			this.mainContainer = new BlockContainer(expectedResultType: methodReturnStackType);
+			this.mainContainer = new BlockContainer(expectedResultType: methodReturnType);
 			this.blocksByOffset.Clear();
 			this.importQueue.Clear();
 			this.isBranchTarget = new BitSet(reader.Length);
@@ -212,7 +224,14 @@ namespace ICSharpCode.Decompiler.IL
 				// Row-IDs < 1 are always invalid.
 				throw new BadImageFormatException("Invalid metadata token");
 			}
-			return MetadataTokens.EntityHandle(token);
+			var handle = MetadataTokens.EntityHandle(token);
+			if (handle.IsNil)
+			{
+				// The runtime will crash with a BadImageFormatException when it encounters a row-ID of 0.
+				// We assume the code following this instruction to be unreachable.
+				throw new BadImageFormatException("Invalid metadata token");
+			}
+			return handle;
 		}
 
 		IType ReadAndDecodeTypeReference()
@@ -490,7 +509,7 @@ namespace ICSharpCode.Decompiler.IL
 
 			// Merge different variables for same stack slot:
 			var unionFind = CheckOutgoingEdges();
-			var visitor = new CollectStackVariablesVisitor(unionFind);
+			var visitor = new CollectStackVariablesVisitor(unionFind, compilation);
 			foreach (var block in blocksByOffset.Values)
 			{
 				block.Block.AcceptVisitor(visitor);
@@ -526,7 +545,7 @@ namespace ICSharpCode.Decompiler.IL
 				var inst = decodedInstruction.Instruction;
 				if (inst.ResultType == StackType.Unknown && inst.OpCode != OpCode.InvalidBranch && inst.OpCode != OpCode.InvalidExpression)
 					Warn("Unknown result type (might be due to invalid IL or missing references)");
-				inst.CheckInvariant(ILPhase.InILReader);
+				inst.CheckInvariant(ILPhase.InILReader, compilation);
 				int end = reader.Offset;
 				inst.AddILRange(new Interval(start, end));
 				if (!decodedInstruction.PushedOnExpressionStack)
@@ -708,6 +727,10 @@ namespace ICSharpCode.Decompiler.IL
 			var blockBuilder = new BlockBuilder(body, variableByExceptionHandler, compilation);
 			blockBuilder.CreateBlocks(mainContainer, blocksByOffset.Values.Select(ib => ib.Block), cancellationToken);
 			var function = new ILFunction(this.method, body.GetCodeSize(), this.genericContext, mainContainer, kind);
+			if (isRuntimeAsync)
+			{
+				function.AsyncReturnType = TaskType.UnpackAnyTask(compilation, this.method.ReturnType);
+			}
 			function.Variables.AddRange(parameterVariables);
 			function.Variables.AddRange(localVariables);
 			function.LocalVariableSignatureLength = localVariables.Length;
@@ -1138,7 +1161,14 @@ namespace ICSharpCode.Decompiler.IL
 				case ILOpCode.Initobj:
 					return InitObj(PopStObjTarget(), ReadAndDecodeTypeReference());
 				case ILOpCode.Isinst:
-					return Push(new IsInst(Pop(StackType.O), ReadAndDecodeTypeReference()));
+				{
+					var type = ReadAndDecodeTypeReference();
+					if (type.IsReferenceType != true)
+					{
+						FlushExpressionStack(); // value-type isinst has inlining restrictions
+					}
+					return Push(new IsInst(Pop(StackType.O), type));
+				}
 				case ILOpCode.Ldelem:
 					return LdElem(ReadAndDecodeTypeReference());
 				case ILOpCode.Ldelem_i1:
@@ -1248,25 +1278,38 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		StackType PeekStackType()
+		StackType PeekStackType() => PeekStackTypeAtDepth(0);
+
+		StackType PeekStackTypeAtDepth(int depth)
 		{
-			if (expressionStack.Count > 0)
-				return expressionStack.Last().ResultType;
-			if (currentStack.IsEmpty)
+			// depth 0 = top of stack, depth N = N-th item below the top.
+			if (depth < expressionStack.Count)
+				return expressionStack[expressionStack.Count - 1 - depth].ResultType;
+			int skip = depth - expressionStack.Count;
+			var stack = currentStack;
+			for (int i = 0; i < skip; i++)
+			{
+				if (stack.IsEmpty)
+					return StackType.Unknown;
+				stack = stack.Pop();
+			}
+			if (stack.IsEmpty)
 				return StackType.Unknown;
-			else
-				return currentStack.Peek().StackType;
+			return stack.Peek().StackType;
 		}
 
 		sealed class CollectStackVariablesVisitor : ILVisitor<ILInstruction>
 		{
+			readonly ICompilation compilation;
 			readonly UnionFind<ILVariable> unionFind;
 			internal readonly HashSet<ILVariable> variables = new HashSet<ILVariable>();
 
-			public CollectStackVariablesVisitor(UnionFind<ILVariable> unionFind)
+			public CollectStackVariablesVisitor(UnionFind<ILVariable> unionFind, ICompilation compilation)
 			{
 				Debug.Assert(unionFind != null);
+				Debug.Assert(compilation != null);
 				this.unionFind = unionFind;
+				this.compilation = compilation;
 			}
 
 			protected override ILInstruction Default(ILInstruction inst)
@@ -1280,15 +1323,26 @@ namespace ICSharpCode.Decompiler.IL
 				return inst;
 			}
 
+			ILVariable MapVar(ILVariable v1)
+			{
+				var v2 = unionFind.Find(v1);
+				if (variables.Add(v2))
+				{
+					v2.Name = $"S_{variables.Count - 1}";
+				}
+				if (v1 != v2 && !v1.Type.Equals(v2.Type) && !v2.Type.CannotBeReconstructedFromStackType())
+				{
+					v2.Type = compilation.FindType(v1.StackType);
+				}
+				return v2;
+			}
+
 			protected internal override ILInstruction VisitLdLoc(LdLoc inst)
 			{
 				base.VisitLdLoc(inst);
 				if (inst.Variable.Kind == VariableKind.StackSlot)
 				{
-					var variable = unionFind.Find(inst.Variable);
-					if (variables.Add(variable))
-						variable.Name = $"S_{variables.Count - 1}";
-					return new LdLoc(variable).WithILRange(inst);
+					inst.Variable = MapVar(inst.Variable);
 				}
 				return inst;
 			}
@@ -1298,10 +1352,7 @@ namespace ICSharpCode.Decompiler.IL
 				base.VisitStLoc(inst);
 				if (inst.Variable.Kind == VariableKind.StackSlot)
 				{
-					var variable = unionFind.Find(inst.Variable);
-					if (variables.Add(variable))
-						variable.Name = $"S_{variables.Count - 1}";
-					return new StLoc(variable, inst.Value).WithILRange(inst);
+					inst.Variable = MapVar(inst.Variable);
 				}
 				return inst;
 			}
@@ -1737,14 +1788,17 @@ namespace ICSharpCode.Decompiler.IL
 					Warn("Unknown method called on array type: " + method.Name);
 					goto default;
 				}
-				case TypeKind.Struct when method.IsConstructor && !method.IsStatic && opCode == OpCode.Call
-					&& method.ReturnType.Kind == TypeKind.Void:
+				case TypeKind.Struct when IsValueTypeCtorCall():
+				case TypeKind.Unknown when IsValueTypeCtorCall() && ReceiverLooksLikeValueTypeTarget():
 				{
 					// "call Struct.ctor(target, ...)" doesn't exist in C#,
 					// the next best equivalent is an assignment `*target = new Struct(...);`.
 					// So we represent this call as "stobj Struct(target, newobj Struct.ctor(...))".
 					// This needs to happen early (not as a transform) because the StObj.TargetSlot has
 					// restricted inlining (doesn't accept ldflda when exceptions aren't delayed).
+					// The declaring type's kind is unavailable when its assembly is missing, so the
+					// receiver decides: a constructor invoked with "call" on an address is the shape
+					// only a value type can have.
 					arguments = PrepareArguments(firstArgumentIsStObjTarget: true);
 					var newobj = new NewObj(method);
 					newobj.ILStackWasEmpty = CurrentStackIsEmpty();
@@ -1761,6 +1815,23 @@ namespace ICSharpCode.Decompiler.IL
 					if (call.ResultType != StackType.Void)
 						return Push(call);
 					return call;
+			}
+
+			// A value type's constructor is invoked with "call" on the address of the target,
+			// unlike a reference type's, which is invoked with "newobj".
+			bool IsValueTypeCtorCall()
+			{
+				return method.IsConstructor && !method.IsStatic && opCode == OpCode.Call
+					&& method.ReturnType.Kind == TypeKind.Void;
+			}
+
+			// Used when the declaring type could not be resolved, so its kind is unknown: the
+			// receiver is an address (a managed reference, or a pointer in unsafe code), and
+			// metadata that does say the type is a reference type rules the rewrite out.
+			bool ReceiverLooksLikeValueTypeTarget()
+			{
+				return PeekStackTypeAtDepth(method.Parameters.Count) is StackType.Ref or StackType.I
+					&& method.DeclaringType.IsReferenceType != true;
 			}
 
 			ILInstruction[] PrepareArguments(bool firstArgumentIsStObjTarget)
@@ -1845,6 +1916,11 @@ namespace ICSharpCode.Decompiler.IL
 
 		ILInstruction Comparison(ComparisonKind kind, bool un = false)
 		{
+			if (!kind.IsEqualityOrInequality() && PeekStackType() == StackType.O)
+			{
+				FlushExpressionStack();
+			}
+
 			var right = Pop();
 			var left = Pop();
 			// left will run before right, thus preserving the evaluation order
@@ -2044,7 +2120,17 @@ namespace ICSharpCode.Decompiler.IL
 			foreach (var inst in expressionStack)
 			{
 				Debug.Assert(inst.ResultType != StackType.Void);
-				IType type = compilation.FindType(inst.ResultType);
+				// Use InferType() for an improved type for these stackslot locals.
+				// This is crucial for value types, where FindType(StackType.O)
+				// would incorrectly use `object`.
+				// It's also highly useful for ref-locals,
+				// and shouldn't hurt for other types -- this type of
+				// stackslot-variable is never reassigned, so even types
+				// like `bool` shouldn't hurt.
+				// (note: if the variable is merged across control-flow branches,
+				//  we'll reset the type to be based on the StackType)
+				IType type = inst.InferType(compilation);
+				Debug.Assert(type.GetStackType() == inst.ResultType);
 				var v = new ILVariable(VariableKind.StackSlot, type, inst.ResultType);
 				v.HasGeneratedName = true;
 				currentStack = currentStack.Push(v);

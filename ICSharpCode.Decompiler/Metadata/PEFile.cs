@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -31,22 +31,22 @@ using ICSharpCode.Decompiler.TypeSystem;
 namespace ICSharpCode.Decompiler.Metadata
 {
 	[DebuggerDisplay("{FileName}")]
-	public class PEFile : MetadataFile, IDisposable, IModuleReference
+	public sealed class PEFile : MetadataFile, IModuleReference
 	{
 		public PEReader Reader { get; }
 
-		public PEFile(string fileName, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
-			: this(fileName, new PEReader(new FileStream(fileName, FileMode.Open, FileAccess.Read), streamOptions), metadataOptions)
+		public PEFile(string fileName, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, MetadataStringDecoder? utf8Decoder = null)
+			: this(fileName, new PEReader(new FileStream(fileName, FileMode.Open, FileAccess.Read), streamOptions), metadataOptions, utf8Decoder)
 		{
 		}
 
-		public PEFile(string fileName, Stream stream, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
-			: this(fileName, new PEReader(stream, streamOptions), metadataOptions)
+		public PEFile(string fileName, Stream stream, PEStreamOptions streamOptions = PEStreamOptions.Default, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, MetadataStringDecoder? utf8Decoder = null)
+			: this(fileName, new PEReader(stream, streamOptions), metadataOptions, utf8Decoder)
 		{
 		}
 
-		public PEFile(string fileName, PEReader reader, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
-			: base(MetadataFileKind.PortableExecutable, fileName, reader, metadataOptions)
+		public PEFile(string fileName, PEReader reader, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, MetadataStringDecoder? utf8Decoder = null)
+			: base(MetadataFileKind.PortableExecutable, fileName, reader, metadataOptions, utf8Decoder)
 		{
 			this.Reader = reader;
 		}
@@ -55,9 +55,11 @@ namespace ICSharpCode.Decompiler.Metadata
 		public override int MetadataOffset => Reader.PEHeaders.MetadataStartOffset;
 		public override bool IsMetadataOnly => false;
 
-		public void Dispose()
+		protected override void Dispose(bool disposing)
 		{
-			Reader.Dispose();
+			if (disposing)
+				Reader.Dispose();
+			base.Dispose(disposing);
 		}
 
 		IModule TypeSystem.IModuleReference.Resolve(ITypeResolveContext context)

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2024 Siegfried Pammer
+// Copyright (c) 2024 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -22,6 +22,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
@@ -45,7 +46,7 @@ namespace ICSharpCode.Decompiler.Metadata
 	/// decompiled type systems.
 	/// </remarks>
 	[DebuggerDisplay("{Kind}: {FileName}")]
-	public class MetadataFile
+	public class MetadataFile : IDisposable
 	{
 		public enum MetadataFileKind
 		{
@@ -73,9 +74,12 @@ namespace ICSharpCode.Decompiler.Metadata
 				if (value == null)
 				{
 					var metadata = Metadata;
-					value = metadata.IsAssembly
-						? metadata.GetString(metadata.GetAssemblyDefinition().Name)
-						: metadata.GetString(metadata.GetModuleDefinition().Name);
+					if (metadata.IsAssembly)
+						value = metadata.GetString(metadata.GetAssemblyDefinition().Name);
+					else if (metadata.DebugMetadataHeader == null) // standalone debug metadata does not contain module table
+						value = metadata.GetString(metadata.GetModuleDefinition().Name);
+					else
+						value = "debug metadata";
 					value = LazyInit.GetOrSet(ref name, value);
 				}
 				return value;
@@ -126,7 +130,7 @@ namespace ICSharpCode.Decompiler.Metadata
 				var value = assemblyReferences;
 				if (value.IsDefault)
 				{
-					value = Metadata.AssemblyReferences.Select(r => new AssemblyReference(this.Metadata, r)).ToImmutableArray();
+					value = Metadata.AssemblyReferences.Select(r => new AssemblyReference(this, r)).ToImmutableArray();
 					assemblyReferences = value;
 				}
 				return value;
@@ -227,23 +231,44 @@ namespace ICSharpCode.Decompiler.Metadata
 			}
 		}
 
-		public MetadataFile(MetadataFileKind kind, string fileName, MetadataReaderProvider metadata, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, int metadataOffset = 0, bool isEmbedded = false)
+		PropertyAndEventBackingFieldLookup? propertyAndEventBackingFieldLookup;
+
+		internal PropertyAndEventBackingFieldLookup PropertyAndEventBackingFieldLookup {
+			get {
+				var r = LazyInit.VolatileRead(ref propertyAndEventBackingFieldLookup);
+				if (r != null)
+					return r;
+				else
+					return LazyInit.GetOrSet(ref propertyAndEventBackingFieldLookup, new PropertyAndEventBackingFieldLookup(Metadata));
+			}
+		}
+
+		public MetadataFile(MetadataFileKind kind, string fileName, MetadataReaderProvider metadata, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, int metadataOffset = 0, bool isEmbedded = false, MetadataStringDecoder? utf8Decoder = null)
 		{
 			this.Kind = kind;
 			this.FileName = fileName;
-			this.Metadata = metadata.GetMetadataReader(metadataOptions);
+			this.Metadata = metadata.GetMetadataReader(metadataOptions, utf8Decoder);
 			this.MetadataOffset = metadataOffset;
 			this.IsEmbedded = isEmbedded;
 		}
 
-		private protected MetadataFile(MetadataFileKind kind, string fileName, PEReader reader, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default)
+		public MetadataFile(MetadataFileKind kind, string fileName, MetadataReader metadataReader, int metadataOffset = 0, bool isEmbedded = false)
+		{
+			this.Kind = kind;
+			this.FileName = fileName;
+			this.Metadata = metadataReader;
+			this.MetadataOffset = metadataOffset;
+			this.IsEmbedded = isEmbedded;
+		}
+
+		private protected MetadataFile(MetadataFileKind kind, string fileName, PEReader reader, MetadataReaderOptions metadataOptions = MetadataReaderOptions.Default, MetadataStringDecoder? utf8Decoder = null)
 		{
 			this.Kind = kind;
 			this.FileName = fileName ?? throw new ArgumentNullException(nameof(fileName));
 			_ = reader ?? throw new ArgumentNullException(nameof(reader));
 			if (!reader.HasMetadata)
 				throw new MetadataFileNotSupportedException("PE file does not contain any managed metadata.");
-			this.Metadata = reader.GetMetadataReader(metadataOptions);
+			this.Metadata = reader.GetMetadataReader(metadataOptions, utf8Decoder);
 		}
 
 		public virtual MethodBodyBlock GetMethodBody(int rva)
@@ -261,6 +286,8 @@ namespace ICSharpCode.Decompiler.Metadata
 			throw new BadImageFormatException("This metadata file does not support sections.");
 		}
 
+		[SuppressMessage("Design", "CA1065:Do not raise exceptions in unexpected locations",
+			Justification = "Throw signals that this MetadataFileKind has no PE sections; derived PE-like kinds override.")]
 		public virtual ImmutableArray<SectionHeader> SectionHeaders => throw new BadImageFormatException("This metadata file does not support sections.");
 
 		/// <summary>
@@ -271,6 +298,16 @@ namespace ICSharpCode.Decompiler.Metadata
 		public IModuleReference WithOptions(TypeSystemOptions options)
 		{
 			return new MetadataFileWithOptions(this, options);
+		}
+
+		public void Dispose()
+		{
+			Dispose(disposing: true);
+			GC.SuppressFinalize(this);
+		}
+
+		protected virtual void Dispose(bool disposing)
+		{
 		}
 
 		private class MetadataFileWithOptions : IModuleReference

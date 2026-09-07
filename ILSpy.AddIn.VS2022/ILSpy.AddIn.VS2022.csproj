@@ -1,6 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project>
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.props" />
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
@@ -11,6 +10,8 @@
     <Version>1.7.1.0</Version>
     <FileVersion>1.7.1.0</FileVersion>
     <LangVersion>9.0</LangVersion>
+    <!-- Legacy net472 add-in: opt out of the repo-wide warnings-as-errors (Directory.Build.props). -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
 
     <EnableDefaultItems>False</EnableDefaultItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -22,7 +23,23 @@
       MSB3277;<!-- this is due to Visual Studio package references weirdness, see https://github.com/dotnet/roslyn/discussions/49787 -->
       VSSDK1009
     </NoWarn>
+
+    <!-- SDK-style VSIX: VSSDKBuildToolsAutoSetup wires up the VSIX targets so the package
+         builds with plain dotnet build instead of full msbuild + the legacy Microsoft.VsSDK.targets. -->
+    <VSSDKBuildToolsAutoSetup>true</VSSDKBuildToolsAutoSetup>
+    <VsixDeployOnDebug>true</VsixDeployOnDebug>
+    <GeneratePkgDefFile>true</GeneratePkgDefFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectCapability Include="CreateVsixContainer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MenuCommandService (used by the shared command classes) lives in System.Design, which the
+         SDK does not reference by default for net472; full msbuild used to supply it implicitly. -->
+    <Reference Include="System.Design" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DebugType>full</DebugType>
@@ -39,13 +56,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.31902.203" />
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.31902.203" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.CodeAnalysis" Version="4.0.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.0.1" />
     <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="4.0.1" />
-    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.6.2164">
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="18.5.40034">
       <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Mono.Cecil" Version="0.11.5" />
   </ItemGroup>
@@ -72,23 +88,59 @@
     <Compile Include="..\ICSharpCode.Decompiler\Util\EmptyList.cs" Link="Decompiler\EmptyList.cs" />
     <Compile Include="Decompiler\Dummy.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="AssemblyFileFinder.cs" />
+    <Compile Include="Commands\AssemblyReferenceForILSpy.cs" />
+    <Compile Include="Commands\NuGetReferenceForILSpy.cs" />
+    <Compile Include="Commands\OpenCodeItemCommand.cs" />
+    <Compile Include="Commands\OpenILSpyCommand.cs" />
+    <Compile Include="Commands\OpenProjectOutputCommand.cs" />
+    <Compile Include="Commands\OpenReferenceCommand.cs" />
+    <Compile Include="Commands\ProjectItemForILSpy.cs" />
+    <Compile Include="Commands\ProjectReferenceForILSpy.cs" />
+    <Compile Include="GlobalSuppressions.cs" />
+    <Compile Include="Guids.cs" />
+    <Compile Include="ILSpyAddInPackage.cs" />
+    <Compile Include="ILSpyInstance.cs" />
+    <Compile Include="PkgCmdID.cs" />
+    <Compile Include="SyntaxNodeExtensions.cs" />
+    <Compile Include="Utils.cs" />
+    <Compile Include="Resources.Designer.cs">
+      <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources.resx">
+      <SubType>Designer</SubType>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      <Generator>ResXFileCodeGenerator</Generator>
+    </EmbeddedResource>
+    <!-- ProvideMenuResource("Menus.ctmenu", 1) makes VS load the menu table from the "Menus.ctmenu"
+         entry of the package's VSPackage.resources stream, so the compiled .vsct must be merged into
+         it. MergeWithCTO uses the classic resource reader/writer, which only works when VSPackage.resx
+         stays string-only; that is why the package icon is not stored here (see ILSpyAddInPackage). -->
+    <EmbeddedResource Include="VSPackage.en-US.resx">
+      <DependentUpon>VSPackage.resx</DependentUpon>
+      <LogicalName>VSPackage.en-US.resources</LogicalName>
+      <MergeWithCTO>true</MergeWithCTO>
+    </EmbeddedResource>
+    <EmbeddedResource Include="VSPackage.resx">
+      <ManifestResourceName>VSPackage</ManifestResourceName>
+      <MergeWithCTO>true</MergeWithCTO>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
-    <ILSpyBuildPathX64>..\ILSpy\bin\$(Configuration)\net8.0-windows\win-x64\publish\fwdependent\</ILSpyBuildPathX64>
-    <ILSpyBuildPathArm64>..\ILSpy\bin\$(Configuration)\net8.0-windows\win-arm64\publish\fwdependent\</ILSpyBuildPathArm64>
+    <ILSpyBuildPathX64>..\ILSpy\bin\$(Configuration)\net10.0\win-x64\publish\fwdependent\</ILSpyBuildPathX64>
+    <ILSpyBuildPathArm64>..\ILSpy\bin\$(Configuration)\net10.0\win-arm64\publish\fwdependent\</ILSpyBuildPathArm64>
   </PropertyGroup>
 
   <Target Name="IncludeILSpyDistributionInVSIXSubFolder" AfterTargets="ResolveProjectReferences">
     <ItemGroup>
-      <VSIXSourceItem Include="$(ILSpyBuildPathX64)zh-Hans\ILSpy.resources.dll;$(ILSpyBuildPathX64)zh-Hans\ILSpy.ReadyToRun.Plugin.resources.dll;">
-        <VSIXSubPath>\x64\ILSpy\zh-Hans\</VSIXSubPath>
-      </VSIXSourceItem>
       <VSIXSourceItem Include="$(ILSpyBuildPathX64)*.dll;$(ILSpyBuildPathX64)ILSpy.exe;$(ILSpyBuildPathX64)*.json">
         <VSIXSubPath>\x64\ILSpy</VSIXSubPath>
-      </VSIXSourceItem>
-      <VSIXSourceItem Include="$(ILSpyBuildPathArm64)zh-Hans\ILSpy.resources.dll;$(ILSpyBuildPathArm64)zh-Hans\ILSpy.ReadyToRun.Plugin.resources.dll;">
-        <VSIXSubPath>\arm64\ILSpy\zh-Hans\</VSIXSubPath>
       </VSIXSourceItem>
       <VSIXSourceItem Include="$(ILSpyBuildPathArm64)*.dll;$(ILSpyBuildPathArm64)ILSpy.exe;$(ILSpyBuildPathArm64)*.json">
         <VSIXSubPath>\arm64\ILSpy</VSIXSubPath>
@@ -106,7 +158,6 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\Images.png" />
-    <Content Include="Resources\Package.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -116,25 +167,13 @@
     <None Include="ILSpyAddIn.vsct">
       <SubType>Designer</SubType>
     </None>
-    <None Include="ILSpyAddIn.zh-Hans.vsct">
-      <SubType>Designer</SubType>
-    </None>
     <None Include="source.extension.vsixmanifest.template" />
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="zh-Hans\extension.vsixlangpack">
-      <IncludeInVSIX>true</IncludeInVSIX>
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
     <VSCTCompile Include="ILSpyAddIn.en-US.vsct">
-      <ResourceName>Menus.ctmenu</ResourceName>
-      <SubType>Designer</SubType>
-      <DependentUpon>ILSpyAddIn.vsct</DependentUpon>
-    </VSCTCompile>
-    <VSCTCompile Include="ILSpyAddIn.zh-Hans.vsct">
       <ResourceName>Menus.ctmenu</ResourceName>
       <SubType>Designer</SubType>
       <DependentUpon>ILSpyAddIn.vsct</DependentUpon>
@@ -161,18 +200,6 @@
     <RunAnalyzersDuringLiveAnalysis>true</RunAnalyzersDuringLiveAnalysis>
     <Product>ILSpy.AddIn for Visual Studio 2022</Product>
   </PropertyGroup>
-
-  <Import Project="..\ILSpy.AddIn.Shared\ILSpy.AddIn.Shared.projitems" Label="Shared" />
-
-  <Import Sdk="Microsoft.NET.Sdk" Project="Sdk.targets" />
-
-  <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="Exists('$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets')" />
-
-  <ItemGroup>
-    <Compile Update="..\ILSpy.AddIn.Shared\Resources.Designer.cs">
-      <DesignTime>True</DesignTime>
-    </Compile>
-  </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Resources\" />

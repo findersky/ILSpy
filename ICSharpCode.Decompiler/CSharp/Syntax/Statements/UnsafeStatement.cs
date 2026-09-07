@@ -1,4 +1,4 @@
-﻿// 
+// 
 // UnsafeStatement.cs
 //
 // Author:
@@ -24,44 +24,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// unsafe { Body }
+	/// <c>unsafe_statement ::= 'unsafe' block</c> (C# grammar §24.2)
 	/// </summary>
-	public class UnsafeStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class UnsafeStatement : Statement
 	{
-		public static readonly TokenRole UnsafeKeywordRole = new TokenRole("unsafe");
+		public const string UnsafeKeyword = "unsafe";
 
-		public CSharpTokenNode UnsafeToken {
-			get { return GetChildByRole(UnsafeKeywordRole); }
-		}
-
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitUnsafeStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitUnsafeStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitUnsafeStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			UnsafeStatement o = other as UnsafeStatement;
-			return o != null && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("Body")]
+		public partial BlockStatement Body { get; set; }
 	}
 }

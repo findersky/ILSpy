@@ -1,4 +1,4 @@
-﻿// 
+// 
 // DoWhileStatement.cs
 //  
 // Author:
@@ -22,73 +22,26 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.using System;
+// THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// "do EmbeddedStatement while(Condition);"
+	/// <c>do_statement ::= 'do' statement 'while' '(' expression ')' ';'</c> (C# grammar §13.9.3)
 	/// </summary>
-	public class DoWhileStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class DoWhileStatement : Statement
 	{
-		public static readonly TokenRole DoKeywordRole = new TokenRole("do");
-		public static readonly TokenRole WhileKeywordRole = new TokenRole("while");
+		public const string DoKeyword = "do";
+		public const string WhileKeyword = "while";
 
-		public CSharpTokenNode DoToken {
-			get { return GetChildByRole(DoKeywordRole); }
-		}
+		[Slot("EmbeddedStatement")]
+		public partial Statement EmbeddedStatement { get; set; }
 
-		public Statement EmbeddedStatement {
-			get { return GetChildByRole(Roles.EmbeddedStatement); }
-			set { SetChildByRole(Roles.EmbeddedStatement, value); }
-		}
-
-		public CSharpTokenNode WhileToken {
-			get { return GetChildByRole(WhileKeywordRole); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public Expression Condition {
-			get { return GetChildByRole(Roles.Condition); }
-			set { SetChildByRole(Roles.Condition, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDoWhileStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDoWhileStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDoWhileStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			DoWhileStatement o = other as DoWhileStatement;
-			return o != null && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match) && this.Condition.DoMatch(o.Condition, match);
-		}
-
-		public DoWhileStatement()
-		{
-		}
+		[Slot("Condition")]
+		public partial Expression Condition { get; set; }
 
 		public DoWhileStatement(Expression condition, Statement embeddedStatement)
 		{
@@ -97,4 +50,3 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 	}
 }
-

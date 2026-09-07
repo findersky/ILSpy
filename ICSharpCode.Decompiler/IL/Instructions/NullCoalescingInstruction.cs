@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -18,6 +18,8 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System.Diagnostics;
+
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -54,28 +56,28 @@ namespace ICSharpCode.Decompiler.IL
 	partial class NullCoalescingInstruction
 	{
 		public readonly NullCoalescingKind Kind;
+		public IType Type { get; }
 		public StackType UnderlyingResultType = StackType.O;
 
-		public NullCoalescingInstruction(NullCoalescingKind kind, ILInstruction valueInst, ILInstruction fallbackInst) : base(OpCode.NullCoalescingInstruction)
+		public NullCoalescingInstruction(IType type, NullCoalescingKind kind, ILInstruction valueInst, ILInstruction fallbackInst) : base(OpCode.NullCoalescingInstruction)
 		{
+			this.Type = type;
 			this.Kind = kind;
 			this.ValueInst = valueInst;
 			this.FallbackInst = fallbackInst;
+			Debug.Assert(type.GetStackType() == fallbackInst.ResultType || fallbackInst.HasDirectFlag(InstructionFlags.EndPointUnreachable));
 		}
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 			Debug.Assert(valueInst.ResultType == StackType.O); // lhs is reference type or nullable type
-			Debug.Assert(fallbackInst.ResultType == StackType.O || Kind == NullCoalescingKind.NullableWithValueFallback);
+			Debug.Assert(fallbackInst.ResultType == StackType.O || Kind == NullCoalescingKind.NullableWithValueFallback || fallbackInst.HasDirectFlag(InstructionFlags.EndPointUnreachable));
 			Debug.Assert(ResultType == UnderlyingResultType || Kind == NullCoalescingKind.Nullable);
 		}
 
-		public override StackType ResultType {
-			get {
-				return fallbackInst.ResultType;
-			}
-		}
+		public override StackType ResultType => Type.GetStackType();
+		public override IType InferType(ICompilation compilation) => Type;
 
 		public override InstructionFlags DirectFlags {
 			get {
@@ -90,7 +92,7 @@ namespace ICSharpCode.Decompiler.IL
 				| SemanticHelper.CombineBranches(InstructionFlags.None, fallbackInst.Flags);
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);

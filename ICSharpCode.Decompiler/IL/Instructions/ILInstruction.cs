@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -81,9 +81,16 @@ namespace ICSharpCode.Decompiler.IL
 			Debug.Assert(b, msg);
 		}
 
+		/// <summary>
+		/// Verifies the invariants of this instruction and its descendants. Only active in debug builds.
+		/// </summary>
+		/// <param name="phase">Which set of invariants applies; they tighten as the pipeline progresses.</param>
+		/// <param name="compilation">The compilation the instruction tree was decoded against, so that
+		/// invariants involving types can be resolved against the same type system the decompiler uses.</param>
 		[Conditional("DEBUG")]
-		internal virtual void CheckInvariant(ILPhase phase)
+		internal virtual void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
+			Debug.Assert(compilation != null);
 			foreach (var child in Children)
 			{
 				Debug.Assert(child.Parent == this);
@@ -92,9 +99,11 @@ namespace ICSharpCode.Decompiler.IL
 				// exception: nested ILFunctions (lambdas)
 				Debug.Assert(this is ILFunction || child.flags != invalidFlags || this.flags == invalidFlags);
 				Debug.Assert(child.IsConnected == this.IsConnected);
-				child.CheckInvariant(phase);
+				child.CheckInvariant(phase, compilation);
 			}
 			Debug.Assert((this.DirectFlags & ~this.Flags) == 0, "All DirectFlags must also appear in this.Flags");
+			var inferredType = this.InferType(compilation);
+			Debug.Assert(inferredType.GetStackType() == this.ResultType);
 		}
 
 		/// <summary>
@@ -209,19 +218,26 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public abstract StackType ResultType { get; }
 
-		/* Not sure if it's a good idea to offer this on all instructions --
-		 *   e.g. ldloc for a local of type `int?` would return StackType.O (because it's not a lifted operation),
-		 *   even though the underlying type is int = StackType.I4.
 		/// <summary>
-		/// Gets the underlying result type of the value produced by this instruction.
-		/// 
-		/// If this is a lifted operation, the ResultType will be `StackType.O` (because Nullable{T} is a struct),
-		/// and UnderlyingResultType will be result type of the corresponding non-lifted operation.
-		/// 
-		/// If this is not a lifted operation, the underlying result type is equal to the result type.
+		/// Gets a possible C# type that could be used to store the result of this instruction.
 		/// </summary>
-		public virtual StackType UnderlyingResultType { get => ResultType; }
-		*/
+		/// <remarks>
+		/// Post-condition: this.InferType().GetStackType() == this.ResultType.
+		/// 
+		/// This must be a type suitable for use a local variable (i.e. `ldnull` uses `object`, not `NullType`).
+		/// 
+		/// If this function returns a small integer type, the instruction is guaranteed to
+		/// evaluate to a value that fits into that type (when the I4 evaluation result is
+		/// interpreted as int/uint depending on the small integer type's sign).
+		/// 
+		/// For instructions producing an non-nullable value type, this function must return that
+		/// exact type.
+		/// For nullable value types, this function may return `int?` when actually the instruction
+		/// produces a nullable I4, which might end up being a `bool?` expression in C#.
+		/// Similarly, for reference types, this function may return `object` when actually the C#
+		/// type is a more specific reference type.
+		/// </remarks>
+		public abstract IType InferType(ICompilation compilation);
 
 		internal static StackType CommonResultType(StackType a, StackType b)
 		{
@@ -383,9 +399,29 @@ namespace ICSharpCode.Decompiler.IL
 		}
 
 		/// <summary>
-		/// Writes the ILAst to the text output.
+		/// Writes the ILAst to the text output. Brackets the instruction's rendered span so it can be
+		/// mapped back to its character range for debug-step highlighting; the bracket lives here, in
+		/// one place, so a new instruction cannot forget it. Override <see cref="WriteToCore"/> to
+		/// render an instruction, not this method. Both marks are no-ops unless the output tracks nodes.
 		/// </summary>
-		public abstract void WriteTo(ITextOutput output, ILAstWritingOptions options);
+		public void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		{
+			output.MarkNodeStart(this);
+			try
+			{
+				WriteToCore(output, options);
+			}
+			finally
+			{
+				output.MarkNodeEnd(this);
+			}
+		}
+
+		/// <summary>
+		/// Renders this instruction to the text output. This is the override point; callers use
+		/// <see cref="WriteTo"/>, which wraps this in the node-tracking bracket.
+		/// </summary>
+		protected abstract void WriteToCore(ITextOutput output, ILAstWritingOptions options);
 
 		public override string ToString()
 		{
@@ -941,12 +977,31 @@ namespace ICSharpCode.Decompiler.IL
 		}
 
 		/// <summary>
-		/// Gets whether the specified instruction may be inlined into the specified slot.
-		/// Note: this does not check whether reordering with the previous slots is valid; only wheter the target slot supports inlining at all!
+		/// Gets whether the expressionBeingMoved, which previously executes prior to `this`,
+		/// may be moved into a descendant of the specified slot.
+		/// (i.e. this controls whether FindLoadInNext may descent into the specified slot)
+		/// 
+		/// Note: this does not check whether reordering with the previous slots is valid; only whether the target slot supports inlining at all!
 		/// </summary>
 		internal virtual bool CanInlineIntoSlot(int childIndex, ILInstruction expressionBeingMoved)
 		{
 			return GetChildSlot(childIndex).CanInlineInto;
+		}
+
+		/// <summary>
+		/// Some slots in the ILAst have restrictions on which instructions can appear in them.
+		/// Used to suppress inlining if the new child does not satisfy the restrictions.
+		/// Unlike `CanInlineIntoSlot`, this is not about descendants of the slot, only about
+		/// whether SetChild(childIndex, newChild) is valid.
+		/// (i.e. this controls whether FindLoadInNext may return the specified slot as a final result)
+		/// 
+		/// Warning: after newChild is inlined, other nodes may be inlined into newChild's sub-instructions
+		/// without asking this function again. This means this function is not suitable for protecting
+		/// a slot from having side effects, use `CanInlineIntoSlot` for that.
+		/// </summary>
+		internal virtual bool SatisfiesSlotRestrictionForInlining(int childIndex, ILInstruction newChild)
+		{
+			return true;
 		}
 	}
 

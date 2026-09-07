@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,98 +16,35 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// [in|out] Name
-	/// 
 	/// Represents a type parameter.
-	/// Note: mirroring the C# syntax, constraints are not part of the type parameter declaration, but belong
-	/// to the parent type or method.
+	/// Mirroring the C# syntax, constraints are not part of the type parameter declaration;
+	/// they belong to the parent type or method.
+	/// <c>type_parameter ::= attribute_section* ( 'in' | 'out' )? identifier</c> (C# grammar §8.5, §15.2.3)
 	/// </summary>
-	public class TypeParameterDeclaration : AstNode
+	[DecompilerAstNode]
+	public sealed partial class TypeParameterDeclaration : AstNode
 	{
-		public static readonly Role<AttributeSection> AttributeRole = EntityDeclaration.AttributeRole;
-		public static readonly TokenRole OutVarianceKeywordRole = new TokenRole("out");
-		public static readonly TokenRole InVarianceKeywordRole = new TokenRole("in");
+		public const string OutVarianceKeyword = "out";
+		public const string InVarianceKeyword = "in";
 
-		public override NodeType NodeType {
-			get { return NodeType.Unknown; }
-		}
+		[Slot("AttributeSection")]
+		public partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public AstNodeCollection<AttributeSection> Attributes {
-			get { return GetChildrenByRole(AttributeRole); }
-		}
+		public VarianceModifier Variance { get; set; }
 
-		VarianceModifier variance;
-
-		public VarianceModifier Variance {
-			get { return variance; }
-			set { ThrowIfFrozen(); variance = value; }
-		}
-
-		public CSharpTokenNode VarianceToken {
-			get {
-				switch (Variance)
-				{
-					case VarianceModifier.Covariant:
-						return GetChildByRole(OutVarianceKeywordRole);
-					case VarianceModifier.Contravariant:
-						return GetChildByRole(InVarianceKeywordRole);
-					default:
-						return CSharpTokenNode.Null;
-				}
-			}
-		}
-
-		public string Name {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier NameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public TypeParameterDeclaration()
-		{
-		}
+		[Slot("Identifier")]
+		public partial string Name { get; set; }
 
 		public TypeParameterDeclaration(string name)
 		{
 			Name = name;
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitTypeParameterDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitTypeParameterDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitTypeParameterDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			TypeParameterDeclaration o = other as TypeParameterDeclaration;
-			return o != null && this.Variance == o.Variance && MatchString(this.Name, o.Name) && this.Attributes.DoMatch(o.Attributes, match);
 		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FieldDeclaration.cs
 //
 // Author:
@@ -24,6 +24,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.ComponentModel;
 
@@ -31,15 +33,24 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class FieldDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>field_declaration ::= attribute_section* modifier* type variable_initializer* ';'</c> (C# grammar §15.5.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class FieldDeclaration : EntityDeclaration
 	{
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Field; }
 		}
 
-		public AstNodeCollection<VariableInitializer> Variables {
-			get { return GetChildrenByRole(Roles.Variable); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
+
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
+
+		[Slot("Variable")]
+		public partial AstNodeCollection<VariableInitializer> Variables { get; }
 
 		// Hide .Name and .NameToken from users; the actual field names
 		// are stored in the VariableInitializer.
@@ -51,30 +62,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override Identifier NameToken {
-			get { return Identifier.Null; }
+			get { return null!; }
 			set { throw new NotSupportedException(); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitFieldDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitFieldDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitFieldDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			FieldDeclaration o = other as FieldDeclaration;
-			return o != null && this.MatchAttributesAndModifiers(o, match)
-				&& this.ReturnType.DoMatch(o.ReturnType, match) && this.Variables.DoMatch(o.Variables, match);
 		}
 	}
 }

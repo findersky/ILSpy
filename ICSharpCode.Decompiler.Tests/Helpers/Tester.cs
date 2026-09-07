@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2015 Daniel Grunwald
+// Copyright (c) 2015 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -35,6 +35,7 @@ using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.Disassembler;
+using ICSharpCode.Decompiler.Documentation;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpyX.PdbProvider;
@@ -69,8 +70,12 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 		UseTestRunner = 0x4000,
 		NullableEnable = 0x8000,
 		ReferenceUnsafe = 0x10000,
+		CheckForOverflowUnderflow = 0x20000,
+		ProcessXmlDoc = 0x40000,
+		UseRoslyn4_14_0 = 0x80000,
+		EnableRuntimeAsync = 0x100000,
 		UseMcsMask = UseMcs2_6_4 | UseMcs5_23,
-		UseRoslynMask = UseRoslyn1_3_2 | UseRoslyn2_10_0 | UseRoslyn3_11_0 | UseRoslynLatest
+		UseRoslynMask = UseRoslyn1_3_2 | UseRoslyn2_10_0 | UseRoslyn3_11_0 | UseRoslyn4_14_0 | UseRoslynLatest
 	}
 
 	[Flags]
@@ -90,6 +95,10 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 
 	public static partial class Tester
 	{
+		public const string CurrentNetCoreVersion = "11.0";
+		public const string CurrentNetCoreAppVersion = ".NETCoreApp,Version=v11.0";
+		public const string CurrentNetCoreRefAsmVersion = "11.0.0-preview.5.26302.115";
+
 		public static readonly string TesterPath;
 		public static readonly string TestCasePath;
 
@@ -98,50 +107,174 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 		static readonly string roslynLatestVersion;
 		static readonly RoslynToolset roslynToolset;
 		static readonly VsWhereToolset vswhereToolset;
+		internal static readonly RefAssembliesToolset RefAssembliesToolset;
+
+		// ilasm/ildasm ship as `ilasm[.exe]` inside the Microsoft.NETCore.IL{,D}Asm
+		// per-RID runtime packages, picked up by NuGet's RID graph from the project's
+		// RuntimeIdentifier. The umbrella package drops the binary alongside the test
+		// assembly, but only Windows uses the .exe suffix.
+		static readonly string ExecutableExtension = OperatingSystem.IsWindows() ? ".exe" : "";
+
+		static string ResolveToolPath(string toolName) =>
+			Path.Combine(TesterPath, toolName + ExecutableExtension);
 
 		static Tester()
 		{
 			TesterPath = Path.GetDirectoryName(typeof(Tester).Assembly.Location);
 			TestCasePath = Path.Combine(TesterPath, "../../../../TestCases");
 #if DEBUG
-			testRunnerBasePath = Path.Combine(TesterPath, "../../../../../ICSharpCode.Decompiler.TestRunner/bin/Debug/net8.0");
+			testRunnerBasePath = Path.Combine(TesterPath, $"../../../../../ICSharpCode.Decompiler.TestRunner/bin/Debug/net{CurrentNetCoreVersion}");
 #else
-			testRunnerBasePath = Path.Combine(TesterPath, "../../../../../ICSharpCode.Decompiler.TestRunner/bin/Release/net8.0");
+			testRunnerBasePath = Path.Combine(TesterPath, $"../../../../../ICSharpCode.Decompiler.TestRunner/bin/Release/net{CurrentNetCoreVersion}");
 #endif
 			// To parse: <Project><ItemGroup><PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0-3.final" />
 			packagesPropsFile = Path.Combine(TesterPath, "../../../../../Directory.Packages.props");
 			roslynLatestVersion = ((IEnumerable<object>)(XDocument
 				.Load(packagesPropsFile)
-				.XPathEvaluate("//Project//ItemGroup//PackageVersion[@Include='Microsoft.CodeAnalysis.CSharp']/@Version")))
-				.OfType<XAttribute>()
+				.XPathEvaluate("//Project//PropertyGroup//RoslynVersion")))
+				.OfType<XElement>()
 				.Single()
 				.Value;
 
 			roslynToolset = new RoslynToolset();
 			vswhereToolset = new VsWhereToolset();
+			RefAssembliesToolset = new RefAssembliesToolset();
 		}
 
 		internal static async Task Initialize()
 		{
 			await roslynToolset.Fetch("1.3.2", "Microsoft.Net.Compilers", "tools").ConfigureAwait(false);
-			await roslynToolset.Fetch("2.10.0", "Microsoft.Net.Compilers", "tools").ConfigureAwait(false);
-			await roslynToolset.Fetch("3.11.0").ConfigureAwait(false);
-			await roslynToolset.Fetch(roslynLatestVersion).ConfigureAwait(false);
+			if (OperatingSystem.IsWindows())
+			{
+				await roslynToolset.Fetch("2.10.0", "Microsoft.Net.Compilers", "tools").ConfigureAwait(false);
+			}
+			else
+			{
+				// Microsoft.Net.Compilers only ships .NET Framework executables. The sibling
+				// Microsoft.NETCore.Compilers package contains the dotnet-hosted build of the
+				// same compiler version (tools/bincore/csc.dll), usable on any platform.
+				await roslynToolset.Fetch("2.10.0", "Microsoft.NETCore.Compilers", "tools/bincore").ConfigureAwait(false);
+			}
+			// On non-Windows hosts the net472 compiler binaries cannot be executed; use the
+			// .NET build of each toolset instead. Its tasks folder is named "netcoreapp3.1"
+			// up to Roslyn 3.x and "netcore" from Roslyn 4.x on.
+			await roslynToolset.Fetch("3.11.0", sourcePath: OperatingSystem.IsWindows() ? "tasks/net472" : "tasks/netcoreapp3.1").ConfigureAwait(false);
+			await roslynToolset.Fetch("4.14.0", sourcePath: OperatingSystem.IsWindows() ? "tasks/net472" : "tasks/netcore").ConfigureAwait(false);
+			await roslynToolset.Fetch(roslynLatestVersion, sourcePath: OperatingSystem.IsWindows() ? "tasks/net472" : "tasks/netcore").ConfigureAwait(false);
 
 			await vswhereToolset.Fetch().ConfigureAwait(false);
+			await RefAssembliesToolset.Fetch("5.0.0", sourcePath: "ref/net5.0").ConfigureAwait(false);
+			await RefAssembliesToolset.Fetch("9.0.0", sourcePath: "ref/net9.0").ConfigureAwait(false);
+			await RefAssembliesToolset.Fetch(CurrentNetCoreRefAsmVersion, sourcePath: $"ref/net{CurrentNetCoreVersion}").ConfigureAwait(false);
 
 #if DEBUG
-			await BuildTestRunner("win-x86", "Debug").ConfigureAwait(false);
-			await BuildTestRunner("win-x64", "Debug").ConfigureAwait(false);
+			const string testRunnerConfig = "Debug";
 #else
-			await BuildTestRunner("win-x86", "Release").ConfigureAwait(false);
-			await BuildTestRunner("win-x64", "Release").ConfigureAwait(false);
+			const string testRunnerConfig = "Release";
 #endif
+			if (OperatingSystem.IsWindows())
+			{
+				await BuildTestRunner("win-x86", testRunnerConfig).ConfigureAwait(false);
+				await BuildTestRunner("win-x64", testRunnerConfig).ConfigureAwait(false);
+			}
+			else
+			{
+				// Self-contained build for the host platform. The RID must be one of the
+				// RuntimeIdentifiers pinned in ICSharpCode.Decompiler.TestRunner.csproj.
+				await BuildTestRunner(OperatingSystem.IsMacOS() ? "osx-arm64" : "linux-x64", testRunnerConfig).ConfigureAwait(false);
+			}
+		}
+
+		/// <summary>
+		/// True when a Mono runtime is on the PATH. Mono hosts the .NET Framework builds of
+		/// compilers that have no .NET build (Roslyn 1.x csc.exe from Microsoft.Net.Compilers);
+		/// Roslyn 2.x+ configurations use dotnet-hosted builds and do not depend on Mono.
+		/// </summary>
+		public static readonly bool MonoRuntimeAvailable =
+			!OperatingSystem.IsWindows()
+			&& (Environment.GetEnvironmentVariable("PATH") ?? "")
+				.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+				.Any(dir => File.Exists(Path.Combine(dir, "mono")));
+
+		/// <summary>
+		/// Reduces a compiler-configuration matrix to the entries usable on the current platform.
+		/// On Windows every configuration is supported. On other platforms, configurations that
+		/// depend on Windows-only tools or runtimes are removed: the legacy (pre-Roslyn) csc/vbc
+		/// and Force32Bit (requires a 32-bit runtime) always; Roslyn 1.x/2.x (their packages only
+		/// ship .NET Framework binaries) and mcs unless a Mono runtime is available to host them.
+		/// When <paramref name="executesCompiledOutput"/> is set (correctness-style fixtures),
+		/// configurations targeting .NET Framework 4.0 are removed as well, because their output
+		/// executables only run on Windows, and the Mono-hosted compilers are not included either
+		/// (their output would likewise need a Mono host to execute).
+		/// </summary>
+		public static CompilerOptions[] SupportedOnCurrentPlatform(CompilerOptions[] configurations, bool executesCompiledOutput = false)
+		{
+			if (OperatingSystem.IsWindows())
+				return configurations;
+			const CompilerOptions dotnetHostedCompilers = CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.UseRoslynLatest;
+			CompilerOptions supportedCompilers = dotnetHostedCompilers;
+			if (!executesCompiledOutput)
+			{
+				// The dotnet-hosted Roslyn 2.x build (Microsoft.NETCore.Compilers) can compile
+				// on any platform, but its output targets .NET Core 2.2 or .NET Framework,
+				// which the correctness runners cannot execute here.
+				supportedCompilers |= CompilerOptions.UseRoslyn2_10_0;
+				// Roslyn 1.3.2 has only a .NET Framework build and needs Mono as its host.
+				// The configuration stays in the matrix even without Mono so that a missing
+				// runtime shows up as skipped tests (see WrapCompiler) instead of a silently
+				// smaller matrix. mcs 2.6.4 stays excluded: it needs the Reflection.Emit
+				// COMPILER_ACCESS mode that current Mono runtimes no longer implement.
+				supportedCompilers |= CompilerOptions.UseRoslyn1_3_2;
+			}
+			return configurations.Where(c => (c & supportedCompilers) != 0
+				&& !c.HasFlag(CompilerOptions.Force32Bit)
+				&& !(executesCompiledOutput && c.HasFlag(CompilerOptions.TargetNet40))).ToArray();
+		}
+
+		/// <summary>
+		/// Whether to pass the undocumented /shared switch, which makes the compiler use the
+		/// VBCSCompiler compiler server and so avoids paying compiler startup per invocation.
+		/// The dotnet-hosted Roslyn 2.x build cannot start its compiler server under a current
+		/// 'dotnet' host (the roll-forward in WrapCompiler applies to csc/vbc itself, not to
+		/// the server process the client tries to spawn), so with /shared every invocation
+		/// first waits out the client's full 20-second new-server connection timeout before
+		/// falling back to a sub-second in-process compile. Only the dotnet-hosted Roslyn 3.0+
+		/// builds get the switch on non-Windows platforms; the Mono-hosted 1.x compilers skip
+		/// it too rather than rely on the server protocol working under Mono.
+		/// </summary>
+		static bool UseCompilerServer(string roslynVersion)
+		{
+			return OperatingSystem.IsWindows()
+				|| Version.Parse(RoslynToolset.SanitizeVersion(roslynVersion)).Major > 2;
+		}
+
+		/// <summary>
+		/// Wraps an external compiler invocation. The .NET Framework builds of the Roslyn
+		/// compilers (csc.exe/vbc.exe) are directly executable on Windows and are hosted by
+		/// Mono elsewhere; the .NET builds ship as a .dll that must be launched through the
+		/// 'dotnet' host.
+		/// </summary>
+		static Command WrapCompiler(string compilerPath, string arguments)
+		{
+			// Old compiler builds pin an out-of-support runtime in their runtimeconfig
+			// (e.g. Roslyn 2.x pins Microsoft.NETCore.App 2.0), so allow the host to
+			// roll forward across major versions to whatever runtime is installed.
+			if (compilerPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+				return Cli.Wrap("dotnet").WithArguments($"--roll-forward LatestMajor \"{compilerPath}\" {arguments}");
+			if (!OperatingSystem.IsWindows() && compilerPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+			{
+				if (!MonoRuntimeAvailable)
+				{
+					Assert.Ignore($"{Path.GetFileName(compilerPath)} requires a Mono runtime on the PATH to run on this platform.");
+				}
+				return Cli.Wrap("mono").WithArguments($"\"{compilerPath}\" {arguments}");
+			}
+			return Cli.Wrap(compilerPath).WithArguments(arguments);
 		}
 
 		static async Task BuildTestRunner(string runtime, string config)
 		{
-			await Cli.Wrap("dotnet.exe")
+			await Cli.Wrap("dotnet")
 				.WithArguments(new[] { "build", Path.Combine(TesterPath, "../../../../../ICSharpCode.Decompiler.TestRunner/ICSharpCode.Decompiler.TestRunner.csproj"), "-r", runtime, "-c", config, "--self-contained" })
 				.ExecuteAsync();
 		}
@@ -151,40 +284,41 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 			string ilasmPath;
 			if (options.HasFlag(AssemblerOptions.UseLegacyAssembler))
 			{
+				if (!OperatingSystem.IsWindows())
+					Assert.Ignore("UseLegacyAssembler requires the .NET Framework ilasm.exe, which only exists on Windows.");
 				ilasmPath = Path.Combine(Environment.GetEnvironmentVariable("windir"), @"Microsoft.NET\Framework\v4.0.30319\ilasm.exe");
 			}
 			else
 			{
-				ilasmPath = Path.Combine(
-					Path.GetDirectoryName(typeof(Tester).Assembly.Location),
-					"ilasm.exe");
+				ilasmPath = ResolveToolPath("ilasm");
 			}
 			string outputFile = Path.Combine(Path.GetDirectoryName(sourceFileName), Path.GetFileNameWithoutExtension(sourceFileName));
+			// Options use the '-' prefix because on Unix the ilasm option parser treats
+			// '/option' as a file path; the Windows builds accept both prefixes.
 			string otherOptions = " ";
 			if (options.HasFlag(AssemblerOptions.Force32Bit))
 			{
 				outputFile += ".32";
-				otherOptions += "/32BitPreferred ";
+				otherOptions += "-32BitPreferred ";
 			}
 			if (options.HasFlag(AssemblerOptions.Library))
 			{
 				outputFile += ".dll";
-				otherOptions += "/dll ";
+				otherOptions += "-dll ";
 			}
 			else
 			{
 				outputFile += ".exe";
-				otherOptions += "/exe ";
+				otherOptions += "-exe ";
 			}
-
 
 			if (options.HasFlag(AssemblerOptions.UseDebug))
 			{
-				otherOptions += "/debug ";
+				otherOptions += "-debug ";
 			}
 
 			var command = Cli.Wrap(ilasmPath)
-				.WithArguments($"/quiet {otherOptions}/output=\"{outputFile}\" \"{sourceFileName}\"")
+				.WithArguments($"-quiet {otherOptions}-output=\"{outputFile}\" \"{sourceFileName}\"")
 				.WithValidation(CommandResultValidation.None);
 
 			var result = await command.ExecuteBufferedAsync().ConfigureAwait(false);
@@ -232,12 +366,11 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 				return outputFile;
 			}
 
-			string ildasmPath = Path.Combine(
-				Path.GetDirectoryName(typeof(Tester).Assembly.Location),
-				"ildasm.exe");
+			string ildasmPath = ResolveToolPath("ildasm");
 
+			// '-' option prefix: see AssembleIL.
 			var command = Cli.Wrap(ildasmPath)
-				.WithArguments($"/utf8 /out=\"{outputFile}\" \"{sourceFileName}\"")
+				.WithArguments($"-utf8 -out=\"{outputFile}\" \"{sourceFileName}\"")
 				.WithValidation(CommandResultValidation.None);
 
 			var result = await command.ExecuteBufferedAsync().ConfigureAwait(false);
@@ -275,19 +408,41 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 			return Regex.Replace(il, @"'<PrivateImplementationDetails>\{[0-9A-F-]+\}'", "'<PrivateImplementationDetails>'");
 		}
 
-		static readonly string coreRefAsmPath = new DotNetCorePathFinder(TargetFrameworkIdentifier.NET,
-			new Version(8, 0), "Microsoft.NETCore.App")
-				.GetReferenceAssemblyPath(".NETCoreApp,Version=v8.0");
-
-		public static readonly string RefAsmPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-			@"Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2");
-
 		static readonly string[] defaultReferences = new[] {
 			"System.dll",
 			"System.Core.dll",
+			"System.Runtime.dll",
 			"System.Xml.dll",
 			"Microsoft.CSharp.dll"
 		};
+
+		static readonly string[] core220DefaultReferences = new[]
+			{
+				"netstandard.dll",
+				"mscorlib.dll",
+				"System.dll",
+				"System.Collections.dll",
+				"System.Console.dll",
+				"System.Core.dll",
+				"System.Linq.dll",
+				"System.Linq.Expressions.dll",
+				"System.Linq.Queryable.dll",
+				"System.IO.FileSystem.Watcher.dll",
+				"System.Memory.dll",
+				"System.Private.CoreLib.dll",
+				"System.Private.Xml.dll",
+				"System.Threading.dll",
+				"System.Threading.Thread.dll",
+				"System.Runtime.dll",
+				"System.Runtime.Extensions.dll",
+				"System.Runtime.InteropServices.dll",
+				"System.Xml.dll",
+				"System.Xml.ReaderWriter.dll",
+				"System.ValueTuple.dll",
+				"System.Collections.NonGeneric.dll",
+				"Microsoft.CSharp.dll",
+				"Microsoft.VisualBasic.dll",
+			};
 
 		static readonly string[] coreDefaultReferences = new[]
 			{
@@ -302,6 +457,7 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 				"System.Linq.Queryable.dll",
 				"System.IO.FileSystem.Watcher.dll",
 				"System.Memory.dll",
+				"System.ObjectModel.dll",
 				"System.Threading.dll",
 				"System.Threading.Thread.dll",
 				"System.Runtime.dll",
@@ -313,19 +469,24 @@ namespace ICSharpCode.Decompiler.Tests.Helpers
 				"Microsoft.VisualBasic.dll",
 			};
 
-		const string targetFrameworkAttributeSnippet = @"
+		public static IReadOnlyList<string> CoreDefaultReferences => coreDefaultReferences;
 
-[assembly: System.Runtime.Versioning.TargetFramework("".NETCoreApp,Version=v8.0"", FrameworkDisplayName = """")]
+		static readonly Dictionary<string, Lazy<string>> targetFrameworkAttributeSnippetFiles = new() {
+			{ CurrentNetCoreAppVersion, new Lazy<string>(() => GetTargetFrameworkAttributeSnippetFile(CurrentNetCoreAppVersion)) },
+			{ ".NETCoreApp,Version=v9.0", new Lazy<string>(() => GetTargetFrameworkAttributeSnippetFile(".NETCoreApp,Version=v9.0")) },
+			{ ".NETCoreApp,Version=v5.0", new Lazy<string>(() => GetTargetFrameworkAttributeSnippetFile(".NETCoreApp,Version=v5.0")) },
+			{ ".NETCoreApp,Version=v2.2", new Lazy<string>(() => GetTargetFrameworkAttributeSnippetFile(".NETCoreApp,Version=v2.2")) },
+		};
 
-";
-
-		static readonly Lazy<string> targetFrameworkAttributeSnippetFile = new Lazy<string>(GetTargetFrameworkAttributeSnippetFile);
-
-		static string GetTargetFrameworkAttributeSnippetFile()
+		static string GetTargetFrameworkAttributeSnippetFile(string targetFrameworkMoniker)
 		{
 			// Note: this leaks a temporary file, we're not attempting to delete it, because it is only one.
 			var tempFile = Path.GetTempFileName();
-			File.WriteAllText(tempFile, targetFrameworkAttributeSnippet);
+			File.WriteAllText(tempFile, $@"
+
+[assembly: System.Runtime.Versioning.TargetFramework(""{targetFrameworkMoniker}"")]
+
+");
 			return tempFile;
 		}
 
@@ -388,9 +549,6 @@ namespace System.Runtime.CompilerServices
 				if (!flags.HasFlag(CompilerOptions.TargetNet40))
 				{
 					preprocessorSymbols.Add("NETCORE");
-					preprocessorSymbols.Add("NET60");
-					preprocessorSymbols.Add("NET70");
-					preprocessorSymbols.Add("NET80");
 				}
 				preprocessorSymbols.Add("ROSLYN");
 				preprocessorSymbols.Add("CS60");
@@ -398,6 +556,7 @@ namespace System.Runtime.CompilerServices
 				preprocessorSymbols.Add("VB14");
 				if (flags.HasFlag(CompilerOptions.UseRoslyn2_10_0)
 					|| flags.HasFlag(CompilerOptions.UseRoslyn3_11_0)
+					|| flags.HasFlag(CompilerOptions.UseRoslyn4_14_0)
 					|| flags.HasFlag(CompilerOptions.UseRoslynLatest))
 				{
 					preprocessorSymbols.Add("ROSLYN2");
@@ -408,19 +567,44 @@ namespace System.Runtime.CompilerServices
 					preprocessorSymbols.Add("VB15");
 				}
 				if (flags.HasFlag(CompilerOptions.UseRoslyn3_11_0)
+					|| flags.HasFlag(CompilerOptions.UseRoslyn4_14_0)
 					|| flags.HasFlag(CompilerOptions.UseRoslynLatest))
 				{
+					if (!flags.HasFlag(CompilerOptions.TargetNet40))
+					{
+						preprocessorSymbols.Add("NET50");
+					}
 					preprocessorSymbols.Add("ROSLYN3");
 					preprocessorSymbols.Add("CS80");
 					preprocessorSymbols.Add("CS90");
 					preprocessorSymbols.Add("VB16");
 				}
-				if (flags.HasFlag(CompilerOptions.UseRoslynLatest))
+				if (flags.HasFlag(CompilerOptions.UseRoslyn4_14_0)
+					|| flags.HasFlag(CompilerOptions.UseRoslynLatest))
 				{
+					if (!flags.HasFlag(CompilerOptions.TargetNet40))
+					{
+						preprocessorSymbols.Add("NET60");
+						preprocessorSymbols.Add("NET70");
+						preprocessorSymbols.Add("NET80");
+						preprocessorSymbols.Add("NET90");
+					}
 					preprocessorSymbols.Add("ROSLYN4");
 					preprocessorSymbols.Add("CS100");
 					preprocessorSymbols.Add("CS110");
 					preprocessorSymbols.Add("CS120");
+					preprocessorSymbols.Add("CS130");
+				}
+				if (flags.HasFlag(CompilerOptions.UseRoslynLatest))
+				{
+					if (!flags.HasFlag(CompilerOptions.TargetNet40))
+					{
+						preprocessorSymbols.Add("NET100");
+						preprocessorSymbols.Add("NET110");
+					}
+					preprocessorSymbols.Add("ROSLYN5");
+					preprocessorSymbols.Add("CS140");
+					preprocessorSymbols.Add("CS150");
 				}
 			}
 			else if ((flags & CompilerOptions.UseMcsMask) != 0)
@@ -440,6 +624,10 @@ namespace System.Runtime.CompilerServices
 				preprocessorSymbols.Add("LEGACY_CSC");
 				preprocessorSymbols.Add("LEGACY_VBC");
 			}
+			if (flags.HasFlag(CompilerOptions.EnableRuntimeAsync))
+			{
+				preprocessorSymbols.Add("RUNTIMEASYNC");
+			}
 			return preprocessorSymbols;
 		}
 
@@ -450,12 +638,19 @@ namespace System.Runtime.CompilerServices
 			{
 				sourceFileNames.Add(Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFileName), match.Groups[1].Value)));
 			}
+
+			List<string> dependencyAssemblies = new List<string>();
+			string sourceText = File.ReadAllText(sourceFileName);
+			foreach (Match match in Regex.Matches(sourceText, @"//\s*#dependency\s+([\w\d./\\]+)"))
+			{
+				string depSourcePath = Path.GetFullPath(Path.Combine(
+					Path.GetDirectoryName(sourceFileName), match.Groups[1].Value));
+				var depResults = await CompileCSharp(depSourcePath, flags | CompilerOptions.Library).ConfigureAwait(false);
+				dependencyAssemblies.Add(Path.GetFullPath(depResults.PathToAssembly));
+			}
+
 			bool targetNet40 = (flags & CompilerOptions.TargetNet40) != 0;
 			bool useRoslyn = (flags & CompilerOptions.UseRoslynMask) != 0;
-			if (useRoslyn && !targetNet40)
-			{
-				sourceFileNames.Add(targetFrameworkAttributeSnippetFile.Value);
-			}
 
 			if (targetNet40)
 			{
@@ -469,51 +664,94 @@ namespace System.Runtime.CompilerServices
 				CompilerResults results = new CompilerResults();
 				results.PathToAssembly = outputFileName;
 
-				var (roslynVersion, languageVersion) = (flags & CompilerOptions.UseRoslynMask) switch {
-					0 => ("legacy", "5"),
-					CompilerOptions.UseRoslyn1_3_2 => ("1.3.2", "6"),
-					CompilerOptions.UseRoslyn2_10_0 => ("2.10.0", "latest"),
-					CompilerOptions.UseRoslyn3_11_0 => ("3.11.0", "latest"),
-					_ => (roslynLatestVersion, flags.HasFlag(CompilerOptions.Preview) ? "preview" : "latest")
+				var (roslynVersion, languageVersion, targetFramework) = (flags & CompilerOptions.UseRoslynMask) switch {
+					0 => ("legacy", "5", null),
+					CompilerOptions.UseRoslyn1_3_2 => ("1.3.2", "6", null),
+					CompilerOptions.UseRoslyn2_10_0 => ("2.10.0", "latest", targetNet40 ? null : ".NETCoreApp,Version=v2.2"),
+					CompilerOptions.UseRoslyn3_11_0 => ("3.11.0", "latest", targetNet40 ? null : ".NETCoreApp,Version=v5.0"),
+					CompilerOptions.UseRoslyn4_14_0 => ("4.14.0", "latest", targetNet40 ? null : ".NETCoreApp,Version=v9.0"),
+					_ => (roslynLatestVersion, flags.HasFlag(CompilerOptions.Preview) ? "preview" : "latest", targetNet40 ? null : CurrentNetCoreAppVersion)
 				};
 
 				var cscPath = roslynToolset.GetCSharpCompiler(roslynVersion);
 
-				string libPath;
+				string libPath, refAsmPath;
 				IEnumerable<string> references;
-				if (useRoslyn && !targetNet40)
+				if (useRoslyn && targetFramework != null)
 				{
-					libPath = "\"" + coreRefAsmPath + "\"";
-					references = coreDefaultReferences.Select(r => "-r:\"" + Path.Combine(coreRefAsmPath, r) + "\"");
+					refAsmPath = RefAssembliesToolset.GetPath(targetFramework);
+					if (targetFramework == ".NETCoreApp,Version=v2.2")
+					{
+						references = core220DefaultReferences;
+						if (flags.HasFlag(CompilerOptions.ReferenceVisualBasic))
+						{
+							references = references.Append("Microsoft.VisualBasic.dll");
+						}
+					}
+					else
+					{
+						references = coreDefaultReferences;
+						if (flags.HasFlag(CompilerOptions.ReferenceVisualBasic))
+						{
+							references = references.Append("Microsoft.VisualBasic.dll");
+							references = references.Append("Microsoft.VisualBasic.Core.dll");
+						}
+					}
+					libPath = "\"" + refAsmPath + "\"";
+					sourceFileNames.Add(targetFrameworkAttributeSnippetFiles[targetFramework].Value);
 				}
 				else
 				{
-					libPath = "\"" + RefAsmPath + "\",\"" + Path.Combine(RefAsmPath, "Facades") + "\"";
-					references = defaultReferences.Select(r => "-r:\"" + Path.Combine(RefAsmPath, r) + "\"");
-				}
-				if (flags.HasFlag(CompilerOptions.ReferenceVisualBasic))
-				{
-					references = references.Concat(new[] { "-r:\"Microsoft.VisualBasic.dll\"" });
+					refAsmPath = RefAssembliesToolset.GetPath("legacy");
+					libPath = "\"" + refAsmPath + "\"";
+					references = defaultReferences;
+					if (!OperatingSystem.IsWindows())
+					{
+						// The .NET Framework csc.exe implicitly references the mscorlib of its
+						// runtime directory; the dotnet-hosted compiler has no implicit
+						// references, so the target framework's mscorlib must be passed explicitly.
+						references = references.Prepend("mscorlib.dll");
+					}
+					if (flags.HasFlag(CompilerOptions.ReferenceVisualBasic))
+					{
+						references = references.Append("Microsoft.VisualBasic.dll");
+					}
 				}
 				if (useRoslyn && !targetNet40 && flags.HasFlag(CompilerOptions.ReferenceUnsafe))
 				{
-					references = references.Concat(new[] { "-r:\"System.Runtime.CompilerServices.Unsafe.dll\"" });
+					references = references.Append("System.Runtime.CompilerServices.Unsafe.dll");
 				}
+
+				references = references.Select(r => "-r:\"" + Path.Combine(refAsmPath, r) + "\"");
+
+				foreach (var dependency in dependencyAssemblies)
+				{
+					references = references.Append($"-r:\"{dependency}\"");
+				}
+
 				string otherOptions = $"-nologo -noconfig " +
 					$"-langversion:{languageVersion} " +
 					$"-unsafe -o{(flags.HasFlag(CompilerOptions.Optimize) ? "+ " : "- ")}";
 
-				// note: the /shared switch is undocumented. It allows us to use the VBCSCompiler.exe compiler
-				// server to speed up testing
+				HashSet<string> noWarn = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
 				if (roslynVersion != "legacy")
 				{
-					otherOptions += "/shared ";
-					if (!targetNet40 && Version.Parse(RoslynToolset.SanitizeVersion(roslynVersion)).Major > 2)
+					if (UseCompilerServer(roslynVersion))
+					{
+						otherOptions += "/shared ";
+					}
+					var version = Version.Parse(RoslynToolset.SanitizeVersion(roslynVersion));
+					if (!targetNet40 && version.Major > 2)
 					{
 						if (flags.HasFlag(CompilerOptions.NullableEnable))
 							otherOptions += "/nullable+ ";
 						else
 							otherOptions += "/nullable- ";
+					}
+					if (!targetNet40 && roslynVersion == roslynLatestVersion && flags.HasFlag(CompilerOptions.EnableRuntimeAsync))
+					{
+						otherOptions += "/features:runtime-async=on ";
 					}
 				}
 
@@ -528,7 +766,17 @@ namespace System.Runtime.CompilerServices
 
 				if (flags.HasFlag(CompilerOptions.GeneratePdb))
 				{
-					otherOptions += "-debug:full ";
+					// The Windows PDB writer needs the native DiaSymReader, so only portable
+					// PDBs work on other platforms. Roslyn 2.x+ falls back to portable on its
+					// own; Roslyn 1.x needs the explicit request.
+					if (!OperatingSystem.IsWindows() && (flags & CompilerOptions.UseRoslynMask) != 0)
+					{
+						otherOptions += "-debug:portable ";
+					}
+					else
+					{
+						otherOptions += "-debug:full ";
+					}
 				}
 				else
 				{
@@ -543,13 +791,33 @@ namespace System.Runtime.CompilerServices
 				{
 					otherOptions += "-platform:anycpu ";
 				}
+
+				if (flags.HasFlag(CompilerOptions.ProcessXmlDoc))
+				{
+					otherOptions += $"-doc:\"{Path.ChangeExtension(results.PathToAssembly, ".xml")}\" ";
+					noWarn.Add("CS1591"); // Missing XML comment for publicly visible type or member 'Type_or_Member'
+				}
+
+				if (flags.HasFlag(CompilerOptions.CheckForOverflowUnderflow))
+				{
+					otherOptions += "-checked+ ";
+				}
+				else
+				{
+					otherOptions += "-checked- ";
+				}
+
 				if (preprocessorSymbols.Count > 0)
 				{
 					otherOptions += " \"-d:" + string.Join(";", preprocessorSymbols) + "\" ";
 				}
 
-				var command = Cli.Wrap(cscPath)
-					.WithArguments($"{otherOptions} -lib:{libPath} {string.Join(" ", references)} -out:\"{Path.GetFullPath(results.PathToAssembly)}\" {string.Join(" ", sourceFileNames.Select(fn => '"' + Path.GetFullPath(fn) + '"'))}")
+				if (noWarn.Count > 0)
+				{
+					otherOptions += " -nowarn:" + string.Join(",", noWarn);
+				}
+
+				var command = WrapCompiler(cscPath, $"{otherOptions} -lib:{libPath} {string.Join(" ", references)} -out:\"{Path.GetFullPath(results.PathToAssembly)}\" {string.Join(" ", sourceFileNames.Select(fn => '"' + Path.GetFullPath(fn) + '"'))}")
 					.WithValidation(CommandResultValidation.None);
 				//Console.WriteLine($"\"{command.TargetFilePath}\" {command.Arguments}");
 
@@ -577,9 +845,14 @@ namespace System.Runtime.CompilerServices
 					Assert.Ignore($"Compilation with mcs ignored: test directory '{testBasePath}' needs to be checked out separately." + Environment.NewLine +
 			  $"git clone https://github.com/icsharpcode/ILSpy-tests \"{testBasePath}\"");
 				}
-				string mcsPath = (flags & CompilerOptions.UseMcsMask) switch {
-					CompilerOptions.UseMcs5_23 => Path.Combine(testBasePath, @"mcs\5.23\bin\mcs.bat"),
-					_ => Path.Combine(testBasePath, @"mcs\2.6.4\bin\gmcs.bat")
+				// On Windows the submodule's bat launchers run the bundled Windows-native Mono;
+				// elsewhere the bundled compilers (managed .NET Framework assemblies) are hosted
+				// by the system Mono runtime via WrapCompiler.
+				string mcsPath = (flags & CompilerOptions.UseMcsMask, OperatingSystem.IsWindows()) switch {
+					(CompilerOptions.UseMcs5_23, true) => Path.Combine(testBasePath, @"mcs\5.23\bin\mcs.bat"),
+					(CompilerOptions.UseMcs5_23, false) => Path.Combine(testBasePath, "mcs", "5.23", "lib", "mono", "4.5", "mcs.exe"),
+					(_, true) => Path.Combine(testBasePath, @"mcs\2.6.4\bin\gmcs.bat"),
+					(_, false) => Path.Combine(testBasePath, "mcs", "2.6.4", "lib", "mono", "2.0", "gmcs.exe")
 				};
 				string otherOptions = " -unsafe -o" + (flags.HasFlag(CompilerOptions.Optimize) ? "+ " : "- ");
 
@@ -610,8 +883,7 @@ namespace System.Runtime.CompilerServices
 					otherOptions += " \"-d:" + string.Join(";", preprocessorSymbols) + "\" ";
 				}
 
-				var command = Cli.Wrap(mcsPath)
-					.WithArguments($"{otherOptions}-out:\"{Path.GetFullPath(results.PathToAssembly)}\" {string.Join(" ", sourceFileNames.Select(fn => '"' + Path.GetFullPath(fn) + '"'))}")
+				var command = WrapCompiler(mcsPath, $"{otherOptions}-out:\"{Path.GetFullPath(results.PathToAssembly)}\" {string.Join(" ", sourceFileNames.Select(fn => '"' + Path.GetFullPath(fn) + '"'))}")
 					.WithValidation(CommandResultValidation.None);
 				//Console.WriteLine($"\"{command.TargetFilePath}\" {command.Arguments}");
 
@@ -639,7 +911,8 @@ namespace System.Runtime.CompilerServices
 					CompilerOptions.UseRoslyn1_3_2 => CSharp.LanguageVersion.CSharp6,
 					CompilerOptions.UseRoslyn2_10_0 => CSharp.LanguageVersion.CSharp7_3,
 					CompilerOptions.UseRoslyn3_11_0 => CSharp.LanguageVersion.CSharp9_0,
-					_ => cscOptions.HasFlag(CompilerOptions.Preview) ? CSharp.LanguageVersion.Latest : CSharp.LanguageVersion.CSharp12_0,
+					CompilerOptions.UseRoslyn4_14_0 => CSharp.LanguageVersion.CSharp13_0,
+					_ => cscOptions.HasFlag(CompilerOptions.Preview) ? CSharp.LanguageVersion.Latest : CSharp.LanguageVersion.CSharp14_0,
 				};
 				DecompilerSettings settings = new(langVersion) {
 					// Never use file-scoped namespaces
@@ -659,9 +932,15 @@ namespace System.Runtime.CompilerServices
 			}
 		}
 
-		public static void CompileCSharpWithPdb(string assemblyName, Dictionary<string, string> sourceFiles)
+		public static void CompileCSharpWithPdb(string assemblyName, Dictionary<string, string> sourceFiles, CompilerOptions compilerOptions = CompilerOptions.None)
 		{
 			var parseOptions = new CSharpParseOptions(languageVersion: Microsoft.CodeAnalysis.CSharp.LanguageVersion.Latest);
+			if (compilerOptions.HasFlag(CompilerOptions.EnableRuntimeAsync))
+			{
+				// Mirror the out-of-process csc '/features:runtime-async=on' flag so the compiler lowers
+				// async methods to the .NET 11 runtime-async form (MethodImplAsync bit, no state machine).
+				parseOptions = parseOptions.WithFeatures(new[] { new KeyValuePair<string, string>("runtime-async", "on") });
+			}
 
 			List<EmbeddedText> embeddedTexts = new List<EmbeddedText>();
 			List<SyntaxTree> syntaxTrees = new List<SyntaxTree>();
@@ -674,7 +953,7 @@ namespace System.Runtime.CompilerServices
 			}
 
 			var compilation = CSharpCompilation.Create(Path.GetFileNameWithoutExtension(assemblyName),
-				syntaxTrees, coreDefaultReferences.Select(r => MetadataReference.CreateFromFile(Path.Combine(coreRefAsmPath, r))),
+				syntaxTrees, coreDefaultReferences.Select(r => MetadataReference.CreateFromFile(Path.Combine(RefAssembliesToolset.GetPath(CurrentNetCoreAppVersion), r))),
 				new CSharpCompilationOptions(
 					OutputKind.DynamicallyLinkedLibrary,
 					platform: Platform.AnyCpu,
@@ -715,12 +994,16 @@ namespace System.Runtime.CompilerServices
 				suffix += ".roslyn2";
 			if ((cscOptions & CompilerOptions.UseRoslyn3_11_0) != 0)
 				suffix += ".roslyn3";
+			if ((cscOptions & CompilerOptions.UseRoslyn4_14_0) != 0)
+				suffix += ".roslyn4";
 			if ((cscOptions & CompilerOptions.UseRoslynLatest) != 0)
 				suffix += ".roslyn";
 			if ((cscOptions & CompilerOptions.UseMcs2_6_4) != 0)
 				suffix += ".mcs2";
 			if ((cscOptions & CompilerOptions.UseMcs5_23) != 0)
 				suffix += ".mcs5";
+			if ((cscOptions & CompilerOptions.EnableRuntimeAsync) != 0)
+				suffix += ".runtimeasync";
 			return suffix;
 		}
 
@@ -736,7 +1019,20 @@ namespace System.Runtime.CompilerServices
 
 		public static async Task<(int ExitCode, string Output, string Error)> RunWithTestRunner(string assemblyFileName, bool force32Bit)
 		{
-			string testRunner = Path.Combine(testRunnerBasePath, force32Bit ? "win-x86" : "win-x64", "ICSharpCode.Decompiler.TestRunner.exe");
+			string runnerRid;
+			if (OperatingSystem.IsWindows())
+			{
+				runnerRid = force32Bit ? "win-x86" : "win-x64";
+			}
+			else
+			{
+				// Safety net: 32-bit runs need a 32-bit runtime, which only exists on Windows.
+				// Configurations using Force32Bit are not enumerated on non-Windows platforms.
+				if (force32Bit)
+					Assert.Ignore("Force32Bit requires a 32-bit .NET runtime, which is only available on Windows.");
+				runnerRid = OperatingSystem.IsMacOS() ? "osx-arm64" : "linux-x64";
+			}
+			string testRunner = Path.Combine(testRunnerBasePath, runnerRid, "ICSharpCode.Decompiler.TestRunner" + ExecutableExtension);
 			var command = Cli.Wrap(testRunner)
 				.WithArguments(assemblyFileName)
 				.WithValidation(CommandResultValidation.None);
@@ -756,7 +1052,7 @@ namespace System.Runtime.CompilerServices
 				string targetFramework = module.Metadata.DetectTargetFrameworkId();
 				var resolver = new UniversalAssemblyResolver(assemblyFileName, false,
 					targetFramework, null, PEStreamOptions.PrefetchMetadata);
-				resolver.AddSearchDirectory(targetFramework.Contains(".NETFramework") ? RefAsmPath : coreRefAsmPath);
+				resolver.AddSearchDirectory(RefAssembliesToolset.GetPath(targetFramework));
 				var typeSystem = new DecompilerTypeSystem(module, resolver, settings);
 				CSharpDecompiler decompiler = new CSharpDecompiler(typeSystem, settings);
 				decompiler.AstTransforms.Insert(0, new RemoveEmbeddedAttributes());
@@ -766,6 +1062,9 @@ namespace System.Runtime.CompilerServices
 				var pdbFileName = Path.ChangeExtension(assemblyFileName, ".pdb");
 				if (File.Exists(pdbFileName))
 					decompiler.DebugInfoProvider = DebugInfoUtils.FromFile(module, pdbFileName);
+				var xmlDocFileName = Path.ChangeExtension(assemblyFileName, ".xml");
+				if (File.Exists(xmlDocFileName))
+					decompiler.DocumentationProvider = new XmlDocumentationProvider(xmlDocFileName);
 				var syntaxTree = decompiler.DecompileWholeModuleAsSingleFile(sortTypes: true);
 
 				StringWriter output = new StringWriter();
@@ -887,6 +1186,8 @@ namespace System.Runtime.CompilerServices
 
 		public static async Task SignAssembly(string assemblyPath, string keyFilePath)
 		{
+			if (!OperatingSystem.IsWindows())
+				Assert.Ignore("SignAssembly uses sn.exe from the Windows .NET Framework SDK; not available on this platform.");
 			string snPath = SdkUtility.GetSdkPath("sn.exe");
 
 			var command = Cli.Wrap(snPath)
@@ -908,6 +1209,8 @@ namespace System.Runtime.CompilerServices
 
 		public static async Task<string> FindMSBuild()
 		{
+			if (!OperatingSystem.IsWindows())
+				Assert.Ignore("FindMSBuild uses vswhere.exe to locate Visual Studio's MSBuild; not available on this platform.");
 			string path = vswhereToolset.GetVsWhere();
 
 			var result = await Cli.Wrap(path)

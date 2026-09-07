@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Daniel Grunwald
+// Copyright (c) 2018 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -125,21 +125,45 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 				var metadata = module.metadata;
 				var parameterDef = metadata.GetParameter(handle);
-				if (parameterDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.ScopedRef))
+				var attributes = parameterDef.GetCustomAttributes();
+				bool hasUnscopedRefAttribute = attributes.HasKnownAttribute(metadata, KnownAttribute.UnscopedRef);
+				bool isParamsCollection = (module.TypeSystemOptions & TypeSystemOptions.ParamsCollections) != 0
+					&& attributes.HasKnownAttribute(metadata, KnownAttribute.ParamCollection);
+				ScopedKind declaredScope = ScopedKind.None;
+				if (!hasUnscopedRefAttribute
+					&& !isParamsCollection
+					&& attributes.HasKnownAttribute(metadata, KnownAttribute.ScopedRef))
 				{
-					return new LifetimeAnnotation { ScopedRef = true };
+					if (ReferenceKind != ReferenceKind.None)
+					{
+						declaredScope = ScopedKind.ScopedRef;
+					}
+					else if (Type.IsRefLikeOrAllowsRefLikeType())
+					{
+						declaredScope = ScopedKind.ScopedValue;
+					}
 				}
-				return default;
+
+				return new LifetimeAnnotation {
+					DeclaredScope = declaredScope,
+					HasUnscopedRefAttribute = hasUnscopedRefAttribute
+				};
 			}
 		}
 
 		public bool IsParams {
 			get {
-				if (Type.Kind != TypeKind.Array)
-					return false;
 				var metadata = module.metadata;
 				var parameterDef = metadata.GetParameter(handle);
-				return parameterDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.ParamArray);
+				if (Type.Kind == TypeKind.Array)
+				{
+					return parameterDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.ParamArray);
+				}
+				if (module.TypeSystemOptions.HasFlag(TypeSystemOptions.ParamsCollections))
+				{
+					return parameterDef.GetCustomAttributes().HasKnownAttribute(metadata, KnownAttribute.ParamCollection);
+				}
+				return false;
 			}
 		}
 

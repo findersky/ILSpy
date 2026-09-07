@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Daniel Grunwald
+// Copyright (c) 2018 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -91,6 +91,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			var customAttrs = metadata.GetModuleDefinition().GetCustomAttributes();
 			this.NullableContext = customAttrs.GetNullableContext(metadata) ?? Nullability.Oblivious;
 			this.minAccessibilityForNRT = FindMinimumAccessibilityForNRT(metadata, customAttrs);
+			this.UseUpdatedEscapeRules = HasRefSafetyRulesVersion(customAttrs, 11);
 			this.rootNamespace = new MetadataNamespace(this, null, string.Empty, metadata.GetNamespaceDefinitionRoot());
 
 			if (!options.HasFlag(TypeSystemOptions.Uncached))
@@ -111,6 +112,43 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		public TypeSystemOptions TypeSystemOptions => options;
+
+		/// <summary>
+		/// Gets whether the module declares the C# 11 ref-safety rules.
+		/// </summary>
+		internal bool UseUpdatedEscapeRules { get; }
+
+		bool HasRefSafetyRulesVersion(CustomAttributeHandleCollection attributes, int expectedVersion)
+		{
+			foreach (var attributeHandle in attributes)
+			{
+				var attribute = metadata.GetCustomAttribute(attributeHandle);
+				if (!attribute.IsKnownAttribute(metadata, KnownAttribute.RefSafetyRules))
+					continue;
+
+				CustomAttributeValue<IType> value;
+				try
+				{
+					value = attribute.DecodeValue(Metadata.MetadataExtensions.MinimalAttributeTypeProvider);
+				}
+				catch (BadImageFormatException)
+				{
+					continue;
+				}
+				catch (Metadata.EnumUnderlyingTypeResolveException)
+				{
+					continue;
+				}
+				if (value.FixedArguments.Length == 1
+					&& value.FixedArguments[0].Value is int version)
+				{
+					// Roslyn recognizes exactly version 11; missing and unknown versions use legacy rules.
+					return version == expectedVersion;
+				}
+			}
+
+			return false;
+		}
 
 		#region IModule interface
 		public MetadataFile MetadataFile { get; }
@@ -274,7 +312,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return new MetadataProperty(this, handle);
 			int row = MetadataTokens.GetRowNumber(handle);
 			Debug.Assert(row != 0);
-			if (row >= methodDefs.Length)
+			if (row >= propertyDefs.Length)
 				HandleOutOfRange(handle);
 			var property = LazyInit.VolatileRead(ref propertyDefs[row]);
 			if (property != null)
@@ -291,7 +329,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return new MetadataEvent(this, handle);
 			int row = MetadataTokens.GetRowNumber(handle);
 			Debug.Assert(row != 0);
-			if (row >= methodDefs.Length)
+			if (row >= eventDefs.Length)
 				HandleOutOfRange(handle);
 			var ev = LazyInit.VolatileRead(ref eventDefs[row]);
 			if (ev != null)
@@ -328,7 +366,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 
 		IModule ResolveModuleUncached(AssemblyReferenceHandle handle)
 		{
-			var asmRef = new Metadata.AssemblyReference(metadata, handle);
+			var asmRef = new Metadata.AssemblyReference(MetadataFile, handle);
 			return Compilation.FindModuleByReference(asmRef);
 		}
 
@@ -534,6 +572,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					foreach (var m in methods)
 					{
 						if (m.TypeParameters.Count != signature.GenericParameterCount)
+							continue;
+						if (signature.Header.IsInstance != !m.IsStatic)
 							continue;
 						if (CompareSignatures(m.Parameters, parameterTypes) && CompareTypes(m.ReturnType, signature.ReturnType))
 						{
@@ -900,6 +940,16 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					{
 						return td;
 					}
+				}
+				else
+				{
+					// The chain of forwarders came back to this module, so nothing in it defines the
+					// type and the assemblies involved disagree about where it lives - mismatched
+					// facades from two frameworks, typically. Recorded once per reference: a facade
+					// forwards hundreds of types, and they all fail together.
+					(Compilation as DecompilerTypeSystem)?.ReferenceLoadInfo?.AddMessageOnce(
+						module.FullAssemblyName, MessageKind.Warning,
+						$"Could not follow the type forwarders for {typeName.ReflectionName}: they lead back to {AssemblyName}.");
 				}
 			}
 			return new UnknownType(typeName);

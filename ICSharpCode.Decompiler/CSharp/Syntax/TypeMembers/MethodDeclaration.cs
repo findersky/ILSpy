@@ -1,4 +1,4 @@
-﻿// 
+// 
 // MethodDeclaration.cs
 //
 // Author:
@@ -24,81 +24,57 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class MethodDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>method_declaration ::= attribute_section* modifier* type ( type '.' )? identifier type_parameter* '(' parameter* ')' constraint* ( block | ';' )</c> (C# grammar §15.6.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class MethodDeclaration : EntityDeclaration
 	{
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Method; }
 		}
 
+		// Slots in document order; inherited contract slots (Attributes, ReturnType, NameToken) are
+		// re-declared override per the flatten model (Part I.3).
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
+
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
+
 		/// <summary>
 		/// Gets/Sets the type reference of the interface that is explicitly implemented.
-		/// Null node if this member is not an explicit interface implementation.
+		/// Null if this member is not an explicit interface implementation.
 		/// </summary>
-		public AstType PrivateImplementationType {
-			get { return GetChildByRole(PrivateImplementationTypeRole); }
-			set { SetChildByRole(PrivateImplementationTypeRole, value); }
-		}
+		[Slot("PrivateImplementationType")]
+		public partial AstType? PrivateImplementationType { get; set; }
 
-		public AstNodeCollection<TypeParameterDeclaration> TypeParameters {
-			get { return GetChildrenByRole(Roles.TypeParameter); }
-		}
+		[Slot("Identifier")]
+		public override partial Identifier NameToken { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
+		[Slot("TypeParameter")]
+		public partial AstNodeCollection<TypeParameterDeclaration> TypeParameters { get; }
 
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
+		[Slot("Constraint")]
+		public partial AstNodeCollection<Constraint> Constraints { get; }
 
-		public AstNodeCollection<Constraint> Constraints {
-			get { return GetChildrenByRole(Roles.Constraint); }
-		}
-
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
+		[Slot("Body")]
+		public partial BlockStatement? Body { get; set; }
 
 		public bool IsExtensionMethod {
 			get {
-				ParameterDeclaration pd = (ParameterDeclaration)GetChildByRole(Roles.Parameter);
+				ParameterDeclaration? pd = GetChild(Slots.Parameter);
 				return pd != null && pd.HasThisModifier;
 			}
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitMethodDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitMethodDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitMethodDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			MethodDeclaration o = other as MethodDeclaration;
-			return o != null && MatchString(this.Name, o.Name)
-				&& this.MatchAttributesAndModifiers(o, match) && this.ReturnType.DoMatch(o.ReturnType, match)
-				&& this.PrivateImplementationType.DoMatch(o.PrivateImplementationType, match)
-				&& this.TypeParameters.DoMatch(o.TypeParameters, match)
-				&& this.Parameters.DoMatch(o.Parameters, match) && this.Constraints.DoMatch(o.Constraints, match)
-				&& this.Body.DoMatch(o.Body, match);
 		}
 	}
 }

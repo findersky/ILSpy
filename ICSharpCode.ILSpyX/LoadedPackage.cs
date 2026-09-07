@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -30,6 +30,7 @@ using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Metadata;
+using ICSharpCode.ILSpyX.Instrumentation;
 
 namespace ICSharpCode.ILSpyX
 {
@@ -104,8 +105,10 @@ namespace ICSharpCode.ILSpyX
 		{
 			Debug.WriteLine($"LoadedPackage.FromZipFile({file})");
 			using var archive = ZipFile.OpenRead(file);
-			return new LoadedPackage(PackageKind.Zip,
+			var package = new LoadedPackage(PackageKind.Zip,
 				archive.Entries.Select(entry => new ZipFileEntry(file, entry)));
+			ILSpyXEventSource.Log.PackageOpened(file, "zip", package.Entries.Count);
+			return package;
 		}
 
 		/// <summary>
@@ -124,6 +127,7 @@ namespace ICSharpCode.ILSpyX
 				var result = new LoadedPackage(PackageKind.Bundle, entries);
 				result.BundleHeader = manifest;
 				view = null; // don't dispose the view, we're still using it in the bundle entries
+				ILSpyXEventSource.Log.PackageOpened(fileName, "bundle", entries.Count);
 				return result;
 			}
 			catch (InvalidDataException)
@@ -143,6 +147,7 @@ namespace ICSharpCode.ILSpyX
 		{
 			readonly PackageEntry originalEntry;
 			public override string Name { get; }
+			public override string FullName => originalEntry.Name;
 
 			public FolderEntry(string name, PackageEntry originalEntry)
 			{
@@ -151,7 +156,7 @@ namespace ICSharpCode.ILSpyX
 			}
 
 			public override ManifestResourceAttributes Attributes => originalEntry.Attributes;
-			public override string FullName => originalEntry.FullName;
+			public override string PackageQualifiedFileName => originalEntry.PackageQualifiedFileName;
 			public override ResourceType ResourceType => originalEntry.ResourceType;
 			public override Stream? TryOpenStream() => originalEntry.TryOpenStream();
 			public override long? TryGetLength() => originalEntry.TryGetLength();
@@ -161,7 +166,9 @@ namespace ICSharpCode.ILSpyX
 		{
 			readonly string zipFile;
 			public override string Name { get; }
-			public override string FullName => $"zip://{zipFile};{Name}";
+			public override string PackageQualifiedFileName => $"zip://{zipFile};{Name}";
+
+			public override string FullName => Name;
 
 			public ZipFileEntry(string zipFile, ZipArchiveEntry entry)
 			{
@@ -172,6 +179,8 @@ namespace ICSharpCode.ILSpyX
 			public override Stream? TryOpenStream()
 			{
 				Debug.WriteLine("Decompress " + Name);
+				bool trace = ILSpyXEventSource.Log.IsPackageExtractionTracingEnabled();
+				long traceStart = trace ? Stopwatch.GetTimestamp() : 0;
 				using var archive = ZipFile.OpenRead(zipFile);
 				var entry = archive.GetEntry(Name);
 				if (entry == null)
@@ -182,6 +191,8 @@ namespace ICSharpCode.ILSpyX
 					s.CopyTo(memoryStream);
 				}
 				memoryStream.Position = 0;
+				if (trace)
+					ILSpyXEventSource.Log.PackageEntryExtracted(Name, memoryStream.Length, ILSpyXEventSource.ElapsedMilliseconds(traceStart));
 				return memoryStream;
 			}
 
@@ -210,28 +221,53 @@ namespace ICSharpCode.ILSpyX
 			}
 
 			public override string Name => entry.RelativePath;
-			public override string FullName => $"bundle://{bundleFile};{Name}";
+			public override string FullName => Name;
+			public override string PackageQualifiedFileName => $"bundle://{bundleFile};{Name}";
 
 			public override Stream TryOpenStream()
 			{
 				Debug.WriteLine("Open bundle member " + Name);
+				bool trace = ILSpyXEventSource.Log.IsPackageExtractionTracingEnabled();
+				long traceStart = trace ? Stopwatch.GetTimestamp() : 0;
 
 				if (entry.CompressedSize == 0)
 				{
-					return new UnmanagedMemoryStream(view.SafeMemoryMappedViewHandle, entry.Offset, entry.Size);
+					var stream = new UnmanagedMemoryStream(view.SafeMemoryMappedViewHandle, entry.Offset, entry.Size);
+					if (trace)
+						ILSpyXEventSource.Log.PackageEntryExtracted(Name, entry.Size, ILSpyXEventSource.ElapsedMilliseconds(traceStart));
+					return stream;
 				}
 				else
 				{
+					// entry.Size comes straight from the manifest and is not trusted: it must never
+					// size an allocation, and decompression must not run past it. A size that does
+					// not fit a single in-memory buffer cannot be a real entry either.
+					if (entry.Size < 0 || entry.Size > int.MaxValue)
+					{
+						throw new InvalidDataException($"Corrupted single-file entry '{entry.RelativePath}'. Declared decompressed size '{entry.Size}' is not valid.");
+					}
 					Stream compressedStream = new UnmanagedMemoryStream(view.SafeMemoryMappedViewHandle, entry.Offset, entry.CompressedSize);
 					using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress);
-					Stream decompressedStream = new MemoryStream((int)entry.Size);
-					deflateStream.CopyTo(decompressedStream);
+					// Grows only with the bytes that actually come out of the deflate stream. Reading
+					// one byte past the declared size is enough to prove the entry corrupt, so a
+					// decompression bomb stops there instead of being inflated in full.
+					Stream decompressedStream = new MemoryStream();
+					byte[] buffer = new byte[81920];
+					long remaining = entry.Size + 1;
+					int read;
+					while (remaining > 0 && (read = deflateStream.Read(buffer, 0, (int)Math.Min(buffer.Length, remaining))) > 0)
+					{
+						decompressedStream.Write(buffer, 0, read);
+						remaining -= read;
+					}
 					if (decompressedStream.Length != entry.Size)
 					{
 						throw new InvalidDataException($"Corrupted single-file entry '{entry.RelativePath}'. Declared decompressed size '{entry.Size}' is not the same as actual decompressed size '{decompressedStream.Length}'.");
 					}
 
 					decompressedStream.Seek(0, SeekOrigin.Begin);
+					if (trace)
+						ILSpyXEventSource.Log.PackageEntryExtracted(Name, entry.Size, ILSpyXEventSource.ElapsedMilliseconds(traceStart));
 					return decompressedStream;
 				}
 			}
@@ -251,13 +287,21 @@ namespace ICSharpCode.ILSpyX
 		public abstract override string Name { get; }
 
 		/// <summary>
-		/// Gets the full file name for the entry.
+		/// Gets the full file name including the full file name of the package (prefixed with e.g., bundle:// or zip://).
+		/// </summary>
+		public abstract string PackageQualifiedFileName { get; }
+
+		/// <summary>
+		/// Gets the full name of the file name relative to the package root.
 		/// </summary>
 		public abstract string FullName { get; }
 	}
 
 	public sealed class PackageFolder : IAssemblyResolver
 	{
+		/// <inheritdoc/>
+		public IDisposable? BeginSnapshot() => null;
+
 		/// <summary>
 		/// Gets the short name of the folder.
 		/// </summary>
@@ -273,6 +317,7 @@ namespace ICSharpCode.ILSpyX
 			this.Name = name;
 		}
 
+		public PackageFolder? Parent => parent;
 		public List<PackageFolder> Folders { get; } = new List<PackageFolder>();
 		public List<PackageEntry> Entries { get; } = new List<PackageEntry>();
 
@@ -324,34 +369,57 @@ namespace ICSharpCode.ILSpyX
 			return Task.FromResult<MetadataFile?>(null);
 		}
 
-		readonly Dictionary<string, LoadedAssembly?> assemblies = new Dictionary<string, LoadedAssembly?>(StringComparer.OrdinalIgnoreCase);
+		// Keyed by entry name, ordinal: an assembly-reference lookup is case-insensitive, but two
+		// entries whose names differ only in case are two distinct files (archive entry names are
+		// case-sensitive) and must not share one LoadedAssembly.
+		readonly Dictionary<string, LoadedAssembly> assemblies = new Dictionary<string, LoadedAssembly>(StringComparer.Ordinal);
 
 		public LoadedAssembly? ResolveFileName(string name)
 		{
+			var entry = Entries.FirstOrDefault(e => string.Equals(name, e.Name, StringComparison.Ordinal))
+				?? Entries.FirstOrDefault(e => string.Equals(name, e.Name, StringComparison.OrdinalIgnoreCase));
+			return entry == null ? null : ResolveEntry(entry);
+		}
+
+		/// <summary>
+		/// The <see cref="LoadedAssembly"/> for one of this folder's entries, created on first use.
+		/// Creating it starts reading the entry out of the package, so call this only for entries
+		/// that are about to be inspected.
+		/// </summary>
+		public LoadedAssembly? ResolveEntry(PackageEntry entry)
+		{
+			ArgumentNullException.ThrowIfNull(entry);
 			if (package.LoadedAssembly == null)
 				return null;
 			lock (assemblies)
 			{
-				if (assemblies.TryGetValue(name, out var asm))
+				if (assemblies.TryGetValue(entry.Name, out var asm))
 					return asm;
-				var entry = Entries.FirstOrDefault(e => string.Equals(name, e.Name, StringComparison.OrdinalIgnoreCase));
-				if (entry != null)
-				{
-					asm = new LoadedAssembly(
-						package.LoadedAssembly, entry.Name,
-						fileLoaders: package.LoadedAssembly.AssemblyList.LoaderRegistry,
-						assemblyResolver: this,
-						stream: Task.Run(entry.TryOpenStream),
-						applyWinRTProjections: package.LoadedAssembly.AssemblyList.ApplyWinRTProjections,
-						useDebugSymbols: package.LoadedAssembly.AssemblyList.UseDebugSymbols
-					);
-				}
-				else
-				{
-					asm = null;
-				}
-				assemblies.Add(name, asm);
+				// FullName is the package-relative path ("lib/net10.0/Foo.dll"), which is what makes
+				// the copies of one assembly in a multi-target package tellable apart wherever the
+				// file name is surfaced. ShortName/Text stay the bare file name either way.
+				asm = new LoadedAssembly(
+					package.LoadedAssembly, entry.FullName,
+					fileLoaders: package.LoadedAssembly.AssemblyList.LoaderRegistry,
+					assemblyResolver: this,
+					stream: Task.Run(entry.TryOpenStream),
+					applyWinRTProjections: package.LoadedAssembly.AssemblyList.ApplyWinRTProjections,
+					useDebugSymbols: package.LoadedAssembly.AssemblyList.UseDebugSymbols
+				);
+				assemblies.Add(entry.Name, asm);
 				return asm;
+			}
+		}
+
+		/// <summary>
+		/// Whether this folder has already resolved <paramref name="assembly"/> from one of its
+		/// entries. Consults the resolution cache only -- nothing is loaded or extracted.
+		/// </summary>
+		public bool HasResolved(LoadedAssembly assembly)
+		{
+			lock (assemblies)
+			{
+				return assemblies.ContainsValue(assembly);
 			}
 		}
 	}

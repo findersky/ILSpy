@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 Siegfried Pammer
+// Copyright (c) 2019 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,42 +16,17 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class LocalFunctionDeclarationStatement : Statement
+	/// <summary>
+	/// <c>local_function_declaration ::= method_declaration</c> (C# grammar §13.6.4)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class LocalFunctionDeclarationStatement : Statement
 	{
-		public static readonly Role<MethodDeclaration> MethodDeclarationRole = new Role<MethodDeclaration>("Method", null);
-
-		public MethodDeclaration Declaration {
-			get { return GetChildByRole(MethodDeclarationRole); }
-			set { SetChildByRole(MethodDeclarationRole, value); }
-		}
-
-		public LocalFunctionDeclarationStatement(MethodDeclaration methodDeclaration)
-		{
-			AddChild(methodDeclaration, MethodDeclarationRole);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitLocalFunctionDeclarationStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitLocalFunctionDeclarationStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitLocalFunctionDeclarationStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is LocalFunctionDeclarationStatement o && Declaration.DoMatch(o.Declaration, match);
-		}
+		[Slot("MethodDeclaration")]
+		public partial MethodDeclaration Declaration { get; set; }
 	}
 }

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // IdentifierExpression.cs
 //  
 // Author:
@@ -24,65 +24,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class IdentifierExpression : Expression
+	/// <summary>
+	/// <c>simple_name ::= identifier ( '&lt;' type ( ',' type )* '&gt;' )?</c> (C# grammar §12.8.4)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class IdentifierExpression : Expression
 	{
-		public IdentifierExpression()
-		{
-		}
-
-		public IdentifierExpression(string identifier)
-		{
-			this.Identifier = identifier;
-		}
-
 		public IdentifierExpression(string identifier, TextLocation location)
 		{
-			SetChildByRole(Roles.Identifier, Decompiler.CSharp.Syntax.Identifier.Create(identifier, location));
+			SetChild(Slots.Identifier, Decompiler.CSharp.Syntax.Identifier.Create(identifier, location));
 		}
 
-		public string Identifier {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Decompiler.CSharp.Syntax.Identifier.Create(value));
-			}
-		}
+		[Slot("Identifier")]
+		public partial string Identifier { get; set; }
 
-		public Identifier IdentifierToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public AstNodeCollection<AstType> TypeArguments {
-			get { return GetChildrenByRole(Roles.TypeArgument); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitIdentifierExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitIdentifierExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitIdentifierExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			IdentifierExpression o = other as IdentifierExpression;
-			return o != null && MatchString(this.Identifier, o.Identifier) && this.TypeArguments.DoMatch(o.TypeArguments, match);
-		}
+		[Slot("TypeArgument")]
+		public partial AstNodeCollection<AstType> TypeArguments { get; }
 	}
 }

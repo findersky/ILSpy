@@ -1,4 +1,4 @@
-﻿// 
+// 
 // StackAllocExpression.cs
 //  
 // Author:
@@ -24,65 +24,32 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
+using System.Diagnostics.CodeAnalysis;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// stackalloc Type[Count]
+	/// <code>
+	/// stackalloc_expression ::=
+	///       'stackalloc' type '[' expression ']'
+	///     | 'stackalloc' type? '[' expression? ']' array_initializer
+	/// </code>
+	/// (C# grammar §12.8.22)
 	/// </summary>
-	public class StackAllocExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class StackAllocExpression : Expression
 	{
-		public readonly static TokenRole StackallocKeywordRole = new TokenRole("stackalloc");
-		public readonly static Role<ArrayInitializerExpression> InitializerRole = new Role<ArrayInitializerExpression>("Initializer", ArrayInitializerExpression.Null);
+		public const string StackallocKeyword = "stackalloc";
 
-		public CSharpTokenNode StackAllocToken {
-			get { return GetChildByRole(StackallocKeywordRole); }
-		}
+		[Slot("Type")]
+		public partial AstType? Type { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
+		[Slot("Expression")]
+		public partial Expression? CountExpression { get; set; }
 
-		public CSharpTokenNode LBracketToken {
-			get { return GetChildByRole(Roles.LBracket); }
-		}
-
-		public Expression CountExpression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RBracketToken {
-			get { return GetChildByRole(Roles.RBracket); }
-		}
-
-		public ArrayInitializerExpression Initializer {
-			get { return GetChildByRole(InitializerRole); }
-			set { SetChildByRole(InitializerRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitStackAllocExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitStackAllocExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitStackAllocExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			StackAllocExpression o = other as StackAllocExpression;
-			return o != null && this.Type.DoMatch(o.Type, match)
-				&& this.CountExpression.DoMatch(o.CountExpression, match)
-				&& this.Initializer.DoMatch(o.Initializer, match);
-		}
+		[Slot("Initializer")]
+		public partial ArrayInitializerExpression? Initializer { get; set; }
 	}
 }

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // CSharpFormattingOptions.cs
 //  
 // Author:
@@ -25,6 +25,8 @@
 // THE SOFTWARE.
 
 using System.ComponentModel;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 {
@@ -74,7 +76,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 	[TypeConverter(typeof(ExpandableObjectConverter))]
 	public class CSharpFormattingOptions
 	{
-		public string Name {
+		public string? Name {
 			get;
 			set;
 		}
@@ -161,8 +163,6 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			get;
 			set;
 		}
-
-
 
 		public PropertyFormatting AutoPropertyFormatting { get; set; }
 
@@ -847,7 +847,6 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		}
 
 		#endregion
-
 
 		#region Keep formatting
 		public bool KeepCommentsAtFirstColumn {

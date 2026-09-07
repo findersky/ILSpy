@@ -1,0 +1,173 @@
+// Copyright (c) 2018 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.Design;
+using System.IO;
+using System.Linq;
+
+using Microsoft.VisualStudio.Shell;
+
+using Mono.Cecil;
+
+using DTEConstants = EnvDTE.Constants;
+
+namespace ICSharpCode.ILSpy.AddIn.Commands
+{
+	public class DetectedReference
+	{
+		public DetectedReference(string name, string assemblyFile, bool isProjectReference)
+		{
+			this.Name = name;
+			this.AssemblyFile = assemblyFile;
+			this.IsProjectReference = isProjectReference;
+		}
+
+		public string Name { get; private set; }
+		public string AssemblyFile { get; private set; }
+		public bool IsProjectReference { get; private set; }
+	}
+
+	abstract class ILSpyCommand
+	{
+		protected ILSpyAddInPackage owner;
+
+		protected ILSpyCommand(ILSpyAddInPackage owner, uint id)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
+			this.owner = owner;
+			CommandID menuCommandID = new CommandID(GuidList.guidILSpyAddInCmdSet, (int)id);
+			OleMenuCommand menuItem = new OleMenuCommand(OnExecute, menuCommandID);
+			menuItem.BeforeQueryStatus += OnBeforeQueryStatus;
+			owner.MenuService.AddCommand(menuItem);
+		}
+
+		protected virtual void OnBeforeQueryStatus(object sender, EventArgs e)
+		{
+		}
+
+		protected abstract void OnExecute(object sender, EventArgs e);
+
+		protected void OpenAssembliesInILSpy(ILSpyParameters parameters)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
+			if (parameters == null)
+				return;
+
+			foreach (string assemblyFileName in parameters.AssemblyFileNames)
+			{
+				if (!File.Exists(assemblyFileName))
+				{
+					owner.ShowMessage("Could not find assembly '{0}', please ensure the project and all references were built correctly!", assemblyFileName);
+					return;
+				}
+			}
+
+			var ilspyExe = new ILSpyInstance(parameters);
+			ilspyExe.Start();
+		}
+
+		protected Dictionary<string, DetectedReference> GetReferences(Microsoft.CodeAnalysis.Project parentProject)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
+			var dict = new Dictionary<string, DetectedReference>();
+			foreach (var reference in parentProject.MetadataReferences)
+			{
+				using (var assemblyDef = AssemblyDefinition.ReadAssembly(reference.Display))
+				{
+					string assemblyName = assemblyDef.Name.Name;
+					string resolvedAssemblyFile = AssemblyFileFinder.FindAssemblyFile(assemblyDef, reference.Display);
+					dict.Add(assemblyName, new DetectedReference(assemblyName, resolvedAssemblyFile, false));
+				}
+			}
+			foreach (var projectReference in parentProject.ProjectReferences)
+			{
+				var roslynProject = owner.Workspace.CurrentSolution.GetProject(projectReference.ProjectId);
+				if (roslynProject != null)
+				{
+					var project = FindProject(owner.DTE.Solution.Projects.OfType<EnvDTE.Project>(), roslynProject.FilePath);
+					if (project != null)
+					{
+						dict.Add(roslynProject.AssemblyName,
+							new DetectedReference(roslynProject.AssemblyName, Utils.GetProjectOutputAssembly(project, roslynProject), true));
+					}
+				}
+			}
+			return dict;
+		}
+
+		protected EnvDTE.Project FindProject(IEnumerable<EnvDTE.Project> projects, string projectFile)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
+			foreach (var project in projects)
+			{
+				switch (project.Kind)
+				{
+					case DTEConstants.vsProjectKindSolutionItems:
+						// This is a solution folder -> search in sub-projects
+						var subProject = FindProject(
+							project.ProjectItems.OfType<EnvDTE.ProjectItem>().Select(pi => pi.SubProject).OfType<EnvDTE.Project>(),
+							projectFile);
+						if (subProject != null)
+							return subProject;
+						break;
+
+					case DTEConstants.vsProjectKindUnmodeled:
+						// Skip unloaded projects completely
+						break;
+
+					default:
+						// Match by project's file name
+						if (project.FileName == projectFile)
+							return project;
+						break;
+				}
+			}
+
+			return null;
+		}
+	}
+
+	class OpenILSpyCommand : ILSpyCommand
+	{
+		static OpenILSpyCommand instance;
+
+		public OpenILSpyCommand(ILSpyAddInPackage owner)
+			: base(owner, PkgCmdIDList.cmdidOpenILSpy)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+		}
+
+		protected override void OnExecute(object sender, EventArgs e)
+		{
+			new ILSpyInstance().Start();
+		}
+
+		internal static void Register(ILSpyAddInPackage owner)
+		{
+			ThreadHelper.ThrowIfNotOnUIThread();
+
+			instance = new OpenILSpyCommand(owner);
+		}
+	}
+}

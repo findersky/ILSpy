@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -20,6 +20,27 @@ using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
+	internal class DerivedFromGenericBase : GenericBase<string>
+	{
+		public override string Get()
+		{
+			return "x";
+		}
+
+		public override void Set(string value)
+		{
+		}
+	}
+
+	internal abstract class GenericBase<T>
+	{
+		public abstract T Get();
+
+		public virtual void Set(T value)
+		{
+		}
+	}
+
 	internal class Generics
 	{
 		private class GenericClass<T>
@@ -293,6 +314,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 #endif
 
+#if NET90
+		public static void AllowsRefStruct<T>() where T : allows ref struct
+		{
+		}
+#endif
+
 		public static void Issue1959(int a, int b, int? c)
 		{
 			// This line requires parentheses around `a < b` to avoid a grammar ambiguity.
@@ -351,4 +378,5 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		//#endif
 #endif
 	}
+
 }

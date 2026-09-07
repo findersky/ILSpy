@@ -1,4 +1,4 @@
-﻿// 
+// 
 // TypeDeclaration.cs
 //
 // Author:
@@ -24,6 +24,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
@@ -45,116 +47,38 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
-	/// class Name&lt;TypeParameters&gt; : BaseTypes where Constraints;
+	/// <c>type_declaration ::= attribute_section* modifier* ( 'class' | 'struct' | 'interface' | 'enum' | 'record' 'class'? | 'record' 'struct' ) identifier type_parameter* ( '(' parameter* ')' )? ( ':' type+ )? constraint* '{' member* '}' ';'?</c> (C# grammar §15.2.1, §16.2.1, §19.2.1, §20.2)
 	/// </summary>
-	public class TypeDeclaration : EntityDeclaration
+	[DecompilerAstNode]
+	public sealed partial class TypeDeclaration : EntityDeclaration
 	{
-		public override NodeType NodeType {
-			get { return NodeType.TypeDeclaration; }
-		}
-
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.TypeDefinition; }
 		}
 
-		ClassType classType;
+		public ClassType ClassType { get; set; }
 
-		public CSharpTokenNode TypeKeyword {
-			get {
-				switch (classType)
-				{
-					case ClassType.Class:
-						return GetChildByRole(Roles.ClassKeyword);
-					case ClassType.Struct:
-					case ClassType.RecordStruct:
-						return GetChildByRole(Roles.StructKeyword);
-					case ClassType.Interface:
-						return GetChildByRole(Roles.InterfaceKeyword);
-					case ClassType.Enum:
-						return GetChildByRole(Roles.EnumKeyword);
-					case ClassType.RecordClass:
-						return GetChildByRole(Roles.RecordKeyword);
-					default:
-						return CSharpTokenNode.Null;
-				}
-			}
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public ClassType ClassType {
-			get { return classType; }
-			set {
-				ThrowIfFrozen();
-				classType = value;
-			}
-		}
+		[Slot("Identifier")]
+		public override partial Identifier NameToken { get; set; }
 
-		public CSharpTokenNode LChevronToken {
-			get { return GetChildByRole(Roles.LChevron); }
-		}
+		[Slot("TypeParameter")]
+		public partial AstNodeCollection<TypeParameterDeclaration> TypeParameters { get; }
 
-		public AstNodeCollection<TypeParameterDeclaration> TypeParameters {
-			get { return GetChildrenByRole(Roles.TypeParameter); }
-		}
+		public bool HasPrimaryConstructor { get; set; }
 
-		public CSharpTokenNode RChevronToken {
-			get { return GetChildByRole(Roles.RChevron); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> PrimaryConstructorParameters { get; }
 
+		[Slot("BaseType")]
+		public partial AstNodeCollection<AstType> BaseTypes { get; }
 
+		[Slot("Constraint")]
+		public partial AstNodeCollection<Constraint> Constraints { get; }
 
-		public CSharpTokenNode ColonToken {
-			get {
-				return GetChildByRole(Roles.Colon);
-			}
-		}
-
-		public AstNodeCollection<AstType> BaseTypes {
-			get { return GetChildrenByRole(Roles.BaseType); }
-		}
-
-		public AstNodeCollection<ParameterDeclaration> PrimaryConstructorParameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
-
-		public AstNodeCollection<Constraint> Constraints {
-			get { return GetChildrenByRole(Roles.Constraint); }
-		}
-
-		public CSharpTokenNode LBraceToken {
-			get { return GetChildByRole(Roles.LBrace); }
-		}
-
-		public AstNodeCollection<EntityDeclaration> Members {
-			get { return GetChildrenByRole(Roles.TypeMemberRole); }
-		}
-
-		public CSharpTokenNode RBraceToken {
-			get { return GetChildByRole(Roles.RBrace); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitTypeDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitTypeDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitTypeDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			TypeDeclaration o = other as TypeDeclaration;
-			return o != null && this.ClassType == o.ClassType && MatchString(this.Name, o.Name)
-				&& this.MatchAttributesAndModifiers(o, match) && this.TypeParameters.DoMatch(o.TypeParameters, match)
-				&& this.BaseTypes.DoMatch(o.BaseTypes, match) && this.Constraints.DoMatch(o.Constraints, match)
-				&& this.PrimaryConstructorParameters.DoMatch(o.PrimaryConstructorParameters, match)
-				&& this.Members.DoMatch(o.Members, match);
-		}
+		[Slot("TypeMember")]
+		public partial AstNodeCollection<EntityDeclaration> Members { get; }
 	}
 }

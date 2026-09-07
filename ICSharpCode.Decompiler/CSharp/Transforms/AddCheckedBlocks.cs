@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Diagnostics;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
@@ -143,7 +146,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// </summary>
 		abstract class InsertedNode
 		{
-			public static InsertedNode operator +(InsertedNode a, InsertedNode b)
+			public static InsertedNode? operator +(InsertedNode? a, InsertedNode? b)
 			{
 				if (a == null)
 					return b;
@@ -152,7 +155,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return new InsertedNodeList(a, b);
 			}
 
-			public abstract void Insert();
+			public abstract void Insert(TransformContext context);
 		}
 
 		class InsertedNodeList : InsertedNode
@@ -165,10 +168,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				this.child2 = child2;
 			}
 
-			public override void Insert()
+			public override void Insert(TransformContext context)
 			{
-				child1.Insert();
-				child2.Insert();
+				child1.Insert(context);
+				child2.Insert(context);
 			}
 		}
 
@@ -183,45 +186,53 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				this.isChecked = isChecked;
 			}
 
-			public override void Insert()
+			public override void Insert(TransformContext context)
 			{
+				context.Step(isChecked ? "Add checked expression" : "Add unchecked expression", expression);
+				Expression? replacement;
 				if (isChecked)
-					expression.ReplaceWith(e => new CheckedExpression { Expression = e });
+					replacement = expression.ReplaceWith(e => new CheckedExpression { Expression = e });
 				else
-					expression.ReplaceWith(e => new UncheckedExpression { Expression = e });
+					replacement = expression.ReplaceWith(e => new UncheckedExpression { Expression = e });
+				context.EndStep(replacement);
 			}
 		}
 
 		class InsertedBlock : InsertedNode
 		{
-			readonly Statement firstStatement; // inclusive
-			readonly Statement lastStatement; // exclusive
+			readonly Statement? firstStatement; // inclusive
+			readonly Statement? lastStatement; // exclusive
 			readonly bool isChecked;
 
-			public InsertedBlock(Statement firstStatement, Statement lastStatement, bool isChecked)
+			public InsertedBlock(Statement? firstStatement, Statement? lastStatement, bool isChecked)
 			{
 				this.firstStatement = firstStatement;
 				this.lastStatement = lastStatement;
 				this.isChecked = isChecked;
 			}
 
-			public override void Insert()
+			public override void Insert(TransformContext context)
 			{
+				// An InsertedBlock with a null start has infinite cost in the search and is never
+				// selected for insertion, so by the time Insert runs firstStatement is non-null.
+				Debug.Assert(firstStatement != null);
+				context.Step(isChecked ? "Add checked block" : "Add unchecked block", firstStatement);
 				BlockStatement newBlock = new BlockStatement();
 				// Move all statements except for the first
-				Statement next;
-				for (Statement stmt = firstStatement.GetNextStatement(); stmt != lastStatement; stmt = next)
+				Statement? next;
+				for (Statement? stmt = firstStatement.GetNextStatement(); stmt != null && stmt != lastStatement; stmt = next)
 				{
 					next = stmt.GetNextStatement();
 					newBlock.Add(stmt.Detach());
 				}
 				// Replace the first statement with the new (un)checked block
-				if (isChecked)
-					firstStatement.ReplaceWith(new CheckedStatement { Body = newBlock });
-				else
-					firstStatement.ReplaceWith(new UncheckedStatement { Body = newBlock });
+				Statement checkedBlock = isChecked
+					? new CheckedStatement { Body = newBlock }
+					: new UncheckedStatement { Body = newBlock };
+				firstStatement.ReplaceWith(checkedBlock);
 				// now also move the first node into the new block
 				newBlock.Statements.InsertAfter(null, firstStatement);
+				context.EndStep(checkedBlock);
 			}
 		}
 		#endregion
@@ -233,18 +244,18 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		class Result
 		{
 			public Cost CostInCheckedContext;
-			public InsertedNode NodesToInsertInCheckedContext;
+			public InsertedNode? NodesToInsertInCheckedContext;
 			public Cost CostInUncheckedContext;
-			public InsertedNode NodesToInsertInUncheckedContext;
+			public InsertedNode? NodesToInsertInUncheckedContext;
 		}
 		#endregion
 
 		public void Run(AstNode node, TransformContext context)
 		{
-			BlockStatement block = node as BlockStatement;
+			BlockStatement? block = node as BlockStatement;
 			if (block == null)
 			{
-				for (AstNode child = node.FirstChild; child != null; child = child.NextSibling)
+				for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
 				{
 					Run(child, context);
 				}
@@ -252,8 +263,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			else
 			{
 				Result r = GetResultFromBlock(block);
-				if (r.NodesToInsertInUncheckedContext != null)
-					r.NodesToInsertInUncheckedContext.Insert();
+				if (context.DecompileRun.Settings.CheckForOverflowUnderflow)
+				{
+					r.NodesToInsertInCheckedContext?.Insert(context);
+				}
+				else
+				{
+					r.NodesToInsertInUncheckedContext?.Insert(context);
+				}
 			}
 		}
 
@@ -262,20 +279,20 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// For a block, we are tracking 4 possibilities:
 			// a) context is checked, no unchecked block open
 			Cost costCheckedContext = new Cost(0, 0);
-			InsertedNode nodesCheckedContext = null;
+			InsertedNode? nodesCheckedContext = null;
 			// b) context is checked, an unchecked block is open
 			Cost costCheckedContextUncheckedBlockOpen = Cost.Infinite;
-			InsertedNode nodesCheckedContextUncheckedBlockOpen = null;
-			Statement uncheckedBlockStart = null;
+			InsertedNode? nodesCheckedContextUncheckedBlockOpen = null;
+			Statement? uncheckedBlockStart = null;
 			// c) context is unchecked, no checked block open
 			Cost costUncheckedContext = new Cost(0, 0);
-			InsertedNode nodesUncheckedContext = null;
+			InsertedNode? nodesUncheckedContext = null;
 			// d) context is unchecked, a checked block is open
 			Cost costUncheckedContextCheckedBlockOpen = Cost.Infinite;
-			InsertedNode nodesUncheckedContextCheckedBlockOpen = null;
-			Statement checkedBlockStart = null;
+			InsertedNode? nodesUncheckedContextCheckedBlockOpen = null;
+			Statement? checkedBlockStart = null;
 
-			Statement statement = block.Statements.FirstOrDefault();
+			Statement? statement = block.Statements.FirstOrDefault();
 			while (true)
 			{
 				// Blocks can be closed 'for free'. We use '<=' so that blocks are closed as late as possible (goal 4b)
@@ -340,7 +357,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (node is BlockStatement)
 				return GetResultFromBlock((BlockStatement)node);
 			Result result = new Result();
-			for (AstNode child = node.FirstChild; child != null; child = child.NextSibling)
+			for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
 			{
 				Result childResult = GetResult(child);
 				result.CostInCheckedContext += childResult.CostInCheckedContext;
@@ -348,10 +365,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				result.CostInUncheckedContext += childResult.CostInUncheckedContext;
 				result.NodesToInsertInUncheckedContext += childResult.NodesToInsertInUncheckedContext;
 			}
-			Expression expr = node as Expression;
+			Expression? expr = node as Expression;
 			if (expr != null)
 			{
-				CheckedUncheckedAnnotation annotation = expr.Annotation<CheckedUncheckedAnnotation>();
+				CheckedUncheckedAnnotation? annotation = expr.Annotation<CheckedUncheckedAnnotation>();
 				if (annotation != null)
 				{
 					if (annotation.IsExplicit)
@@ -381,7 +398,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					// We cannot use checked/unchecked for top-level-expressions.
 				}
-				else if (expr.Role.IsValid(Expression.Null))
+				else if (expr.Slot?.ChildType is Type ct && ct.IsAssignableFrom(typeof(Expression)))
 				{
 					// We use '<' so that expressions are introduced on the deepest level possible (goal 3)
 					var costIfWrapWithChecked = result.CostInCheckedContext.WrapInCheckedExpr();

@@ -16,66 +16,32 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// new Type[Dimensions]
+	/// <c>array_creation_expression ::= 'new' type '[' expression* ']' array_specifier* array_initializer?</c> (C# grammar §12.8.17.5)
 	/// </summary>
-	public class ArrayCreateExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ArrayCreateExpression : Expression
 	{
-		public readonly static TokenRole NewKeywordRole = new TokenRole("new");
-		public readonly static Role<ArraySpecifier> AdditionalArraySpecifierRole = new Role<ArraySpecifier>("AdditionalArraySpecifier", null);
-		public readonly static Role<ArrayInitializerExpression> InitializerRole = new Role<ArrayInitializerExpression>("Initializer", ArrayInitializerExpression.Null);
+		public const string NewKeyword = "new";
 
-		public CSharpTokenNode NewToken {
-			get { return GetChildByRole(NewKeywordRole); }
-		}
+		[Slot("Type")]
+		public partial AstType? Type { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public AstNodeCollection<Expression> Arguments {
-			get { return GetChildrenByRole(Roles.Argument); }
-		}
+		[Slot("Argument")]
+		public partial AstNodeCollection<Expression> Arguments { get; }
 
 		/// <summary>
 		/// Gets additional array ranks (those without size info).
 		/// Empty for "new int[5,1]"; will contain a single element for "new int[5][]".
 		/// </summary>
-		public AstNodeCollection<ArraySpecifier> AdditionalArraySpecifiers {
-			get { return GetChildrenByRole(AdditionalArraySpecifierRole); }
-		}
+		[Slot("AdditionalArraySpecifier")]
+		public partial AstNodeCollection<ArraySpecifier> AdditionalArraySpecifiers { get; }
 
-		public ArrayInitializerExpression Initializer {
-			get { return GetChildByRole(InitializerRole); }
-			set { SetChildByRole(InitializerRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitArrayCreateExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitArrayCreateExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitArrayCreateExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ArrayCreateExpression o = other as ArrayCreateExpression;
-			return o != null && this.Type.DoMatch(o.Type, match)
-				&& this.Arguments.DoMatch(o.Arguments, match)
-				&& this.AdditionalArraySpecifiers.DoMatch(o.AdditionalArraySpecifiers, match)
-				&& this.Initializer.DoMatch(o.Initializer, match);
-		}
+		[Slot("Initializer")]
+		public partial ArrayInitializerExpression? Initializer { get; set; }
 	}
 }

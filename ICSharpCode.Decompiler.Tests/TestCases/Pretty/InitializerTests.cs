@@ -73,7 +73,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 
 			public S this[int index] {
 				get {
+#if CS71
+					return default;
+#else
 					return default(S);
+#endif
 				}
 				set {
 				}
@@ -81,7 +85,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 
 			public S this[object key] {
 				get {
+#if CS71
+					return default;
+#else
 					return default(S);
+#endif
 				}
 				set {
 				}
@@ -92,6 +100,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 		{
 			public int A;
 			public int B;
+
+			public int M()
+			{
+				return 42;
+			}
 
 			public S(int a)
 			{
@@ -153,7 +166,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 
 			public StructData(int initialValue)
 			{
+#if CS71
+				this = default;
+#else
 				this = default(StructData);
+#endif
 				Field = initialValue;
 				Property = initialValue;
 			}
@@ -228,6 +245,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 			public dynamic D;
 			public string S = "abc";
 			public Item I;
+		}
+
+		public record DerivedFields : Fields
+		{
+			public ConsoleKey E;
 		}
 #endif
 
@@ -448,6 +470,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 #if CS110 && !NET40
 		public static ReadOnlySpan<byte> UTF8Literal => "Hello, world!"u8;
 		public static ReadOnlySpan<byte> UTF8LiteralWithNullTerminator => "Hello, world!\0"u8;
+		public static ReadOnlySpan<byte> UTF8LiteralEmpty => ""u8;
+		public static ReadOnlySpan<byte> UTF8LiteralWithEscapeSequences => "line1\nline2\t\"quoted\"\\"u8;
 #endif
 		#endregion
 
@@ -501,6 +525,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 		public static void Array2(int a, int b, int c)
 		{
 			X(Y(), new int[5] { a, 0, b, 0, c });
+		}
+
+		public static int[] DuplicateElementAssignment()
+		{
+			// A second store to an element that was already written must stop the array-initializer
+			// transform from folding these stores into a 'new int[] { ... }'. Doing so would drop the
+			// earlier store, which is a visible change when its value has side effects.
+			int[] array = new int[3];
+			array[0] = 1;
+			array[0] = 2;
+			array[1] = 3;
+			array[2] = 4;
+			return array;
 		}
 
 		public static void NestedArray(int a, int b, int c)
@@ -891,7 +928,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 		public static void NotAnObjectInitializerWithEvent()
 		{
 			Data data = new Data();
-			data.TestEvent += delegate {
+#if NET50
+			data.TestEvent += (object? obj, EventArgs e) => {
+#else
+			data.TestEvent += (object obj, EventArgs e) => {
+#endif
 				Console.WriteLine();
 			};
 			X(Y(), data);
@@ -1145,6 +1186,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 				}
 			};
 		}
+
+		public DerivedFields DerivedRecordTest(DerivedFields input)
+		{
+			return input with {
+				A = 42,
+				D = 43,
+				I = new Item {
+					Value7 = input with {
+						A = 44,
+						D = 45
+					}
+				}
+			};
+		}
 #endif
 
 		private TData GenericObjectInitializer<TData>() where TData : IData, new()
@@ -1233,6 +1288,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.InitializerTests
 		}
 
 #if CS60
+		public static void RealDictionaryIndexInitializer()
+		{
+			X(Y(), new Dictionary<string, int> {
+				["a"] = 1,
+				["b"] = GetInt()
+			});
+		}
+
 		public static void SimpleDictInitializer()
 		{
 			X(Y(), new Data {

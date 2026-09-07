@@ -1,14 +1,14 @@
-// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -20,73 +20,65 @@ using System.Collections.Generic;
 using System.Threading;
 
 using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.Output;
+using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.ILSpyX;
+using ICSharpCode.ILSpyX.Abstractions;
+using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
+
+using ICSharpCode.ILSpy.Languages;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
-	using ICSharpCode.Decompiler.TypeSystem;
-	using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
-
-	class DerivedTypesEntryNode : ILSpyTreeNode, IMemberTreeNode
+	/// <summary>
+	/// Single derived-type entry under a <see cref="DerivedTypesTreeNode"/>. Activating jumps
+	/// to the corresponding <see cref="TypeTreeNode"/>. Itself lazy-recursive — expanding a
+	/// derived-type entry walks one more level, surfacing types derived from <em>it</em>.
+	/// </summary>
+	public sealed class DerivedTypesEntryNode : ILSpyTreeNode, IMemberTreeNode
 	{
 		readonly AssemblyList list;
 		readonly ITypeDefinition type;
-		readonly ThreadingSupport threading;
 
 		public DerivedTypesEntryNode(AssemblyList list, ITypeDefinition type)
 		{
 			this.list = list;
 			this.type = type;
-			this.LazyLoading = true;
-			threading = new ThreadingSupport();
+			LazyLoading = true;
 		}
 
 		public override bool ShowExpander => !type.IsSealed && base.ShowExpander;
 
-		public override object Text {
-			get { return Language.TypeToString(type, includeNamespace: true) + GetSuffixString(type.MetadataToken); }
-		}
+		public override object Text => Language.TypeToString(type, ConversionFlags.None);
+
+		public override object? NavigationText => $"{Text} ({ICSharpCode.ILSpy.Properties.Resources.DerivedTypes})";
 
 		public override object Icon => TypeTreeNode.GetIcon(type);
 
+		protected override void LoadChildren()
+		{
+			foreach (var entry in DerivedTypesTreeNode.FindDerivedTypes(list, LanguageService.CurrentLanguage, type, CancellationToken.None))
+				Children.Add(entry);
+		}
+
+		public override bool IsPublicAPI => type.Accessibility switch {
+			Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal => true,
+			_ => false,
+		};
+
+		/// <summary>
+		/// Drops non-public entries under PublicOnly visibility, otherwise reports a match. It must
+		/// not report Recurse: the filter cascade's Recurse handling force-loads this node's lazy
+		/// children and hides the node when all of them are hidden, so a leaf derived type (no
+		/// further subclasses, hence no children) would vanish from the tree. The active search term
+		/// is deliberately not consulted: <see cref="LanguageSettings.SearchTermMatches"/> is a
+		/// no-op so the assembly tree stays independent of the search pane.
+		/// </summary>
 		public override FilterResult Filter(LanguageSettings settings)
 		{
 			if (settings.ShowApiLevel == ApiVisibility.PublicOnly && !IsPublicAPI)
 				return FilterResult.Hidden;
-			if (settings.SearchTermMatches(type.Name))
-			{
-				if (type.DeclaringType != null && (settings.ShowApiLevel != ApiVisibility.All || !LanguageService.Language.ShowMember(type)))
-					return FilterResult.Hidden;
-				else
-					return FilterResult.Match;
-			}
-			else
-				return FilterResult.Recurse;
-		}
-
-		public override bool IsPublicAPI {
-			get {
-				switch (type.Accessibility)
-				{
-					case Accessibility.Public:
-					case Accessibility.Internal:
-					case Accessibility.ProtectedOrInternal:
-						return true;
-					default:
-						return false;
-				}
-			}
-		}
-
-		protected override void LoadChildren()
-		{
-			threading.LoadChildren(this, FetchChildren);
-		}
-
-		IEnumerable<ILSpyTreeNode> FetchChildren(CancellationToken ct)
-		{
-			// FetchChildren() runs on the main thread; but the enumerator will be consumed on a background thread
-			return DerivedTypesTreeNode.FindDerivedTypes(list, type, ct);
+			return FilterResult.Match;
 		}
 
 		public override void ActivateItem(IPlatformRoutedEventArgs e)
@@ -96,7 +88,7 @@ namespace ICSharpCode.ILSpy.TreeNodes
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			language.WriteCommentLine(output, language.TypeToString(type, includeNamespace: true));
+			language.WriteCommentLine(output, language.TypeToString(type, ConversionFlags.None));
 		}
 
 		IEntity IMemberTreeNode.Member => type;

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -28,7 +28,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 {
 	/// <summary>
 	/// If possible, transforms plain ILAst loops into while (condition), do-while and for-loops.
-	/// For the invariants of the transforms <see cref="BlockContainer.CheckInvariant(ILPhase)"/>.
+	/// For the invariants of the transforms <see cref="BlockContainer.CheckInvariant(ILPhase, TypeSystem.ICompilation)"/>.
 	/// </summary>
 	public class HighLevelLoopTransform : IILTransform
 	{
@@ -223,11 +223,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				{
 					if (swap)
 					{
-						condition.Condition = IfInstruction.LogicAnd(Comp.LogicNot(inst.Condition), condition.Condition);
+						condition.Condition = IfInstruction.LogicAnd(Comp.LogicNot(inst.Condition), condition.Condition, context.TypeSystem);
 					}
 					else
 					{
-						condition.Condition = IfInstruction.LogicAnd(inst.Condition, condition.Condition);
+						condition.Condition = IfInstruction.LogicAnd(inst.Condition, condition.Condition, context.TypeSystem);
 					}
 				}
 			}
@@ -395,6 +395,8 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				// - increment block
 				if (incrementBlock.Instructions.Count <= 1 || loop.Blocks.Count < 3)
 					return false;
+				if (StoresRefLocalUsedAfterLoop(loop, incrementBlock))
+					return false;
 				context.Step("Transform to for loop: " + loop.EntryPoint.Label, loop);
 				// move the block to the end of the loop:
 				loop.Blocks.MoveElementToEnd(incrementBlock);
@@ -431,11 +433,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						break;
 					if (forCondition == null)
 					{
-						forCondition = new IfInstruction(condition, whileCondition.TrueInst, whileCondition.FalseInst);
+						forCondition = new IfInstruction(condition, whileCondition.TrueInst, whileCondition.FalseInst,
+							whileCondition.InferType(context.TypeSystem));
 					}
 					else
 					{
-						forCondition.Condition = IfInstruction.LogicAnd(forCondition.Condition, condition);
+						forCondition.Condition = IfInstruction.LogicAnd(forCondition.Condition, condition, context.TypeSystem);
 					}
 					numberOfConditions++;
 				}
@@ -465,6 +468,27 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				loop.Kind = ContainerKind.For;
 			}
 			return true;
+		}
+
+		static bool StoresRefLocalUsedAfterLoop(BlockContainer loop, Block incrementBlock)
+		{
+			foreach (var store in incrementBlock.Instructions.SkipLast(1).SelectMany(inst => inst.Descendants).OfType<StLoc>())
+			{
+				var variable = store.Variable;
+				if (variable.Type.IsByRefLike && IsVariableUsedAfterLoop(loop, variable))
+					return true;
+			}
+			return false;
+		}
+
+		static bool IsVariableUsedAfterLoop(BlockContainer loop, ILVariable variable)
+		{
+			foreach (var use in variable.LoadInstructions.Concat<ILInstruction>(variable.AddressInstructions).Concat(variable.StoreInstructions.Cast<ILInstruction>()))
+			{
+				if (loop.GetCommonParent(use) is Block { Kind: BlockKind.ControlFlow } && loop.IsBefore(use))
+					return true;
+			}
+			return false;
 		}
 
 		bool IsAssignment(ILInstruction inst)

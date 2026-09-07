@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -38,7 +38,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 	{
 		const GetMemberOptions Options = GetMemberOptions.IgnoreInheritedMembers | GetMemberOptions.ReturnMemberDefinitions;
 
-		public bool Show(ISymbol symbol) => symbol is IMethod method && !method.IsVirtual && method.ParentModule is not null;
+		public bool Show(ISymbol? symbol) => symbol is IMethod method && !method.IsVirtual && method.ParentModule is not null;
 
 		public IEnumerable<ISymbol> Analyze(ISymbol analyzedSymbol, AnalyzerContext context)
 		{

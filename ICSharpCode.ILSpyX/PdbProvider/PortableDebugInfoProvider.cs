@@ -32,7 +32,7 @@ using static ICSharpCode.Decompiler.Metadata.MetadataFile;
 
 namespace ICSharpCode.ILSpyX.PdbProvider
 {
-	public class PortableDebugInfoProvider : IDebugInfoProvider
+	public sealed class PortableDebugInfoProvider : IDebugInfoProvider, IDisposable
 	{
 		string? pdbFileName;
 		string moduleFileName;
@@ -251,6 +251,11 @@ namespace ICSharpCode.ILSpyX.PdbProvider
 		{
 			var kind = IsEmbedded || Path.GetExtension(SourceFileName).Equals(".pdb", StringComparison.OrdinalIgnoreCase) ? MetadataFileKind.ProgramDebugDatabase : MetadataFileKind.Metadata;
 			return new MetadataFile(kind, SourceFileName, provider, options, 0, IsEmbedded);
+		}
+
+		public void Dispose()
+		{
+			provider.Dispose();
 		}
 	}
 }

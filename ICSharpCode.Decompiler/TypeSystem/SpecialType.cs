@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -26,7 +26,7 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// Contains static implementations of special types.
 	/// </summary>
 	[Serializable]
-	public sealed class SpecialType : AbstractType, ITypeReference
+	public sealed class SpecialType : AbstractType
 	{
 		/// <summary>
 		/// Gets the type representing resolve errors.
@@ -92,20 +92,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			get { return isReferenceType; }
 		}
 
-		IType ITypeReference.Resolve(ITypeResolveContext context)
-		{
-			if (context == null)
-				throw new ArgumentNullException(nameof(context));
-			return this;
-		}
-
-#pragma warning disable 809
-		[Obsolete("Please compare special types using the kind property instead.")]
 		public override bool Equals(IType other)
 		{
 			// We consider a special types equal when they have equal types.
 			// However, an unknown type with additional information is not considered to be equal to the SpecialType with TypeKind.Unknown.
-			return other is SpecialType && other.Kind == kind;
+			return other is SpecialType o && o.Kind == kind;
 		}
 
 		public override int GetHashCode()

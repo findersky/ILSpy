@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ContinueStatement.cs
 //  
 // Author:
@@ -24,43 +24,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// continue;
+	/// <c>continue_statement ::= 'continue' ';'</c> (C# grammar §13.10.3)
 	/// </summary>
-	public class ContinueStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class ContinueStatement : Statement
 	{
-		public static readonly TokenRole ContinueKeywordRole = new TokenRole("continue");
-
-		public CSharpTokenNode ContinueToken {
-			get { return GetChildByRole(ContinueKeywordRole); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitContinueStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitContinueStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitContinueStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ContinueStatement o = other as ContinueStatement;
-			return o != null;
-		}
 	}
 }

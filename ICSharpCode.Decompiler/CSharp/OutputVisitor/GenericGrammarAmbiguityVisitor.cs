@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Daniel Grunwald
+// Copyright (c) 2020 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -21,6 +21,8 @@ using System.Diagnostics;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 {
@@ -53,7 +55,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			var v = new GenericGrammarAmbiguityVisitor();
 			v.genericNestingLevel = 1;
 
-			for (AstNode node = binaryOperatorExpression.Right; node != null; node = node.GetNextNode())
+			for (AstNode? node = binaryOperatorExpression.Right; node != null; node = node.GetNextNode())
 			{
 				if (node.AcceptVisitor(v))
 					return v.ambiguityFound;
@@ -78,7 +80,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 
 		public override bool VisitBinaryOperatorExpression(BinaryOperatorExpression binaryOperatorExpression)
 		{
-			if (binaryOperatorExpression.Left.AcceptVisitor(this))
+			if (binaryOperatorExpression.Left!.AcceptVisitor(this))
 				return true;
 			Debug.Assert(genericNestingLevel > 0);
 			switch (binaryOperatorExpression.Operator)
@@ -105,7 +107,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 				ambiguityFound = binaryOperatorExpression.Right is ParenthesizedExpression;
 				return true; // stop visiting
 			}
-			return binaryOperatorExpression.Right.AcceptVisitor(this);
+			return binaryOperatorExpression.Right!.AcceptVisitor(this);
 		}
 
 		public override bool VisitIdentifierExpression(IdentifierExpression identifierExpression)

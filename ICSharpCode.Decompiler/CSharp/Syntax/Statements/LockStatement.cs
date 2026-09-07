@@ -1,4 +1,4 @@
-﻿// 
+// 
 // LockStatement.cs
 //  
 // Author:
@@ -24,57 +24,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// lock (Expression) EmbeddedStatement;
+	/// <c>lock_statement ::= 'lock' '(' expression ')' statement</c> (C# grammar §13.13)
 	/// </summary>
-	public class LockStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class LockStatement : Statement
 	{
-		public static readonly TokenRole LockKeywordRole = new TokenRole("lock");
+		public const string LockKeyword = "lock";
 
-		public CSharpTokenNode LockToken {
-			get { return GetChildByRole(LockKeywordRole); }
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public Statement EmbeddedStatement {
-			get { return GetChildByRole(Roles.EmbeddedStatement); }
-			set { SetChildByRole(Roles.EmbeddedStatement, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitLockStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitLockStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitLockStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			LockStatement o = other as LockStatement;
-			return o != null && this.Expression.DoMatch(o.Expression, match) && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match);
-		}
+		[Slot("EmbeddedStatement")]
+		public partial Statement EmbeddedStatement { get; set; }
 	}
 }

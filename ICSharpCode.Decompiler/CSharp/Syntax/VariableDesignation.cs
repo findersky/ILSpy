@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Siegfried Pammer
+// Copyright (c) 2020 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,122 +16,32 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public abstract class VariableDesignation : AstNode
+	[DecompilerAstNode]
+	public abstract partial class VariableDesignation : AstNode
 	{
-		public override NodeType NodeType => NodeType.Unknown;
-
-		#region Null
-		public new static readonly VariableDesignation Null = new NullVariableDesignation();
-
-		sealed class NullVariableDesignation : VariableDesignation
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-		#endregion
-
 	}
 
 	/// <summary>
-	/// Identifier
+	/// <c>single_variable_designation ::= identifier</c> (C# grammar §11.2.2)
 	/// </summary>
-	public class SingleVariableDesignation : VariableDesignation
+	[DecompilerAstNode]
+	public sealed partial class SingleVariableDesignation : VariableDesignation
 	{
-
-		public string Identifier {
-			get { return GetChildByRole(Roles.Identifier).Name; }
-			set { SetChildByRole(Roles.Identifier, Syntax.Identifier.Create(value)); }
-		}
-
-		public Identifier IdentifierToken {
-			get { return GetChildByRole(Roles.Identifier); }
-			set { SetChildByRole(Roles.Identifier, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitSingleVariableDesignation(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitSingleVariableDesignation(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitSingleVariableDesignation(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is SingleVariableDesignation o && MatchString(this.Identifier, o.Identifier);
-		}
+		[Slot("Identifier")]
+		public partial string Identifier { get; set; }
 	}
 
 	/// <summary>
-	/// ( VariableDesignation (, VariableDesignation)* )
+	/// <c>tuple_designation ::= '(' designations? ')'</c> (C# grammar §11.2.4)
 	/// </summary>
-	public class ParenthesizedVariableDesignation : VariableDesignation
+	[DecompilerAstNode]
+	public sealed partial class ParenthesizedVariableDesignation : VariableDesignation
 	{
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstNodeCollection<VariableDesignation> VariableDesignations {
-			get { return GetChildrenByRole(Roles.VariableDesignationRole); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitParenthesizedVariableDesignation(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitParenthesizedVariableDesignation(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitParenthesizedVariableDesignation(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is ParenthesizedVariableDesignation o && VariableDesignations.DoMatch(o.VariableDesignations, match);
-		}
+		[Slot("VariableDesignation")]
+		public partial AstNodeCollection<VariableDesignation> VariableDesignations { get; }
 	}
 }

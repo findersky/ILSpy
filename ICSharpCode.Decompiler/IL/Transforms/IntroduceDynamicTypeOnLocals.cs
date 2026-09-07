@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -46,18 +46,25 @@ namespace ICSharpCode.Decompiler.IL
 						continue;
 					foreach (var load in variable.LoadInstructions)
 					{
+						bool isDynamicUse;
 						if (load.Parent is DynamicInstruction dynamicInstruction)
 						{
 							var argumentInfo = dynamicInstruction.GetArgumentInfoOfChild(load.ChildIndex);
-							if (!argumentInfo.HasFlag(CSharpArgumentInfoFlags.UseCompileTimeType))
+							isDynamicUse = !argumentInfo.HasFlag(CSharpArgumentInfoFlags.UseCompileTimeType);
+						}
+						else
+						{
+							// awaiting a dynamic value: the awaited operand has type dynamic
+							isDynamicUse = load.Parent is Await { GetResultMethod.DeclaringType.Kind: TypeKind.Dynamic };
+						}
+						if (isDynamicUse)
+						{
+							variable.Type = SpecialType.Dynamic;
+							if (variable.Index.HasValue && variable.Kind == VariableKind.Local)
 							{
-								variable.Type = SpecialType.Dynamic;
-								if (variable.Index.HasValue && variable.Kind == VariableKind.Local)
-								{
-									dynamicVariables.Add(variable.Index.Value);
-								}
-								break;
+								dynamicVariables.Add(variable.Index.Value);
 							}
+							break;
 						}
 					}
 				}

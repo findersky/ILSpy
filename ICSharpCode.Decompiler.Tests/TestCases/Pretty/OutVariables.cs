@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -37,7 +37,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			// to ensure that the value is initialized when the delegate is declared.
 			if (d.Count > 2 && d.TryGetValue(42, out var value))
 			{
-				return delegate {
+				return () => {
 					Console.WriteLine(value);
 				};
 			}
@@ -46,7 +46,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private bool TryGet<T>(out T result)
 		{
-			result = default(T);
+			result = default;
 			return true;
 		}
 
@@ -71,6 +71,64 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			GetObject(out dynamic obj);
 			obj.Method();
+		}
+
+		public void M5()
+		{
+			Func<bool> func = () => TryGet<object>(out var result) && result != null;
+			Func<bool> func2 = () => TryGet<object>(out var result) && result != null;
+
+			func();
+			func2();
+		}
+
+		public static void CapturedBoolResult(Dictionary<int, int> d, int key)
+		{
+			// The boolean result of the out-returning call is captured into a local, yet the out
+			// parameter is still promoted to an inline 'out var' rather than a separate declaration.
+			bool value = d.TryGetValue(key, out var value2);
+			Console.WriteLine(value);
+			Console.WriteLine(value);
+			Console.WriteLine(value2);
+			Console.WriteLine(value2);
+		}
+
+		private static void GetTwo(out int a, out int b)
+		{
+			a = 1;
+			b = 2;
+		}
+
+		public static void SameVariableUsedForTwoOutParameters()
+		{
+			// The declaration must use the explicit type: referencing an implicitly-typed
+			// out variable in another argument of the declaring call is an error (CS8196).
+			GetTwo(out int a, out a);
+		}
+
+		public static int SameVariableUsedForTwoOutParametersAndRead()
+		{
+			GetTwo(out int a, out a);
+			return a;
+		}
+
+		private static void OutAndValue(out int a, int b)
+		{
+			a = b;
+		}
+
+		private static int UseAndReturn(out int a)
+		{
+			a = 1;
+			return a;
+		}
+
+		public static void SameVariableUsedInNestedCallArgument()
+		{
+			// CS8196 also applies when the second reference is nested within
+			// another argument of the declaring call.
+			OutAndValue(out int a, UseAndReturn(out a));
+			Console.WriteLine(a);
 		}
 	}
 }

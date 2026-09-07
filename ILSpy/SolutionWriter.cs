@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -19,193 +19,275 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Solution;
-using ICSharpCode.Decompiler.Util;
-using ICSharpCode.ILSpy.TextView;
-using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.ILSpyX;
+
+using ICSharpCode.ILSpy.Languages;
 
 namespace ICSharpCode.ILSpy
 {
 	/// <summary>
-	/// An utility class that creates a Visual Studio solution containing projects for the
-	/// decompiled assemblies.
+	/// The outcome of a <see cref="SolutionWriter.CreateSolutionAsync"/> run: whether a complete
+	/// solution was produced and the human-readable status report (the same breadcrumb the WPF
+	/// version printed into the decompiler text view).
 	/// </summary>
-	internal class SolutionWriter
+	public sealed record SolutionExportResult(bool Success, string StatusText)
 	{
 		/// <summary>
-		/// Creates a Visual Studio solution that contains projects with decompiled code
-		/// of the specified <paramref name="assemblies"/>. The solution file will be saved
-		/// to the <paramref name="solutionFilePath"/>. The directory of this file must either
-		/// be empty or not exist.
+		/// What the decompiler could not handle while exporting. These are recovered failures - the
+		/// affected code was replaced by the error text and the export ran to completion - so they
+		/// do not make <see cref="Success"/> false; the caller renders them for the user to report.
 		/// </summary>
-		/// <param name="tabPage"></param>
-		/// <param name="textView">A reference to the <see cref="DecompilerTextView"/> instance.</param>
-		/// <param name="solutionFilePath">The target file path of the solution file.</param>
-		/// <param name="language"></param>
-		/// <param name="assemblies">The assembly nodes to decompile.</param>
-		/// <exception cref="ArgumentException">Thrown when <paramref name="solutionFilePath"/> is null,
-		/// an empty or a whitespace string.</exception>
-		/// <exception cref="ArgumentNullException">Thrown when <paramref name="textView"/>> or
+		public IReadOnlyList<DecompilerException> Errors { get; init; } = [];
+	}
+
+	/// <summary>
+	/// Creates a Visual Studio solution containing one decompiled project per assembly. The
+	/// solution directory must be empty or non-existent. UI-agnostic: callers supply an explicit
+	/// target path (the "Save Code" entry picks it via a file dialog) and surface
+	/// <see cref="SolutionExportResult.StatusText"/> however they like.
+	/// </summary>
+	internal sealed class SolutionWriter
+	{
+		/// <summary>
+		/// Decompiles every assembly in <paramref name="assemblies"/> into its own project under the
+		/// directory of <paramref name="solutionFilePath"/> and writes the solution file itself.
+		/// </summary>
+		/// <exception cref="ArgumentException">Thrown when <paramref name="solutionFilePath"/> is null
+		/// or whitespace.</exception>
+		/// <exception cref="ArgumentNullException">Thrown when <paramref name="language"/> or
 		/// <paramref name="assemblies"/> is null.</exception>
-		public static void CreateSolution(TabPageModel tabPage, DecompilerTextView textView, string solutionFilePath,
-			Language language, IEnumerable<LoadedAssembly> assemblies)
+		/// <param name="settings">Decompiler settings each project is decompiled with.</param>
+		/// <param name="strongNameKeyFile">Optional <c>.snk</c> copied into every project and emitted
+		/// as <c>&lt;AssemblyOriginatorKeyFile&gt;</c>.</param>
+		public static Task<SolutionExportResult> CreateSolutionAsync(string solutionFilePath,
+			Language language, IReadOnlyList<LoadedAssembly> assemblies,
+			CancellationToken cancellationToken,
+			DecompilerSettings settings, string? strongNameKeyFile = null,
+			IProgress<DecompilationProgress>? progress = null)
 		{
-			if (textView == null)
-			{
-				throw new ArgumentNullException(nameof(textView));
-			}
-
 			if (string.IsNullOrWhiteSpace(solutionFilePath))
-			{
 				throw new ArgumentException("The solution file path cannot be null or empty.", nameof(solutionFilePath));
-			}
+			ArgumentNullException.ThrowIfNull(language);
+			ArgumentNullException.ThrowIfNull(assemblies);
+			ArgumentNullException.ThrowIfNull(settings);
 
-			if (assemblies == null)
-			{
-				throw new ArgumentNullException(nameof(assemblies));
-			}
-
-			var writer = new SolutionWriter(solutionFilePath);
-
-			textView
-				.RunWithCancellation(ct => writer.CreateSolution(tabPage, assemblies, language, ct))
-				.Then(output => textView.ShowText(output))
-				.HandleExceptions();
+			return new SolutionWriter(solutionFilePath, settings, strongNameKeyFile, progress)
+				.CreateSolutionAsync(assemblies, language, cancellationToken);
 		}
 
 		readonly string solutionFilePath;
 		readonly string solutionDirectory;
+		readonly DecompilerSettings settings;
+		readonly string? strongNameKeyFile;
+		readonly IProgress<DecompilationProgress>? progress;
 		readonly ConcurrentBag<ProjectItem> projects;
 		readonly ConcurrentBag<string> statusOutput;
+		readonly ConcurrentBag<DecompilerException> decompilationErrors = new();
 
-		SolutionWriter(string solutionFilePath)
+		// How far each project has got, keyed by assembly short name -- unique, because duplicate names
+		// abort the export before any project runs. The workers fill these in as they decompile and the
+		// progress bar shows their sum.
+		readonly ConcurrentDictionary<string, ProjectProgress> projectProgress;
+		// The projects in selection order, so the status label lists them in a stable order rather than
+		// in whatever order the workers happen to reach them.
+		string[] projectOrder;
+
+		SolutionWriter(string solutionFilePath, DecompilerSettings settings, string? strongNameKeyFile,
+			IProgress<DecompilationProgress>? progress)
 		{
 			this.solutionFilePath = solutionFilePath;
-			solutionDirectory = Path.GetDirectoryName(solutionFilePath);
+			this.settings = settings;
+			this.strongNameKeyFile = strongNameKeyFile;
+			this.progress = progress;
+			solutionDirectory = Path.GetDirectoryName(solutionFilePath)!;
 			statusOutput = new ConcurrentBag<string>();
 			projects = new ConcurrentBag<ProjectItem>();
+			projectProgress = new ConcurrentDictionary<string, ProjectProgress>();
+			projectOrder = Array.Empty<string>();
 		}
 
-		async Task<AvalonEditTextOutput> CreateSolution(TabPageModel tabPage, IEnumerable<LoadedAssembly> assemblies, Language language, CancellationToken ct)
+		/// <summary>How much of one project's file list has been written, and whether it is still running.</summary>
+		sealed class ProjectProgress
 		{
-			var result = new AvalonEditTextOutput();
+			public int FilesWritten;
+			public int FileCount;
+			public bool Running;
+		}
 
-			var assembliesByShortName = assemblies.ToLookup(_ => _.ShortName);
+		/// <summary>
+		/// Feeds one project's file counts into the shared total. <see cref="WholeProjectDecompiler"/>
+		/// reports its whole file count with every report, so the solution bar knows a project's size from
+		/// its first written file rather than only once the project is done.
+		/// </summary>
+		sealed class ProjectProgressReporter(SolutionWriter writer, ProjectProgress project)
+			: IProgress<DecompilationProgress>
+		{
+			public void Report(DecompilationProgress value)
+			{
+				project.FileCount = value.TotalUnits;
+				project.FilesWritten = value.UnitsCompleted;
+				writer.ReportProgress();
+			}
+		}
+
+		async Task<SolutionExportResult> CreateSolutionAsync(IReadOnlyList<LoadedAssembly> allAssemblies,
+			Language language, CancellationToken ct)
+		{
+			var report = new StringBuilder();
+
+			// Two assemblies that share a short name would decompile into the same project directory;
+			// refuse rather than have one clobber the other.
+			var assembliesByShortName = allAssemblies.GroupBy(a => a.ShortName).ToDictionary(g => g.Key, g => g.ToList());
 			bool first = true;
 			bool abort = false;
-
-			foreach (var item in assembliesByShortName)
+			foreach (var (_, assemblies) in assembliesByShortName)
 			{
-				var enumerator = item.GetEnumerator();
-				if (!enumerator.MoveNext())
-					continue;
-				var firstAssembly = enumerator.Current;
-				if (!enumerator.MoveNext())
+				if (assemblies.Count == 1)
 					continue;
 				if (first)
 				{
-					result.WriteLine("Duplicate assembly names selected, cannot generate a solution:");
+					report.AppendLine("Duplicate assembly names selected, cannot generate a solution:");
 					abort = true;
-				}
-
-				result.Write("- " + firstAssembly.Text + " conflicts with ");
-
-				first = true;
-				do
-				{
-					var asm = enumerator.Current;
-					if (!first)
-						result.Write(", ");
-					result.Write(asm.Text);
 					first = false;
-				} while (enumerator.MoveNext());
-				result.WriteLine();
-				first = false;
+				}
+				report.AppendLine("- " + assemblies[0].Text + " conflicts with "
+					+ string.Join(", ", assemblies.Skip(1).Select(a => a.Text)));
 			}
 
 			if (abort)
-				return result;
+				return new SolutionExportResult(false, report.ToString());
 
-			Stopwatch stopwatch = Stopwatch.StartNew();
+			projectOrder = allAssemblies.Select(a => a.ShortName).ToArray();
 
 			try
 			{
-				// Explicitly create an enumerable partitioner here to avoid Parallel.ForEach's special cases for lists,
-				// as those seem to use static partitioning which is inefficient if assemblies take differently
-				// long to decompile.
-				await Task.Run(() => Parallel.ForEach(Partitioner.Create(assemblies),
+				// An explicit enumerable partitioner avoids Parallel.ForEach's list special-casing,
+				// whose static partitioning is inefficient when assemblies decompile at different speeds.
+				await Task.Run(() => System.Threading.Tasks.Parallel.ForEach(Partitioner.Create(allAssemblies),
 					new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
-					item => WriteProject(tabPage, item, language, solutionDirectory, ct)))
+					item => WriteProject(item, language, solutionDirectory, ct)))
 					.ConfigureAwait(false);
 
 				if (projects.Count == 0)
 				{
-					result.WriteLine();
-					result.WriteLine("Solution could not be created, because none of the selected assemblies could be decompiled into a project.");
+					report.AppendLine();
+					report.AppendLine("Solution could not be created, because none of the selected assemblies could be decompiled into a project.");
+					return new SolutionExportResult(false, report.ToString());
 				}
-				else
-				{
-					await Task.Run(() => SolutionCreator.WriteSolutionFile(solutionFilePath, projects))
-						.ConfigureAwait(false);
-				}
+
+				await Task.Run(() => SolutionCreator.WriteSolutionFile(solutionFilePath, projects.ToList()), ct)
+					.ConfigureAwait(false);
 			}
 			catch (AggregateException ae)
 			{
 				if (ae.Flatten().InnerExceptions.All(e => e is OperationCanceledException))
 				{
-					result.WriteLine();
-					result.WriteLine("Generation was cancelled.");
-					return result;
+					report.AppendLine();
+					report.AppendLine("Generation was cancelled.");
+					return new SolutionExportResult(false, report.ToString());
 				}
 
-				result.WriteLine();
-				result.WriteLine("Failed to generate the Visual Studio Solution. Errors:");
+				report.AppendLine();
+				report.AppendLine("Failed to generate the Visual Studio Solution. Errors:");
 				ae.Handle(e => {
-					result.WriteLine(e.Message);
+					report.AppendLine(e.Message);
 					return true;
 				});
-
-				return result;
+				return new SolutionExportResult(false, report.ToString());
+			}
+			catch (OperationCanceledException)
+			{
+				report.AppendLine();
+				report.AppendLine("Generation was cancelled.");
+				return new SolutionExportResult(false, report.ToString());
 			}
 
 			foreach (var item in statusOutput)
-			{
-				result.WriteLine(item);
-			}
+				report.AppendLine(item);
 
-			if (statusOutput.Count == 0)
-			{
-				result.WriteLine("Successfully decompiled the following assemblies into Visual Studio projects:");
-				foreach (var item in assemblies.Select(n => n.Text.ToString()))
-				{
-					result.WriteLine(item);
-				}
+			// statusOutput only collects per-assembly failures; an empty bag means every project built.
+			if (statusOutput.Count != 0)
+				return new SolutionExportResult(false, report.ToString()) { Errors = [.. decompilationErrors] };
 
-				result.WriteLine();
+			report.AppendLine("Successfully decompiled the following assemblies into Visual Studio projects:");
+			foreach (var n in allAssemblies)
+				report.AppendLine(n.Text.ToString());
+			report.AppendLine();
+			if (allAssemblies.Count == projects.Count)
+				report.AppendLine("Created the Visual Studio Solution file.");
 
-				if (assemblies.Count() == projects.Count)
-				{
-					result.WriteLine("Created the Visual Studio Solution file.");
-				}
-
-				result.WriteLine();
-				result.WriteLine("Elapsed time: " + stopwatch.Elapsed.TotalSeconds.ToString("F1") + " seconds.");
-				result.WriteLine();
-				result.AddButton(null, "Open Explorer", delegate { Process.Start("explorer", "/select,\"" + solutionFilePath + "\""); });
-			}
-
-			return result;
+			return new SolutionExportResult(true, report.ToString()) { Errors = [.. decompilationErrors] };
 		}
 
-		void WriteProject(TabPageModel tabPage, LoadedAssembly loadedAssembly, Language language, string targetDirectory, CancellationToken ct)
+		// Reports the whole solution's progress: the file counts of every project added up. The projects
+		// are decompiled in parallel, so no single one of them can drive the bar; summing them lets it
+		// move continuously and, because a project reports its file count as soon as it writes its first
+		// file, turn determinate right after the export starts. Racing reads are fine here -- the worst a
+		// report that races a worker can be is a file or two out of date.
+		void ReportProgress()
+		{
+			if (progress == null)
+				return;
+
+			int filesWritten = 0, fileCount = 0;
+			foreach (var project in projectProgress.Values)
+			{
+				filesWritten += project.FilesWritten;
+				fileCount += project.FileCount;
+			}
+
+			progress.Report(new DecompilationProgress {
+				TotalUnits = fileCount,
+				UnitsCompleted = filesWritten,
+				Title = "Exporting solution...",
+				Status = RunningProjects(),
+			});
+		}
+
+		// The projects being written right now, so the label says what is running instead of naming
+		// whichever project happened to report last. Long selections are cut short: the bar is not the
+		// place to list twenty assemblies.
+		string RunningProjects()
+		{
+			const int maxNames = 3;
+			var running = projectOrder
+				.Where(name => projectProgress.TryGetValue(name, out var project) && project.Running)
+				.ToList();
+			return running.Count <= maxNames
+				? string.Join(", ", running)
+				: string.Join(", ", running.Take(maxNames)) + $" and {running.Count - maxNames} more";
+		}
+
+		void WriteProject(LoadedAssembly loadedAssembly, Language language, string targetDirectory, CancellationToken ct)
+		{
+			var project = new ProjectProgress { Running = true };
+			projectProgress[loadedAssembly.ShortName] = project;
+			ReportProgress();
+			try
+			{
+				WriteProjectCore(loadedAssembly, language, targetDirectory, project, ct);
+			}
+			finally
+			{
+				// Whatever became of the project -- written, bailed out before it started, or cancelled --
+				// it stops counting against the total here. Leaving an abandoned project's files
+				// outstanding would strand the bar short of the end for the rest of the export.
+				project.FilesWritten = project.FileCount;
+				project.Running = false;
+				ReportProgress();
+			}
+		}
+
+		void WriteProjectCore(LoadedAssembly loadedAssembly, Language language, string targetDirectory,
+			ProjectProgress project, CancellationToken ct)
 		{
 			targetDirectory = Path.Combine(targetDirectory, loadedAssembly.ShortName);
 
@@ -215,8 +297,6 @@ namespace ICSharpCode.ILSpy
 				statusOutput.Add($"Language '{language.Name}' does not support exporting assemblies as projects!");
 				return;
 			}
-
-			string projectFileName = Path.Combine(targetDirectory, loadedAssembly.ShortName + language.ProjectFileExtension);
 
 			if (File.Exists(targetDirectory))
 			{
@@ -241,19 +321,31 @@ namespace ICSharpCode.ILSpy
 
 			try
 			{
-				using (var projectFileWriter = new StreamWriter(projectFileName))
-				{
-					var projectFileOutput = new PlainTextOutput(projectFileWriter);
-					var options = tabPage.CreateDecompilationOptions();
-					options.FullDecompilation = true;
-					options.CancellationToken = ct;
-					options.SaveAsProjectDirectory = targetDirectory;
+				var options = new DecompilationOptions(settings);
+				options.FullDecompilation = true;
+				options.EscapeInvalidIdentifiers = true;
+				options.CancellationToken = ct;
+				options.SaveAsProjectDirectory = targetDirectory;
+				options.StrongNameKeyFile = strongNameKeyFile;
+				options.ProgressIndicator = new ProjectProgressReporter(this, project);
 
-					var projectInfo = language.DecompileAssembly(loadedAssembly, projectFileOutput, options);
-					if (projectInfo != null)
-					{
-						projects.Add(new ProjectItem(projectFileName, projectInfo.PlatformName, projectInfo.Guid, projectInfo.TypeGuid));
-					}
+				// The project-export path writes the .csproj into SaveAsProjectDirectory itself; the
+				// ITextOutput only receives a "Project written to ..." breadcrumb, which we discard here.
+				var projectInfo = language.DecompileAssembly(loadedAssembly, new PlainTextOutput(new StringWriter()), options);
+				// Recovered failures travel on the result, not in statusOutput: a non-empty
+				// statusOutput means the solution is incomplete, and these projects did get written.
+				foreach (var error in options.DecompilationErrors)
+				{
+					decompilationErrors.Add(error);
+				}
+				if (projectInfo != null)
+				{
+					// SolutionCreator.FixAllProjectReferences parses each project file off disk, so the
+					// ProjectItem must point at the .csproj the decompiler actually produced (its name is
+					// derived from the module name, not necessarily the assembly short name).
+					var projectFileName = Directory.EnumerateFiles(targetDirectory, "*" + language.ProjectFileExtension).FirstOrDefault()
+						?? Path.Combine(targetDirectory, loadedAssembly.ShortName + language.ProjectFileExtension);
+					projects.Add(new ProjectItem(projectFileName, projectInfo.PlatformName, projectInfo.Guid, projectInfo.TypeGuid));
 				}
 			}
 			catch (NotSupportedException e)
@@ -264,11 +356,10 @@ namespace ICSharpCode.ILSpy
 			catch (PathTooLongException e)
 			{
 				statusOutput.Add("-------------");
-				statusOutput.Add(string.Format(Properties.Resources.ProjectExportPathTooLong, loadedAssembly.FileName)
-					+ Environment.NewLine + Environment.NewLine
-					+ e.ToString());
+				statusOutput.Add(string.Format(ICSharpCode.ILSpy.Properties.Resources.ProjectExportPathTooLong, loadedAssembly.FileName)
+					+ Environment.NewLine + Environment.NewLine + e.ToString());
 			}
-			catch (Exception e) when (!(e is OperationCanceledException))
+			catch (Exception e) when (e is not OperationCanceledException)
 			{
 				statusOutput.Add("-------------");
 				statusOutput.Add($"Failed to decompile the assembly '{loadedAssembly.FileName}':{Environment.NewLine}{e}");

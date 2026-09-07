@@ -1,290 +1,337 @@
-﻿// Source: https://github.com/medo64/Medo/blob/main/src/Medo/Application/SingleInstance.cs
-
-/* Josip Medved <jmedved@jmedved.com> * www.medo64.com * MIT License */
-
-//2022-12-01: Compatible with .NET 6 and 7
-//2012-11-24: Suppressing bogus CA5122 warning (http://connect.microsoft.com/VisualStudio/feedback/details/729254/bogus-ca5122-warning-about-p-invoke-declarations-should-not-be-safe-critical)
-//2010-10-07: Added IsOtherInstanceRunning method
-//2008-11-14: Reworked code to use SafeHandle
-//2008-04-11: Cleaned code to match FxCop 1.36 beta 2 (SpecifyMarshalingForPInvokeStringArguments, NestedTypesShouldNotBeVisible)
-//2008-04-10: NewInstanceEventArgs is not nested class anymore
-//2008-01-26: AutoExit parameter changed to NoAutoExit
-//2008-01-08: Main method is now called Attach
-//2008-01-06: System.Environment.Exit returns E_ABORT (0x80004004)
-//2008-01-03: Added Resources
-//2007-12-29: New version
-
-#nullable enable
-
-namespace Medo.Application;
+// Copyright (c) 2026 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Pipes;
 using System.Linq;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 
-using ICSharpCode.ILSpy.AppEnv;
+using ICSharpCode.ILSpy.Options;
 
-/// <summary>
-/// Handles detection and communication of programs multiple instances.
-/// This class is thread safe.
-/// </summary>
-public static class SingleInstance
+using ICSharpCode.ILSpyX.Settings;
+
+namespace ICSharpCode.ILSpy.AppEnv
 {
-
-	private static Mutex? _mtxFirstInstance;
-	private static Thread? _thread;
-	private static readonly object _syncRoot = new();
-
-
 	/// <summary>
-	/// Returns true if this application is not already started.
-	/// Another instance is contacted via named pipe.
+	/// Cross-platform single-instance coordination. The first launch for a user takes a named
+	/// <see cref="Mutex"/> and listens on a named pipe; a later launch forwards its command-line
+	/// arguments over that pipe and exits, so the running window handles them instead of a second
+	/// window opening.
+	///
+	/// The mutex/pipe namespace is derived from machine + user only -- never the executable location
+	/// -- so any launcher (Explorer "Open with", the CLI, a debug build at a different path) reuses
+	/// the running instance. A launcher that needs a specific instance passes <c>--instanceid</c>;
+	/// that value is a runtime reuse filter (see <see cref="ShouldReuse"/>), not part of the
+	/// namespace, so it never re-introduces the location-partitioning it replaces.
 	/// </summary>
-	/// <exception cref="InvalidOperationException">API call failed.</exception>
-	public static bool Attach()
+	public static class SingleInstance
 	{
-		return Attach(false);
-	}
+		static readonly object gate = new();
+		static Mutex? heldMutex;
+		static string? ownLaunchId;
+		static Action<string[]>? newInstanceHandler;
+		static string[]? bufferedArgs;
 
-	private static string[] GetILSpyCommandLineArgs()
-	{
-		// Note: NO Skip(1) here because .Args property on SingleInstanceArguments does this for us
-		return Environment.GetCommandLineArgs().AsEnumerable()
-			.Select(CommandLineTools.FullyQualifyPath)
-			.ToArray();
-	}
+		/// <summary>
+		/// Raised (on a background thread) when another instance forwarded its arguments and the
+		/// running instance accepted them. If no handler is attached yet -- the pipe server can
+		/// outrace application startup -- the last payload is buffered and replayed on subscribe.
+		/// </summary>
+		public static event Action<string[]> NewInstanceDetected {
+			add {
+				string[]? replay = null;
+				lock (gate)
+				{
+					newInstanceHandler += value;
+					if (bufferedArgs is { } pending)
+					{
+						bufferedArgs = null;
+						replay = pending;
+					}
+				}
+				// Invoke the replay outside the lock: the handler must never run arbitrary code
+				// (or re-enter SingleInstance) while gate is held.
+				if (replay != null)
+					value(replay);
+			}
+			remove {
+				lock (gate)
+				{
+					newInstanceHandler -= value;
+				}
+			}
+		}
 
-	/// <summary>
-	/// Returns true if this application is not already started.
-	/// Another instance is contacted via named pipe.
-	/// </summary>
-	/// <param name="noAutoExit">If true, application will exit after informing another instance.</param>
-	/// <exception cref="InvalidOperationException">API call failed.</exception>
-	public static bool Attach(bool noAutoExit)
-	{
-		lock (_syncRoot)
+		/// <summary>
+		/// The mutex/pipe name shared by every launch of the current user, independent of the
+		/// executable's location. Contains no path separators so it is a valid mutex/pipe identifier.
+		/// </summary>
+		public static string GetInstanceName()
 		{
-			var isFirstInstance = false;
+			var material = Encoding.UTF8.GetBytes(Environment.MachineName + "\n" + Environment.UserName);
+			return "ILSpy." + Convert.ToHexString(SHA256.HashData(material));
+		}
+
+		/// <summary>
+		/// The identity a launcher can target with <c>--instanceid</c>: the full path of the running
+		/// executable. Uses <see cref="Environment.ProcessPath"/> (valid even in a single-file
+		/// bundle, unlike <c>Assembly.Location</c>); empty when it cannot be determined.
+		/// </summary>
+		public static string SelfExecutableId()
+		{
+			var path = Environment.ProcessPath;
+			if (string.IsNullOrWhiteSpace(path))
+				return string.Empty;
 			try
 			{
-				_mtxFirstInstance = new Mutex(initiallyOwned: true, @"Global\" + MutexName, out isFirstInstance);
-				if (isFirstInstance == false)
-				{ //we need to contact previous instance
-					var contentObject = new SingleInstanceArguments() {
-						CommandLine = Environment.CommandLine,
-						CommandLineArgs = GetILSpyCommandLineArgs(),
-					};
-					var contentBytes = JsonSerializer.SerializeToUtf8Bytes(contentObject);
-					using var clientPipe = new NamedPipeClientStream(".",
-																	 MutexName,
-																	 PipeDirection.Out,
-																	 PipeOptions.CurrentUserOnly | PipeOptions.WriteThrough);
-					clientPipe.Connect();
-					clientPipe.Write(contentBytes, 0, contentBytes.Length);
+				return Path.GetFullPath(path);
+			}
+			catch (Exception)
+			{
+				return path;
+			}
+		}
+
+		/// <summary>
+		/// Decides whether a launch requesting <paramref name="requestedId"/> may reuse a running
+		/// instance whose own launch id is <paramref name="runningLaunchId"/> and whose executable
+		/// identity is <paramref name="runningExecutableId"/>. Reuse when nothing specific was
+		/// requested, or the request matches either the running instance's launch id or the
+		/// executable it actually is.
+		/// </summary>
+		public static bool ShouldReuse(string? requestedId, string? runningLaunchId, string runningExecutableId)
+		{
+			if (string.IsNullOrEmpty(requestedId))
+				return true;
+			return IdentityEquals(requestedId, runningLaunchId)
+				|| IdentityEquals(requestedId, runningExecutableId);
+		}
+
+		static bool IdentityEquals(string? a, string? b)
+		{
+			if (a is null || b is null)
+				return false;
+			// --instanceid is typically an executable path, so compare the way the platform compares
+			// paths: case-insensitive on Windows, case-sensitive elsewhere.
+			var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+			return string.Equals(a, b, comparison);
+		}
+
+		/// <summary>
+		/// Resolves a forwarded command-line token to an absolute path when it names an existing file
+		/// relative to the sending process's working directory; leaves option flags, non-file values,
+		/// and already-rooted paths untouched. The running instance has a different working directory,
+		/// so relative assembly paths must be qualified by the sender before forwarding.
+		/// </summary>
+		public static string FullyQualifyPath(string arg) => FullyQualifyPath(arg, Environment.CurrentDirectory);
+
+		internal static string FullyQualifyPath(string arg, string baseDirectory)
+		{
+			if (string.IsNullOrEmpty(arg) || Path.IsPathRooted(arg))
+				return arg;
+			try
+			{
+				var full = Path.GetFullPath(arg, baseDirectory);
+				if (File.Exists(full))
+					return full;
+			}
+			catch (Exception)
+			{
+				// Not a usable path token (e.g. an option value with characters illegal in a path);
+				// forward it verbatim so the receiver re-parses it exactly as typed.
+			}
+			return arg;
+		}
+
+		/// <summary>
+		/// Coordinates single-instance startup. Returns <c>true</c> when this process should start its
+		/// window (it is the first instance, single-instance is disabled, or the running instance was
+		/// dead or declined the hand-off); returns <c>false</c> when the arguments were forwarded to a
+		/// running instance and this process should exit.
+		/// </summary>
+		public static bool TrySignalFirstInstance(CommandLineArguments args)
+		{
+			bool forceSingleInstance = (args.SingleInstance ?? true) && !ReadAllowMultipleInstances();
+			if (!forceSingleInstance)
+				return true;
+
+			try
+			{
+				string name = GetInstanceName();
+				var mutex = new Mutex(initiallyOwned: false, @"Global\" + name);
+
+				// Acquiring the mutex -- not merely observing that it exists -- is what makes this
+				// process the owner. A crashed previous owner leaves it abandoned, so the next waiter
+				// acquires it (AbandonedMutexException) and legitimately takes over. This is why
+				// hand-off failure below never falls through to BecomeServer: only true ownership,
+				// established here, starts a pipe server, so a startup race or a transient pipe
+				// failure can never leave two processes both serving.
+				bool owned;
+				try
+				{
+					owned = mutex.WaitOne(0);
 				}
-				else
-				{  //there is no application already running.
-					_thread = new Thread(Run) {
-						Name = typeof(SingleInstance).FullName,
-						IsBackground = true
-					};
-					_thread.Start();
+				catch (AbandonedMutexException)
+				{
+					owned = true;
 				}
+
+				if (owned)
+				{
+					BecomeServer(mutex, name, args.InstanceId);
+					return true;
+				}
+
+				// A live instance owns the mutex: hand off to it. If it accepts, exit; if it declines
+				// (build-affinity mismatch) or its listener is transiently unreachable, start a normal
+				// window -- without ever becoming a second server we do not own.
+				bool accepted = ForwardToRunningInstance(name, args.InstanceId);
+				mutex.Dispose();
+				return !accepted;
 			}
 			catch (Exception ex)
 			{
-				Trace.TraceWarning(ex.Message + "  {Medo.Application.SingleInstance}");
-			}
-
-			if ((isFirstInstance == false) && (noAutoExit == false))
-			{
-				Trace.TraceInformation("Exit due to another instance running." + " [" + nameof(SingleInstance) + "]");
-				if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-				{
-					Environment.Exit(unchecked((int)0x80004004));  // E_ABORT(0x80004004)
-				}
-				else
-				{
-					Environment.Exit(114);  // EALREADY(114)
-				}
-			}
-
-			return isFirstInstance;
-		}
-	}
-
-	private static string? _mutexName;
-	private static string MutexName {
-		get {
-			lock (_syncRoot)
-			{
-				if (_mutexName == null)
-				{
-					var assembly = Assembly.GetEntryAssembly();
-
-					var sbMutextName = new StringBuilder();
-					var assName = assembly?.GetName().Name;
-					if (assName != null)
-					{
-						sbMutextName.Append(assName, 0, Math.Min(assName.Length, 31));
-						sbMutextName.Append('.');
-					}
-
-					var sbHash = new StringBuilder();
-					sbHash.AppendLine(Environment.MachineName);
-					sbHash.AppendLine(Environment.UserName);
-					if (assembly != null)
-					{
-						sbHash.AppendLine(assembly.FullName);
-						sbHash.AppendLine(assembly.Location);
-					}
-					else
-					{
-						var args = Environment.GetCommandLineArgs();
-						if (args.Length > 0)
-						{ sbHash.AppendLine(args[0]); }
-					}
-					foreach (var b in SHA256.HashData(Encoding.UTF8.GetBytes(sbHash.ToString())))
-					{
-						if (sbMutextName.Length == 63)
-						{ sbMutextName.AppendFormat("{0:X1}", b >> 4); }  // just take the first nubble
-						if (sbMutextName.Length == 64)
-						{ break; }
-						sbMutextName.AppendFormat("{0:X2}", b);
-					}
-					_mutexName = sbMutextName.ToString();
-				}
-				return _mutexName;
+				Trace.TraceWarning("SingleInstance: falling back to a normal launch. " + ex);
+				return true;
 			}
 		}
-	}
 
-	/// <summary>
-	/// Gets whether there is another instance running.
-	/// It temporary creates mutex.
-	/// </summary>
-	public static bool IsOtherInstanceRunning {
-		get {
-			lock (_syncRoot)
+		static void BecomeServer(Mutex mutex, string name, string? launchId)
+		{
+			heldMutex = mutex;
+			ownLaunchId = launchId;
+			var thread = new Thread(() => ServerLoop(name)) {
+				Name = "ILSpy single-instance listener",
+				IsBackground = true
+			};
+			thread.Start();
+		}
+
+		static void ServerLoop(string name)
+		{
+			while (true)
 			{
-				if (_mtxFirstInstance != null)
+				try
 				{
-					return false; //no other instance is running
+					using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1,
+						PipeTransmissionMode.Byte, PipeOptions.CurrentUserOnly);
+					server.WaitForConnection();
+					HandleConnection(server);
 				}
-				else
+				catch (Exception ex)
 				{
-					var tempInstance = new Mutex(true, MutexName, out var isFirstInstance);
-					tempInstance.Close();
-					return (isFirstInstance == false);
+					Trace.TraceWarning("SingleInstance listener: " + ex);
+					Thread.Sleep(100);
 				}
 			}
 		}
-	}
 
-	/// <summary>
-	/// Occurs in first instance when new instance is detected.
-	/// </summary>
-	public static event EventHandler<NewInstanceEventArgs>? NewInstanceDetected;
+		static void HandleConnection(NamedPipeServerStream server)
+		{
+			var request = JsonSerializer.Deserialize<ForwardRequest>(ReadMessage(server));
+			bool accepted = request != null
+				&& ShouldReuse(request.RequestedId, ownLaunchId, SelfExecutableId());
+			WriteMessage(server, JsonSerializer.SerializeToUtf8Bytes(new ForwardResponse(accepted)));
+			server.Flush();
+			if (accepted && request != null)
+				RaiseNewInstance(request.Args);
+		}
 
+		static void RaiseNewInstance(string[] args)
+		{
+			Action<string[]>? handler;
+			lock (gate)
+			{
+				handler = newInstanceHandler;
+				if (handler is null)
+				{
+					bufferedArgs = args;
+					return;
+				}
+			}
+			handler(args);
+		}
 
-	/// <summary>
-	/// Thread function.
-	/// </summary>
-	private static void Run()
-	{
-		using var serverPipe = new NamedPipeServerStream(MutexName,
-														 PipeDirection.In,
-														 maxNumberOfServerInstances: 1,
-														 PipeTransmissionMode.Byte,
-														 PipeOptions.CurrentUserOnly | PipeOptions.WriteThrough);
-		while (_mtxFirstInstance != null)
+		// Returns true if the running instance accepted the forwarded arguments (so this process
+		// should exit); false if it declined or could not be reached (so this process starts a
+		// normal window).
+		static bool ForwardToRunningInstance(string name, string? requestedId)
 		{
 			try
 			{
-				if (!serverPipe.IsConnected)
-				{ serverPipe.WaitForConnection(); }
-				var contentObject = JsonSerializer.Deserialize<SingleInstanceArguments>(serverPipe);
-				serverPipe.Disconnect();
-				if (contentObject != null)
-				{
-					NewInstanceDetected?.Invoke(null,
-												new NewInstanceEventArgs(
-													contentObject.CommandLine,
-													contentObject.CommandLineArgs));
-				}
+				using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.CurrentUserOnly);
+				client.Connect(2000);
+				var forwarded = Environment.GetCommandLineArgs().Skip(1).Select(FullyQualifyPath).ToArray();
+				WriteMessage(client, JsonSerializer.SerializeToUtf8Bytes(new ForwardRequest(requestedId, forwarded)));
+				client.Flush();
+				var response = JsonSerializer.Deserialize<ForwardResponse>(ReadMessage(client));
+				return response?.Accepted == true;
 			}
 			catch (Exception ex)
 			{
-				Trace.TraceWarning(ex.Message + " [" + nameof(SingleInstance) + "]");
-				Thread.Sleep(100);
+				Trace.TraceWarning("SingleInstance hand-off failed: " + ex);
+				return false;
 			}
 		}
-	}
 
-
-	[Serializable]
-	private sealed record SingleInstanceArguments
-	{  // just a storage
-		[JsonInclude]
-		public required string CommandLine;
-
-		[JsonInclude]
-		public required string[] CommandLineArgs;
-	}
-
-}
-
-
-/// <summary>
-/// Arguments for newly detected application instance.
-/// </summary>
-public sealed class NewInstanceEventArgs : EventArgs
-{
-	/// <summary>
-	/// Creates new instance.
-	/// </summary>
-	/// <param name="commandLine">Command line.</param>
-	/// <param name="commandLineArgs">String array containing the command line arguments in the same format as Environment.GetCommandLineArgs.</param>
-	internal NewInstanceEventArgs(string commandLine, string[] commandLineArgs)
-	{
-		CommandLine = commandLine;
-		_commandLineArgs = new string[commandLineArgs.Length];
-		Array.Copy(commandLineArgs, _commandLineArgs, _commandLineArgs.Length);
-	}
-
-	/// <summary>
-	/// Gets the command line.
-	/// </summary>
-	public string CommandLine { get; }
-
-	private readonly string[] _commandLineArgs;
-	/// <summary>
-	/// Returns a string array containing the command line arguments.
-	/// </summary>
-	public string[] GetCommandLineArgs()
-	{
-		var argCopy = new string[_commandLineArgs.Length];
-		Array.Copy(_commandLineArgs, argCopy, argCopy.Length);
-		return argCopy;
-	}
-
-	/// <summary>
-	/// Gets a string array containing the command line arguments without the name of exectuable.
-	/// </summary>
-	public string[] Args {
-		get {
-			var argCopy = new string[_commandLineArgs.Length - 1];
-			Array.Copy(_commandLineArgs, 1, argCopy, 0, argCopy.Length);
-			return argCopy;
+		static bool ReadAllowMultipleInstances()
+		{
+			try
+			{
+				var settings = new MiscSettings();
+				settings.LoadFromXml(ILSpySettings.Load()["MiscSettings"]);
+				return settings.AllowMultipleInstances;
+			}
+			catch (Exception)
+			{
+				// A missing or unreadable settings file must not force multiple instances.
+				return false;
+			}
 		}
-	}
 
+		static void WriteMessage(Stream stream, byte[] payload)
+		{
+			Span<byte> lengthPrefix = stackalloc byte[sizeof(int)];
+			BinaryPrimitives.WriteInt32LittleEndian(lengthPrefix, payload.Length);
+			stream.Write(lengthPrefix);
+			stream.Write(payload);
+		}
+
+		static byte[] ReadMessage(Stream stream)
+		{
+			Span<byte> lengthPrefix = stackalloc byte[sizeof(int)];
+			stream.ReadExactly(lengthPrefix);
+			int length = BinaryPrimitives.ReadInt32LittleEndian(lengthPrefix);
+			if (length < 0 || length > 16 * 1024 * 1024)
+				throw new InvalidDataException("SingleInstance: message length out of range.");
+			var payload = new byte[length];
+			stream.ReadExactly(payload);
+			return payload;
+		}
+
+		sealed record ForwardRequest(string? RequestedId, string[] Args);
+
+		sealed record ForwardResponse(bool Accepted);
+	}
 }

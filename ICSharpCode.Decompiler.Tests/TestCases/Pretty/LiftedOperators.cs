@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -934,6 +934,26 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			//TODO: unnecessary casts
 			//return (a + 1) ?? (b + 2) ?? (c + 3) ?? (d + 4);
 			return 0L;
+		}
+	}
+
+	internal class T04_LiftedCompoundAssignAndBoxing
+	{
+		public static int? CompoundAssign(int? x, int? y)
+		{
+			x += y;
+			x <<= 2;
+			return x;
+		}
+
+		public static object Box(int? x)
+		{
+			return x;
+		}
+
+		public static int? Unbox(object o)
+		{
+			return (int?)o;
 		}
 	}
 

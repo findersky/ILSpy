@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 Daniel Grunwald
+// Copyright (c) 2019 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -65,9 +65,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					// stloc V(...)
 					// compound.assign op_Increment(V)
 					call.ReplaceWith(call.Arguments[0]);
-					block.Instructions.Insert(store.ChildIndex + 1,
-						new UserDefinedCompoundAssign(call.Method, CompoundEvalMode.EvaluatesToNewValue,
-						new LdLoca(store.Variable), CompoundTargetKind.Address, new LdcI4(1)).WithILRange(call));
+					var compoundAssign = new UserDefinedCompoundAssign(call.Method, CompoundEvalMode.EvaluatesToNewValue,
+						new LdLoca(store.Variable), CompoundTargetKind.Address, new LdcI4(1)).WithILRange(call);
+					block.Instructions.Insert(store.ChildIndex + 1, compoundAssign);
+					context.EndStep(compoundAssign);
 				}
 				else
 				{
@@ -80,8 +81,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					}
 					newVariable.Type = call.GetParameter(0).Type;
 					Debug.Assert(call.Arguments[0].MatchLdLoc(newVariable));
-					call.ReplaceWith(new UserDefinedCompoundAssign(call.Method, CompoundEvalMode.EvaluatesToNewValue,
-						new LdLoca(newVariable), CompoundTargetKind.Address, new LdcI4(1)).WithILRange(call));
+					var compoundAssign = new UserDefinedCompoundAssign(call.Method, CompoundEvalMode.EvaluatesToNewValue,
+						new LdLoca(newVariable), CompoundTargetKind.Address, new LdcI4(1)).WithILRange(call);
+					call.ReplaceWith(compoundAssign);
+					context.EndStep(compoundAssign);
 				}
 			}
 		}

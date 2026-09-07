@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,117 +17,130 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Reflection.Metadata;
-using System.Windows.Media;
 
 using ICSharpCode.Decompiler;
+using ICSharpCode.Decompiler.Output;
+using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.ILSpyX;
+
+using ICSharpCode.ILSpy;
+using ICSharpCode.ILSpy.Languages;
 
 namespace ICSharpCode.ILSpy.TreeNodes
 {
-	using ICSharpCode.Decompiler.TypeSystem;
-	using ICSharpCode.ILSpyX;
-
-	/// <summary>
-	/// Tree Node representing a field, method, property, or event.
-	/// </summary>
 	public sealed class MethodTreeNode : ILSpyTreeNode, IMemberTreeNode
 	{
 		public IMethod MethodDefinition { get; }
 
+		public IEntity? Member => MethodDefinition;
+
 		public MethodTreeNode(IMethod method)
 		{
-			this.MethodDefinition = method ?? throw new ArgumentNullException(nameof(method));
+			MethodDefinition = method ?? throw new ArgumentNullException(nameof(method));
 		}
 
-		public override object Text => GetText(GetMethodDefinition(), Language) + GetSuffixString(MethodDefinition);
+		public override object Text => Language.EntityToString(MethodDefinition, ConversionFlags.None) + GetSuffixString(MethodDefinition);
 
-		private IMethod GetMethodDefinition()
+		public override object NavigationText => Language.EntityToString(MethodDefinition, ConversionFlags.ShowDeclaringType);
+
+		public override object Icon => GetIcon(MethodDefinition);
+
+		// Dispatch order: operator, extension method, constructor,
+		// P/Invoke (DllImport without a body), virtual, plain method. Tested against
+		// every kind in the analyzers fixtures.
+		public static Avalonia.Media.IImage GetIcon(IMethod method)
 		{
-			return ((MetadataModule)MethodDefinition.ParentModule?.MetadataFile
-				?.GetTypeSystemWithCurrentOptionsOrNull(SettingsService, AssemblyTreeModel.CurrentLanguageVersion)
-				?.MainModule)?.GetDefinition((MethodDefinitionHandle)MethodDefinition.MetadataToken) ?? MethodDefinition;
-		}
+			bool isExtensionMethod = method.IsExtensionMethod
+				|| (method.ResolveExtensionInfo()?.InfoOfExtensionMember((IMethod)method.MemberDefinition).HasValue == true);
 
-		public static object GetText(IMethod method, Language language)
-		{
-			return language.MethodToString(method, false, false, false);
-		}
-
-		public override object Icon => GetIcon(GetMethodDefinition());
-
-		public static ImageSource GetIcon(IMethod method)
-		{
 			if (method.IsOperator)
-				return Images.GetIcon(MemberIcon.Operator, GetOverlayIcon(method.Accessibility), false);
+				return Images.GetIcon(Images.Operator,
+					Images.GetOverlay(method.Accessibility), false, isExtensionMethod);
 
-			if (method.IsExtensionMethod)
-				return Images.GetIcon(MemberIcon.ExtensionMethod, GetOverlayIcon(method.Accessibility), false);
+			if (isExtensionMethod)
+				return Images.GetIcon(Images.Method,
+					Images.GetOverlay(method.Accessibility), false, true);
 
 			if (method.IsConstructor)
-				return Images.GetIcon(MemberIcon.Constructor, GetOverlayIcon(method.Accessibility), method.IsStatic);
+				return Images.GetIcon(Images.Constructor,
+					Images.GetOverlay(method.Accessibility), method.IsStatic);
 
+			// P/Invoke: extern method tagged with [DllImport]. !HasBody filters out the
+			// managed wrappers that also carry the attribute via attribute-forwarding.
 			if (!method.HasBody && method.HasAttribute(KnownAttribute.DllImport))
-				return Images.GetIcon(MemberIcon.PInvokeMethod, GetOverlayIcon(method.Accessibility), true);
+				return Images.GetIcon(Images.PInvokeMethod,
+					Images.GetOverlay(method.Accessibility), true);
 
-			return Images.GetIcon(method.IsVirtual ? MemberIcon.VirtualMethod : MemberIcon.Method,
-				GetOverlayIcon(method.Accessibility), method.IsStatic);
+			return Images.GetIcon(
+				method.IsVirtual ? Images.VirtualMethod : Images.Method,
+				Images.GetOverlay(method.Accessibility), method.IsStatic);
 		}
 
-		internal static AccessOverlayIcon GetOverlayIcon(Accessibility accessibility)
-		{
-			switch (accessibility)
-			{
-				case Accessibility.Public:
-					return AccessOverlayIcon.Public;
-				case Accessibility.Internal:
-					return AccessOverlayIcon.Internal;
-				case Accessibility.ProtectedAndInternal:
-					return AccessOverlayIcon.PrivateProtected;
-				case Accessibility.Protected:
-					return AccessOverlayIcon.Protected;
-				case Accessibility.ProtectedOrInternal:
-					return AccessOverlayIcon.ProtectedInternal;
-				case Accessibility.Private:
-					return AccessOverlayIcon.Private;
-				default:
-					return AccessOverlayIcon.CompilerControlled;
-			}
-		}
+		public override bool ShowExpander => false;
 
 		public override void Decompile(Language language, ITextOutput output, DecompilationOptions options)
 		{
-			language.DecompileMethod(MethodDefinition, output, options);
+			// When the user clicks a method that lives under an ExtensionTreeNode (the C# 14
+			// extension-block container), emit the whole extension declaration via the
+			// dedicated DecompileExtension path so the output reads as source-faithful
+			// `extension(T) { ... }` syntax, not the lowered static method we'd get from
+			// DecompileMethod. Falls through to the regular method path for everything else.
+			if (Parent is ExtensionTreeNode && language is CSharpLanguage cs)
+				cs.DecompileExtension(MethodDefinition, output, options);
+			else
+				language.DecompileMethod(MethodDefinition, output, options);
 		}
+
+		public override bool IsPublicAPI => MethodDefinition.Accessibility switch {
+			Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal => true,
+			_ => false,
+		};
 
 		public override FilterResult Filter(LanguageSettings settings)
 		{
 			if (settings.ShowApiLevel == ApiVisibility.PublicOnly && !IsPublicAPI)
 				return FilterResult.Hidden;
-			if (settings.SearchTermMatches(MethodDefinition.Name) && (settings.ShowApiLevel == ApiVisibility.All || LanguageService.Language.ShowMember(MethodDefinition)))
+			// Hide implementation methods of C# 14 extension blocks when ExtensionMembers is on
+			// — those land as ExtensionTreeNode children of the static container instead, so
+			// surfacing them on the outer class would be duplicate UI. Pair to the
+			// `extension-methods-tree` work in ea56a80cd.
+			if (LanguageService.CurrentLanguage is Languages.CSharpLanguage
+				&& MethodDefinition.DeclaringTypeDefinition?.ExtensionInfo is { } extInfo)
+			{
+				var decompilerSettings = TryGetDecompilerSettings();
+				if (decompilerSettings?.ExtensionMembers == true
+					&& extInfo.InfoOfImplementationMember((IMethod)MethodDefinition.MemberDefinition).HasValue)
+				{
+					return FilterResult.Hidden;
+				}
+			}
+			if (settings.SearchTermMatches(MethodDefinition.Name) && (settings.ShowApiLevel == ApiVisibility.All || LanguageService.CurrentLanguage.ShowMember(MethodDefinition)))
 				return FilterResult.Match;
 			else
 				return FilterResult.Hidden;
 		}
 
-		public override bool IsPublicAPI {
-			get {
-				switch (GetMethodDefinition().Accessibility)
-				{
-					case Accessibility.Public:
-					case Accessibility.Protected:
-					case Accessibility.ProtectedOrInternal:
-						return true;
-					default:
-						return false;
-				}
+		static ICSharpCode.Decompiler.DecompilerSettings? TryGetDecompilerSettings()
+		{
+			try
+			{
+				return AppEnv.AppComposition.Current.GetExport<SettingsService>().DecompilerSettings.Clone();
+			}
+			catch
+			{
+				return null;
 			}
 		}
 
-		IEntity IMemberTreeNode.Member => MethodDefinition;
-
+		// Stable identity for SessionSettings.ActiveTreeViewPath; format must round-trip
+		// across launches so the saved path can be restored.
 		public override string ToString()
-		{
-			return LanguageService.ILLanguage.MethodToString(MethodDefinition, false, false, false);
-		}
+			=> "Method " + new ICSharpCode.Decompiler.IL.ILAmbience {
+				ConversionFlags = ConversionFlags.ShowTypeParameterList
+					| ConversionFlags.PlaceReturnTypeAfterParameterList
+					| ConversionFlags.ShowReturnType
+					| ConversionFlags.ShowParameterList
+					| ConversionFlags.ShowParameterModifiers,
+			}.ConvertSymbol(MethodDefinition);
 	}
 }

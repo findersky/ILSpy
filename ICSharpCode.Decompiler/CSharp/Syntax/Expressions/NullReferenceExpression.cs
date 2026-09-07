@@ -1,4 +1,4 @@
-﻿// 
+// 
 // NullReferenceExpression.cs
 //
 // Author:
@@ -24,30 +24,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// null
+	/// <c>null_reference_expression ::= 'null'</c> (C# grammar §6.4.5.1)
 	/// </summary>
-	public class NullReferenceExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class NullReferenceExpression : Expression
 	{
-		TextLocation location;
-		public override TextLocation StartLocation {
-			get {
-				return location;
-			}
-		}
-
-		internal void SetStartLocation(TextLocation value)
-		{
-			ThrowIfFrozen();
-			this.location = value;
-		}
-
+		// StartLocation comes from the base (stored at print time); only the end needs deriving.
 		public override TextLocation EndLocation {
 			get {
-				return new TextLocation(location.Line, location.Column + "null".Length);
+				return new TextLocation(StartLocation.Line, StartLocation.Column + "null".Length);
 			}
 		}
 
@@ -57,28 +47,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public NullReferenceExpression(TextLocation location)
 		{
-			this.location = location;
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitNullReferenceExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitNullReferenceExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitNullReferenceExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			NullReferenceExpression o = other as NullReferenceExpression;
-			return o != null;
+			StorePrintStart(location);
 		}
 	}
 }

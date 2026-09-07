@@ -1,4 +1,4 @@
-﻿#pragma warning disable format
+#pragma warning disable format
 // Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -818,15 +818,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Test<Func<int, string>>((int a) => a.ToString(), (int a) => a.ToString());
 			Test<Func<string, char[]>>((string a) => a.ToArray(), (string a) => a.ToArray());
 			Test<Func<bool>>(() => 'a'.CompareTo('b') < 0, () => 'a'.CompareTo('b') < 0);
-			Test<Action<object, bool>>(delegate (object lockObj, bool lockTaken) {
+			Test<Action<object, bool>>((object lockObj, bool lockTaken) => {
 				Monitor.Enter(lockObj, ref lockTaken);
 			}, (object lockObj, bool lockTaken) => Monitor.Enter(lockObj, ref lockTaken));
 			Test<Func<string, int, bool>>((string str, int num) => int.TryParse(str, out num), (string str, int num) => int.TryParse(str, out num));
 			Test<Func<string, SimpleType, bool>>((string str, SimpleType t) => int.TryParse(str, out t.Field), (string str, SimpleType t) => int.TryParse(str, out t.Field));
-			Test<Action<object>>(delegate (object o) {
+			Test<Action<object>>((object o) => {
 				TestCall(o);
 			}, (object o) => TestCall(o));
-			Test<Action<object>>(delegate (object o) {
+			Test<Action<object>>((object o) => {
 				TestCall(ref o);
 			}, (object o) => TestCall(ref o));
 		}
@@ -944,6 +944,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			ToCode(null, (int? a) => a & (int?)2);
 			ToCode(null, (int? a) => a & a);
 		}
+
+		public void CheckedArithmetic()
+		{
+			checked
+			{
+				ToCode(null, (int a, int b) => a + b);
+				ToCode(null, (int a, int b) => a - b);
+				ToCode(null, (int a, int b) => a * b);
+				ToCode(null, (int a) => (short)a);
+			}
+		}
 	}
 
 	internal static class Extensions
@@ -955,7 +966,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static DateTime ParseDateTime(this object str)
 		{
+#if CS71
+			return default;
+#else
 			return default(DateTime);
+#endif
 		}
 	}
 }

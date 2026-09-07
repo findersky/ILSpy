@@ -1,4 +1,4 @@
-﻿// 
+// 
 // EmptyStatement.cs
 //  
 // Author:
@@ -24,18 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// ;
+	/// <c>empty_statement ::= ';'</c> (C# grammar §13.4)
 	/// </summary>
-	public class EmptyStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class EmptyStatement : Statement
 	{
-		public TextLocation Location {
-			get;
-			set;
-		}
+		public TextLocation Location { get; set; }
 
 		public override TextLocation StartLocation {
 			get {
@@ -47,27 +46,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			get {
 				return new TextLocation(Location.Line, Location.Column + 1);
 			}
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitEmptyStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitEmptyStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitEmptyStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			EmptyStatement o = other as EmptyStatement;
-			return o != null;
 		}
 	}
 }

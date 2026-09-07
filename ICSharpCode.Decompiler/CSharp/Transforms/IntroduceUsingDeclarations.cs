@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,14 +16,19 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
+#if STEP
+using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#endif
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -42,12 +47,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var requiredImports = new FindRequiredImports(context);
 			rootNode.AcceptVisitor(requiredImports);
 
-			var usingScope = new UsingScope();
-			rootNode.AddAnnotation(usingScope);
+			List<INamespace> resolvedNamespaces = new List<INamespace>();
 
 			if (context.Settings.UsingDeclarations)
 			{
-				var insertionPoint = rootNode.Children.LastOrDefault(n => n is PreProcessorDirective p && p.Type == PreProcessorDirectiveType.Define);
+				// #define directives are leading trivia on the SyntaxTree, not children, so using
+				// declarations go at the very start of the member list.
+				AstNode? insertionPoint = null;
 
 				// Now add using declarations for those namespaces:
 				IOrderedEnumerable<string> sortedImports = requiredImports.ImportedNamespaces
@@ -64,11 +70,24 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						nsType = new MemberType { Target = nsType, MemberName = parts[i] };
 					}
-					if (nsType.ToTypeReference(NameLookupMode.TypeInUsingDeclaration) is TypeOrNamespaceReference reference)
-						usingScope.Usings.Add(reference);
-					rootNode.InsertChildAfter(insertionPoint, new UsingDeclaration { Import = nsType }, SyntaxTree.MemberRole);
+					var resolvedNamespace = context.TypeSystem.GetNamespaceByFullName(ns);
+					if (resolvedNamespace != null)
+					{
+						resolvedNamespaces.Add(resolvedNamespace);
+					}
+					context.Step("Add using declaration", rootNode);
+					var node = new UsingDeclaration { Import = nsType };
+					rootNode.InsertChildAfter(insertionPoint, node, Slots.Member);
+					context.EndStep(node);
 				}
 			}
+
+			var usingScope = new UsingScope(
+				new CSharpTypeResolveContext(context.TypeSystem.MainModule),
+				context.TypeSystem.RootNamespace,
+				resolvedNamespaces.ToImmutableArray()
+			);
+			rootNode.AddAnnotation(usingScope);
 
 			// verify that the SimpleTypes refer to the correct type (no ambiguities)
 			rootNode.AcceptVisitor(new FullyQualifyAmbiguousTypeNamesVisitor(context, usingScope));
@@ -107,7 +126,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				base.VisitSimpleType(simpleType); // also visit type arguments
 			}
 
-			private void AddImportedNamespace(IType type)
+			private void AddImportedNamespace(IType? type)
 			{
 				if (type != null && !IsParentOfCurrentNamespace(type.Namespace))
 				{
@@ -173,41 +192,39 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		sealed class FullyQualifyAmbiguousTypeNamesVisitor : DepthFirstAstVisitor
 		{
-			readonly Stack<CSharpTypeResolveContext> context;
 			readonly bool ignoreUsingScope;
 			readonly DecompilerSettings settings;
+			readonly TransformContext context;
 
+			CSharpResolver resolver;
 			TypeSystemAstBuilder astBuilder;
+
+			bool inPrimaryConstructor;
 
 			public FullyQualifyAmbiguousTypeNamesVisitor(TransformContext context, UsingScope usingScope)
 			{
+				this.context = context;
 				this.ignoreUsingScope = !context.Settings.UsingDeclarations;
 				this.settings = context.Settings;
+				this.resolver = new CSharpResolver(new CSharpTypeResolveContext(context.TypeSystem.MainModule));
 
-				CSharpTypeResolveContext currentContext;
-				if (ignoreUsingScope)
+				if (!ignoreUsingScope)
 				{
-					currentContext = new CSharpTypeResolveContext(context.TypeSystem.MainModule);
-				}
-				else
-				{
-					this.context = new Stack<CSharpTypeResolveContext>();
 					if (!string.IsNullOrEmpty(context.CurrentTypeDefinition?.Namespace))
 					{
 						foreach (string ns in context.CurrentTypeDefinition.Namespace.Split('.'))
 						{
-							usingScope = new UsingScope(usingScope, ns);
+							usingScope = usingScope.WithNestedNamespace(ns);
 						}
 					}
-					currentContext = new CSharpTypeResolveContext(context.TypeSystem.MainModule, usingScope.Resolve(context.TypeSystem), context.CurrentTypeDefinition);
-					this.context.Push(currentContext);
+					this.resolver = this.resolver.WithCurrentUsingScope(usingScope)
+						.WithCurrentTypeDefinition(context.CurrentTypeDefinition);
 				}
-				this.astBuilder = CreateAstBuilder(currentContext);
+				this.astBuilder = CreateAstBuilder(resolver);
 			}
 
-			TypeSystemAstBuilder CreateAstBuilder(CSharpTypeResolveContext context, IL.ILFunction function = null)
+			TypeSystemAstBuilder CreateAstBuilder(CSharpResolver resolver, IL.ILFunction? function = null)
 			{
-				CSharpResolver resolver = new CSharpResolver(context);
 				if (function != null)
 				{
 					var variables = new Dictionary<string, IVariable>();
@@ -234,23 +251,23 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					base.VisitNamespaceDeclaration(namespaceDeclaration);
 					return;
 				}
-				var previousContext = context.Peek();
-				var usingScope = previousContext.CurrentUsingScope.UnresolvedUsingScope;
+				var previousResolver = resolver;
+				var previousAstBuilder = astBuilder;
+				var usingScope = resolver.CurrentUsingScope;
 				foreach (string ident in namespaceDeclaration.Identifiers)
 				{
-					usingScope = new UsingScope(usingScope, ident);
+					usingScope = usingScope.WithNestedNamespace(ident);
 				}
-				var currentContext = new CSharpTypeResolveContext(previousContext.CurrentModule, usingScope.Resolve(previousContext.Compilation));
-				context.Push(currentContext);
+				resolver = resolver.WithCurrentUsingScope(usingScope);
 				try
 				{
-					astBuilder = CreateAstBuilder(currentContext);
+					astBuilder = CreateAstBuilder(resolver);
 					base.VisitNamespaceDeclaration(namespaceDeclaration);
 				}
 				finally
 				{
-					astBuilder = CreateAstBuilder(previousContext);
-					context.Pop();
+					astBuilder = previousAstBuilder;
+					resolver = previousResolver;
 				}
 			}
 
@@ -261,19 +278,47 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					base.VisitTypeDeclaration(typeDeclaration);
 					return;
 				}
-				var previousContext = context.Peek();
-				var currentContext = previousContext.WithCurrentTypeDefinition(typeDeclaration.GetSymbol() as ITypeDefinition);
-				context.Push(currentContext);
+
+				if (typeDeclaration.HasPrimaryConstructor)
+				{
+					inPrimaryConstructor = true;
+
+					try
+					{
+						typeDeclaration.PrimaryConstructorParameters.AcceptVisitor(this);
+					}
+					finally
+					{
+						inPrimaryConstructor = false;
+					}
+				}
+
+				var previousResolver = resolver;
+				var previousAstBuilder = astBuilder;
+
+				resolver = resolver.WithCurrentTypeDefinition(typeDeclaration.GetSymbol() as ITypeDefinition);
+
 				try
 				{
-					astBuilder = CreateAstBuilder(currentContext);
+					astBuilder = CreateAstBuilder(resolver);
 					base.VisitTypeDeclaration(typeDeclaration);
 				}
 				finally
 				{
-					astBuilder = CreateAstBuilder(previousContext);
-					context.Pop();
+					astBuilder = previousAstBuilder;
+					resolver = previousResolver;
 				}
+			}
+
+			public override void VisitParameterDeclaration(ParameterDeclaration parameterDeclaration)
+			{
+				// Parameters of primary constructors are visited separately from the rest of the
+				// type declaration since their types are at the same scope as the type declaration
+				// and so need to use the outer resolver. This check ensures that the visitor only
+				// runs once per parameter since their AstNodes will get revisited by the call to
+				// `base.VisitTypeDeclaration(typeDeclaration)` in `VisitTypeDeclaration` above.
+				if (inPrimaryConstructor || parameterDeclaration.Parent is not TypeDeclaration)
+					base.VisitParameterDeclaration(parameterDeclaration);
 			}
 
 			public override void VisitMethodDeclaration(MethodDeclaration methodDeclaration)
@@ -310,27 +355,27 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				if (entityDeclaration.GetSymbol() is IMethod method)
 				{
-					var previousContext = context.Peek();
-					CSharpTypeResolveContext currentContext;
+					var previousResolver = resolver;
+					var previousAstBuilder = astBuilder;
 					if (CSharpDecompiler.IsWindowsFormsInitializeComponentMethod(method))
 					{
-						currentContext = new CSharpTypeResolveContext(previousContext.CurrentModule);
+						var currentContext = new CSharpTypeResolveContext(previousResolver.Compilation.MainModule);
+						resolver = new CSharpResolver(currentContext);
 					}
 					else
 					{
-						currentContext = previousContext.WithCurrentMember(method);
+						resolver = resolver.WithCurrentMember(method);
 					}
-					context.Push(currentContext);
 					try
 					{
 						var function = entityDeclaration.Annotation<IL.ILFunction>();
-						astBuilder = CreateAstBuilder(currentContext, function);
+						astBuilder = CreateAstBuilder(resolver, function);
 						baseCall(entityDeclaration);
 					}
 					finally
 					{
-						astBuilder = CreateAstBuilder(previousContext);
-						context.Pop();
+						resolver = previousResolver;
+						astBuilder = previousAstBuilder;
 					}
 				}
 				else
@@ -341,7 +386,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 			public override void VisitSimpleType(SimpleType simpleType)
 			{
-				TypeResolveResult rr;
+				TypeResolveResult? rr;
 				if ((rr = simpleType.Annotation<TypeResolveResult>()) == null)
 				{
 					base.VisitSimpleType(simpleType);
@@ -363,12 +408,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				if (simpleType.Parent is Syntax.Attribute)
 				{
-					simpleType.ReplaceWith(astBuilder.ConvertAttributeType(rr.Type));
+					ReplaceAndRecordStep("Qualify ambiguous attribute type", simpleType, astBuilder.ConvertAttributeType(rr.Type));
 				}
 				else
 				{
-					simpleType.ReplaceWith(astBuilder.ConvertType(rr.Type));
+					ReplaceAndRecordStep("Qualify ambiguous type", simpleType, astBuilder.ConvertType(rr.Type));
 				}
+			}
+
+			void ReplaceAndRecordStep(string stepDescription, SimpleType simpleType, AstType replacement)
+			{
+#if STEP
+				// Record a debug step only when the converted type actually differs from the
+				// original, so the step list stays meaningful. This structural comparison is
+				// debug-only (it allocates a pattern Match); release builds skip it entirely and
+				// just perform the replacement below.
+				bool changed = !simpleType.IsMatch(replacement);
+				if (changed)
+					context.Step(stepDescription, simpleType);
+#endif
+				simpleType.ReplaceWith(replacement);
+#if STEP
+				if (changed)
+					context.EndStep(replacement);
+#endif
 			}
 		}
 	}

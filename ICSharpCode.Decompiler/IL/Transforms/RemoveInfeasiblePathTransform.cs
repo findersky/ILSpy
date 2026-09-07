@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Daniel Grunwald, Siegfried Pammer
+// Copyright (c) 2021 Daniel Grunwald, Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -61,7 +61,9 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (!MatchBlock2(br.TargetBlock, s, value, out var exitInst))
 				return false;
 			context.Step("RemoveInfeasiblePath", br);
-			br.ReplaceWith(exitInst.Clone());
+			var newInst = exitInst.Clone();
+			br.ReplaceWith(newInst);
+			context.EndStep(newInst);
 			s.RemoveIfRedundant = true;
 			return true;
 		}

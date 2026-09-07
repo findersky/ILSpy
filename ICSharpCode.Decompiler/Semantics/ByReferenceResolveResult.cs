@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,9 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -50,14 +48,6 @@ namespace ICSharpCode.Decompiler.Semantics
 
 		public IType ElementType {
 			get { return ((ByReferenceType)this.Type).ElementType; }
-		}
-
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			if (ElementResult != null)
-				return new[] { ElementResult };
-			else
-				return Enumerable.Empty<ResolveResult>();
 		}
 
 		public override string ToString()

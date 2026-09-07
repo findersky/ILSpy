@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -21,6 +21,8 @@ using System.IO;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 {
 	public abstract class TokenWriter
@@ -36,17 +38,17 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		/// <summary>
 		/// Writes a keyword to the output.
 		/// </summary>
-		public abstract void WriteKeyword(Role role, string keyword);
+		public abstract void WriteKeyword(string keyword);
 
 		/// <summary>
 		/// Writes a token to the output.
 		/// </summary>
-		public abstract void WriteToken(Role role, string token);
+		public abstract void WriteToken(string token);
 
 		/// <summary>
 		/// Writes a primitive/literal value
 		/// </summary>
-		public abstract void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None);
+		public abstract void WritePrimitiveValue(object? value, LiteralFormat format = LiteralFormat.None);
 
 		public abstract void WritePrimitiveType(string type);
 
@@ -61,17 +63,17 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 		public abstract void NewLine();
 
 		public abstract void WriteComment(CommentType commentType, string content);
-		public abstract void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument);
+		public abstract void WritePreProcessorDirective(PreProcessorDirectiveType type, string? argument);
 
 		public static TokenWriter Create(TextWriter writer, string indentation = "\t")
 		{
-			return new InsertSpecialsDecorator(new InsertRequiredSpacesDecorator(new TextWriterTokenWriter(writer) { IndentationString = indentation }));
+			return new InsertRequiredSpacesDecorator(new TextWriterTokenWriter(writer) { IndentationString = indentation });
 		}
 
 		public static TokenWriter CreateWriterThatSetsLocationsInAST(TextWriter writer, string indentation = "\t")
 		{
 			var target = new TextWriterTokenWriter(writer) { IndentationString = indentation };
-			return new InsertSpecialsDecorator(new InsertRequiredSpacesDecorator(new InsertMissingTokensDecorator(target, target)));
+			return new InsertRequiredSpacesDecorator(new InsertMissingTokensDecorator(target, target));
 		}
 
 		public static TokenWriter InsertRequiredSpaces(TokenWriter writer)
@@ -119,17 +121,17 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			decoratedWriter.WriteIdentifier(identifier);
 		}
 
-		public override void WriteKeyword(Role role, string keyword)
+		public override void WriteKeyword(string keyword)
 		{
-			decoratedWriter.WriteKeyword(role, keyword);
+			decoratedWriter.WriteKeyword(keyword);
 		}
 
-		public override void WriteToken(Role role, string token)
+		public override void WriteToken(string token)
 		{
-			decoratedWriter.WriteToken(role, token);
+			decoratedWriter.WriteToken(token);
 		}
 
-		public override void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None)
+		public override void WritePrimitiveValue(object? value, LiteralFormat format = LiteralFormat.None)
 		{
 			decoratedWriter.WritePrimitiveValue(value, format);
 		}
@@ -169,11 +171,9 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			decoratedWriter.WriteComment(commentType, content);
 		}
 
-		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
+		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string? argument)
 		{
 			decoratedWriter.WritePreProcessorDirective(type, argument);
 		}
 	}
 }
-
-

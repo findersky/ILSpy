@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -17,7 +17,6 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Collections.Generic;
 
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -33,11 +32,6 @@ namespace ICSharpCode.Decompiler.Semantics
 		{
 			FormatString = formatString;
 			Arguments = arguments;
-		}
-
-		public override IEnumerable<ResolveResult> GetChildResults()
-		{
-			return Arguments;
 		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -26,7 +26,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 	/// An unknown type where (part) of the name is known.
 	/// </summary>
 	[Serializable]
-	public class UnknownType : AbstractType, ITypeDefinitionOrUnknown, ITypeReference
+	public class UnknownType : AbstractType, ITypeDefinitionOrUnknown
 	{
 		readonly bool namespaceKnown;
 		readonly FullTypeName fullTypeName;
@@ -71,13 +71,6 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 			get { return TypeKind.Unknown; }
 		}
 
-		IType ITypeReference.Resolve(ITypeResolveContext context)
-		{
-			if (context == null)
-				throw new ArgumentNullException(nameof(context));
-			return this;
-		}
-
 		public override ITypeDefinitionOrUnknown GetDefinitionOrUnknown()
 		{
 			return this;
@@ -115,6 +108,22 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 				return this;
 			else
 				return new NullabilityAnnotatedType(this, nullability);
+		}
+
+		/// <summary>
+		/// Returns this type without the knowledge whether it is a reference type.
+		/// </summary>
+		/// <remarks>
+		/// Whether an unresolvable type is a reference type is not a property of the type, but of
+		/// the metadata that mentioned it: a signature spelling it `valuetype T` yields false, a
+		/// bare TypeRef yields null. Two such spellings of the same missing type must still compare
+		/// equal after type erasure, so NormalizeTypeVisitor drops the flag before comparing.
+		/// </remarks>
+		internal UnknownType WithoutReferenceTypeKnowledge()
+		{
+			if (isReferenceType == null)
+				return this;
+			return new UnknownType(fullTypeName);
 		}
 
 		public override int GetHashCode()

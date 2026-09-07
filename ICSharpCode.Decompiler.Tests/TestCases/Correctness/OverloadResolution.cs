@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2016 Daniel Grunwald
+// Copyright (c) 2016 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -42,7 +42,82 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 #endif
 			Issue2444.M2();
 			Issue2741.B.Test(new Issue2741.C());
+			ExtensionMethodDemo.Issue2165.Test();
+#if CS71
+			DefaultLiteralTests();
+#endif
 		}
+
+#if CS71
+		static void DefaultLiteralTests()
+		{
+			// The decompiled output may shorten default(T) to a default literal;
+			// re-compilation must still pick the same overloads and operators.
+			DefaultOverload(default(DataStruct));
+			DefaultOverload(default(OtherStruct));
+			DefaultNullableOverload(default(DataStruct));
+			Console.WriteLine(default(DataStruct) == new DataStruct());
+			Console.WriteLine(GenericDefault("x", default));
+			Console.WriteLine(GenericDefault(42, default));
+		}
+
+		struct DataStruct
+		{
+			public int Field;
+
+			public static bool operator ==(DataStruct a, DataStruct b)
+			{
+				Console.WriteLine("DataStruct operator ==");
+				return a.Field == b.Field;
+			}
+
+			public static bool operator !=(DataStruct a, DataStruct b)
+			{
+				return a.Field != b.Field;
+			}
+
+			public override bool Equals(object obj)
+			{
+				return obj is DataStruct other && Field == other.Field;
+			}
+
+			public override int GetHashCode()
+			{
+				return Field;
+			}
+		}
+
+		struct OtherStruct
+		{
+			public int Field;
+		}
+
+		static void DefaultOverload(DataStruct data)
+		{
+			Console.WriteLine("DefaultOverload(DataStruct)");
+		}
+
+		static void DefaultOverload(OtherStruct data)
+		{
+			Console.WriteLine("DefaultOverload(OtherStruct)");
+		}
+
+		static void DefaultNullableOverload(DataStruct data)
+		{
+			Console.WriteLine("DefaultNullableOverload(DataStruct)");
+		}
+
+		static void DefaultNullableOverload(DataStruct? data)
+		{
+			Console.WriteLine("DefaultNullableOverload(DataStruct?)");
+		}
+
+		static T GenericDefault<T>(T a, T b)
+		{
+			Console.WriteLine("GenericDefault: " + typeof(T).Name);
+			return b;
+		}
+#endif
 
 		#region ConstructorTest
 		static void ConstructorTest()
@@ -547,6 +622,49 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Correctness
 			set {
 				Console.WriteLine("IndexerTests.set_Item(int key, object value)");
 			}
+		}
+	}
+}
+
+namespace ExtensionMethodDemo
+{
+	// First extension class with an out int parameter
+	public static class StringExtensions
+	{
+		public static bool TryParseCustom(this string input, out int result)
+		{
+			return int.TryParse(input, out result);
+		}
+	}
+
+	// Second extension class with an out double parameter
+	public static class StringDoubleExtensions
+	{
+		public static bool TryParseCustom(this string input, out double result)
+		{
+			return double.TryParse(input, out result);
+		}
+	}
+
+	class Issue2165
+	{
+		public static void Test()
+		{
+			string value1 = "123";
+			string value2 = "123.45";
+#if CS70
+			// Use the int version with extension method syntax
+			if (value1.TryParseCustom(out int intResult))
+			{
+				Console.WriteLine("Parsed int: " + intResult);
+			}
+
+			// Use the double version with extension method syntax
+			if (value2.TryParseCustom(out double doubleResult))
+			{
+				Console.WriteLine("Parsed double: " + doubleResult);
+			}
+#endif
 		}
 	}
 }

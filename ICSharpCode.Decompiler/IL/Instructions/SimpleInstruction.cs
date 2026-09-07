@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -17,6 +17,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.IL
 {
@@ -25,7 +26,7 @@ namespace ICSharpCode.Decompiler.IL
 	/// </summary>
 	public abstract partial class SimpleInstruction : ILInstruction
 	{
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -45,7 +46,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public NopKind Kind;
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -74,7 +75,12 @@ namespace ICSharpCode.Decompiler.IL
 			get { return ExpectedResultType; }
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		public override IType InferType(ICompilation compilation)
+		{
+			return compilation.FindType(ExpectedResultType);
+		}
+
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -102,7 +108,12 @@ namespace ICSharpCode.Decompiler.IL
 			get { return ExpectedResultType; }
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		public override IType InferType(ICompilation compilation)
+		{
+			return compilation.FindType(ExpectedResultType);
+		}
+
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ExternAliasDeclaration.cs
 //  
 // Author:
@@ -24,69 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// extern alias IDENTIFIER;
+	/// <c>extern_alias_directive ::= 'extern' 'alias' identifier ';'</c> (C# grammar §14.4)
 	/// </summary>
-	public class ExternAliasDeclaration : AstNode
+	[DecompilerAstNode]
+	public sealed partial class ExternAliasDeclaration : AstNode
 	{
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
-
-		public CSharpTokenNode ExternToken {
-			get { return GetChildByRole(Roles.ExternKeyword); }
-		}
-
-		public CSharpTokenNode AliasToken {
-			get { return GetChildByRole(Roles.AliasKeyword); }
-		}
-
-		public string Name {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier NameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitExternAliasDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitExternAliasDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitExternAliasDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as ExternAliasDeclaration;
-			return o != null && MatchString(this.Name, o.Name);
-		}
+		[Slot("Identifier")]
+		public partial string Name { get; set; }
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -36,10 +36,11 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 	{
 		public void Run(Block block, int pos, StatementTransformContext context)
 		{
-			if (!TransformRefTypes(block, pos, context))
-			{
-				TransformThrowExpressionValueTypes(block, pos, context);
-			}
+			if (TransformRefTypes(block, pos, context))
+				return;
+			if (TransformHoistedConstructorArgumentNullGuard(block, pos, context))
+				return;
+			TransformThrowExpressionValueTypes(block, pos, context);
 		}
 
 		/// <summary>
@@ -65,7 +66,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (trueInst.MatchStLoc(stloc.Variable, out var fallbackValue))
 			{
 				context.Step("NullCoalescingTransform: simple (reference types)", stloc);
-				stloc.Value = new NullCoalescingInstruction(NullCoalescingKind.Ref, stloc.Value, fallbackValue);
+				stloc.Value = new NullCoalescingInstruction(stloc.Variable.Type, NullCoalescingKind.Ref, stloc.Value, fallbackValue);
 				block.Instructions.RemoveAt(pos + 1); // remove if instruction
 				ILInlining.InlineOneIfPossible(block, pos, InliningOptions.None, context);
 				return true;
@@ -84,7 +85,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				&& useOfTemporary.MatchLdLoc(temporary))
 			{
 				context.Step("NullCoalescingTransform: with temporary variable (reference types)", stloc);
-				stloc.Value = new NullCoalescingInstruction(NullCoalescingKind.Ref, stloc.Value, fallbackValue);
+				stloc.Value = new NullCoalescingInstruction(stloc.Variable.Type, NullCoalescingKind.Ref, stloc.Value, fallbackValue);
 				block.Instructions.RemoveAt(pos + 1); // remove if instruction
 				ILInlining.InlineOneIfPossible(block, pos, InliningOptions.None, context);
 				return true;
@@ -98,13 +99,107 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (context.Settings.ThrowExpressions && trueInst is Throw throwInst)
 			{
 				context.Step("NullCoalescingTransform (reference types + throw expression)", stloc);
-				throwInst.resultType = StackType.O;
-				stloc.Value = new NullCoalescingInstruction(NullCoalescingKind.Ref, stloc.Value, throwInst);
+				stloc.Value = new NullCoalescingInstruction(stloc.Variable.Type, NullCoalescingKind.Ref, stloc.Value, throwInst);
 				block.Instructions.RemoveAt(pos + 1); // remove if instruction
 				ILInlining.InlineOneIfPossible(block, pos, InliningOptions.None, context);
 				return true;
 			}
 			return false;
+		}
+
+		/// <summary>
+		/// When an argument of a chained constructor call contains a throwing null-check
+		/// (e.g. <c>arg ?? throw ...</c>) and <c>arg</c> is evaluated more than once, the C#
+		/// compiler hoists the null-check in front of the chained call:
+		/// <code>
+		///   if (comp.o(ldloc param == ldnull)) throw(...)
+		///   call Base..ctor(..., ldlen(ldloc param), ..., ldloc param, ...)
+		/// </code>
+		/// The guard then blocks TransformFieldAndConstructorInitializers from lifting the chained
+		/// call into a <c>: this(...)</c> / <c>: base(...)</c> clause. Replace the guard with
+		/// <code>
+		///   stloc temp(if.notnull(ldloc param, throw(...)))
+		/// </code>
+		/// redirecting the first following use of the parameter (the position the check was hoisted
+		/// from) to <c>temp</c>, and leave moving the coalescing expression into the chained call to
+		/// ILInlining, which does so only when that preserves the order of evaluation.
+		/// Only reference-type chains (<c>base/this..ctor</c> calls, identified by IL offset via
+		/// <see cref="ILInlining.IsInConstructorInitializer"/>) need this: value types chain via
+		/// <c>this = new TSelf(...)</c>, which is an ordinary body statement, so a preceding
+		/// guard statement is legal C# and can stay.
+		/// </summary>
+		bool TransformHoistedConstructorArgumentNullGuard(Block block, int pos, StatementTransformContext context)
+		{
+			// A throw-expression is the only way to express the folded form.
+			if (!context.Settings.ThrowExpressions)
+				return false;
+
+			var function = block.Ancestors.OfType<ILFunction>().FirstOrDefault();
+			if (function?.Method is not { IsConstructor: true, IsStatic: false })
+				return false;
+
+			// Match `if (comp(ldloc param == ldnull)) throw(...)` with no else branch.
+			var guard = block.Instructions[pos];
+			if (!IsArgumentNullGuard(guard, out var paramLoad, out var throwInst))
+				return false;
+
+			// Only a guard sitting in the initializer's argument evaluation, i.e. before the
+			// chained constructor call, is necessarily compiler-hoisted.
+			if (!ILInlining.IsInConstructorInitializer(function, guard))
+				return false;
+
+			// The compiler hoists the guard directly in front of the statement containing the
+			// parameter use it was lifted out of, so that use must be order-safely reachable
+			// within the immediately following statement.
+			var paramLoadParent = paramLoad.Parent;
+			var paramLoadChildIndex = paramLoad.ChildIndex;
+			var throwInstParent = throwInst.Parent;
+			var throwInstChildIndex = throwInst.ChildIndex;
+			var expressionWithThrow = new NullCoalescingInstruction(paramLoad.Variable.Type, NullCoalescingKind.Ref, paramLoad, throwInst);
+			var result = ILInlining.FindLoadInNext(block.Instructions[pos + 1], paramLoad.Variable, expressionWithThrow,
+				InliningOptions.None);
+			if (result.Type != ILInlining.FindResultType.Found || result.LoadInst is not LdLoc firstUse)
+			{
+				// reset the primary positions (see remarks on ILInstruction.Parent)
+				var paramLoadSiblings = paramLoadParent.Children;
+				paramLoadSiblings[paramLoadChildIndex] = paramLoad;
+				var throwInstSiblings = throwInstParent.Children;
+				throwInstSiblings[throwInstChildIndex] = throwInst;
+				return false;
+			}
+
+			context.Step($"NullCoalescingTransform: fold hoisted null-guard of '{paramLoad.Variable.Name}' into argument of chained constructor call", guard);
+
+			var temp = function.RegisterVariable(VariableKind.StackSlot, paramLoad.Variable.Type);
+			firstUse.Variable = temp;
+			var stloc = new StLoc(temp, expressionWithThrow);
+			stloc.AddILRange(guard);
+			block.Instructions[pos] = stloc;
+			context.EndStep(stloc);
+			ILInlining.InlineOneIfPossible(block, pos, InliningOptions.None, context);
+			return true;
+		}
+
+		/// <summary>
+		/// Matches a hoisted argument null-guard `if (comp(ldloc param == ldnull)) throw(...)`
+		/// (no else branch). Only parameters qualify: nothing else is in scope before the
+		/// constructor initializer.
+		/// </summary>
+		static bool IsArgumentNullGuard(ILInstruction inst, out LdLoc paramLoad, out Throw throwInst)
+		{
+			paramLoad = null;
+			throwInst = null;
+			if (!inst.MatchIfInstruction(out var condition, out var trueInst))
+				return false;
+			if (!(Block.Unwrap(trueInst) is Throw t))
+				return false;
+			if (!(condition.MatchCompEquals(out var left, out var right) && right.MatchLdNull() && left is LdLoc load))
+				return false;
+			if (load.Variable.Kind != VariableKind.Parameter)
+				return false;
+			paramLoad = load;
+			throwInst = t;
+			return true;
 		}
 
 		/// <summary>
@@ -133,18 +228,19 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			var throwInstParent = throwInst.Parent;
 			var throwInstChildIndex = throwInst.ChildIndex;
+			var underlyingType = NullableType.GetUnderlyingType(call.Method.DeclaringType);
 			var nullCoalescingWithThrow = new NullCoalescingInstruction(
+				underlyingType,
 				NullCoalescingKind.NullableWithValueFallback,
 				stloc.Value,
 				throwInst);
-			var resultType = NullableType.GetUnderlyingType(call.Method.DeclaringType).GetStackType();
+			var resultType = underlyingType.GetStackType();
 			nullCoalescingWithThrow.UnderlyingResultType = resultType;
 			var result = ILInlining.FindLoadInNext(block.Instructions[pos + 2], v, nullCoalescingWithThrow, InliningOptions.None);
 			if (result.Type == ILInlining.FindResultType.Found
 				&& NullableLiftingTransform.MatchGetValueOrDefault(result.LoadInst.Parent, v))
 			{
 				context.Step("NullCoalescingTransform (value types + throw expression)", stloc);
-				throwInst.resultType = resultType;
 				result.LoadInst.Parent.ReplaceWith(nullCoalescingWithThrow);
 				block.Instructions.RemoveRange(pos, 2); // remove store(s) and if instruction
 				return true;

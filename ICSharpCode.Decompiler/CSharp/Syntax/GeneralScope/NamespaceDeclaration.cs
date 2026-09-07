@@ -1,4 +1,4 @@
-﻿// 
+// 
 // NamespaceDeclaration.cs
 //  
 // Author:
@@ -23,36 +23,31 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// namespace Name { Members }
+	/// <code>
+	/// namespace_declaration ::=
+	///       'namespace' type '{' namespace_member* '}' ';'?
+	///     | 'namespace' type ';' namespace_member*
+	/// </code>
+	/// (C# grammar §14.3)
 	/// </summary>
-	public class NamespaceDeclaration : AstNode
+	[DecompilerAstNode]
+	public sealed partial class NamespaceDeclaration : AstNode
 	{
-		public static readonly Role<AstNode> MemberRole = SyntaxTree.MemberRole;
-		public static readonly Role<AstType> NamespaceNameRole = new Role<AstType>("NamespaceName", AstType.Null);
-
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
-
 		public bool IsFileScoped { get; set; }
 
-		public CSharpTokenNode NamespaceToken {
-			get { return GetChildByRole(Roles.NamespaceKeyword); }
-		}
+		[Slot("NamespaceName")]
+		public partial AstType NamespaceName { get; set; }
 
-		public AstType NamespaceName {
-			get { return GetChildByRole(NamespaceNameRole) ?? AstType.Null; }
-			set { SetChildByRole(NamespaceNameRole, value); }
-		}
-
+		// Computed from NamespaceName (the matched slot); exclude as redundant.
+		[ExcludeFromMatch]
 		public string Name {
 			get {
 				return UsingDeclaration.ConstructNamespace(NamespaceName);
@@ -75,15 +70,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// <summary>
 		/// Gets the full namespace name (including any parent namespaces)
 		/// </summary>
+		// Computed by walking the parent chain; exclude as redundant and costly.
+		[ExcludeFromMatch]
 		public string FullName {
 			get {
-				NamespaceDeclaration parentNamespace = Parent as NamespaceDeclaration;
+				NamespaceDeclaration? parentNamespace = Parent as NamespaceDeclaration;
 				if (parentNamespace != null)
 					return BuildQualifiedName(parentNamespace.FullName, Name);
 				return Name;
 			}
 		}
 
+		// Computed from NamespaceName (the matched slot); exclude it (and it is not reference-comparable).
+		[ExcludeFromMatch]
 		public IEnumerable<string> Identifiers {
 			get {
 				var result = new Stack<string>();
@@ -94,27 +93,14 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					result.Push(mt.MemberName);
 					type = mt.Target;
 				}
-				if (type is SimpleType)
-					result.Push(((SimpleType)type).Identifier);
+				if (type is SimpleType simpleType)
+					result.Push(simpleType.Identifier ?? string.Empty);
 				return result;
 			}
 		}
 
-		public CSharpTokenNode LBraceToken {
-			get { return GetChildByRole(Roles.LBrace); }
-		}
-
-		public AstNodeCollection<AstNode> Members {
-			get { return GetChildrenByRole(MemberRole); }
-		}
-
-		public CSharpTokenNode RBraceToken {
-			get { return GetChildByRole(Roles.RBrace); }
-		}
-
-		public NamespaceDeclaration()
-		{
-		}
+		[Slot("Member")]
+		public partial AstNodeCollection<AstNode> Members { get; }
 
 		public NamespaceDeclaration(string name)
 		{
@@ -132,28 +118,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public void AddMember(AstNode child)
 		{
-			AddChild(child, MemberRole);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitNamespaceDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitNamespaceDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitNamespaceDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			NamespaceDeclaration o = other as NamespaceDeclaration;
-			return o != null && MatchString(this.Name, o.Name) && this.Members.DoMatch(o.Members, match);
+			AddChild(child, Slots.Member);
 		}
 	}
 };

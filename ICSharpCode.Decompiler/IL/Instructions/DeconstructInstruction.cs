@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Siegfried Pammer
+// Copyright (c) 2020 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -159,7 +159,7 @@ namespace ICSharpCode.Decompiler.IL
 				assignments.ChildIndex = Init.Count + 2;
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("deconstruct ");
@@ -256,10 +256,14 @@ namespace ICSharpCode.Decompiler.IL
 					{
 						return false;
 					}
-					if (stobj.Target.InferType(typeSystem) is ByReferenceType brt)
-						expectedType = brt.ElementType;
-					else
-						expectedType = SpecialType.UnknownType;
+					// stobj.Type comes from the store opcode and is sign-agnostic (an int* and a
+					// uint* target both store int32), so for pointer targets the element type of
+					// the target's inferred type must be used instead.
+					expectedType = stobj.Target.InferType(typeSystem) switch {
+						ByReferenceType brt => brt.ElementType,
+						PointerType ptr => ptr.ElementType,
+						_ => stobj.Type
+					};
 					value = stobj.Value;
 					return true;
 				default:
@@ -267,9 +271,9 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 			var patternVariables = new HashSet<ILVariable>();
 			var conversionVariables = new HashSet<ILVariable>();
 
@@ -294,7 +298,7 @@ namespace ICSharpCode.Decompiler.IL
 
 			foreach (var inst in assignments.Instructions)
 			{
-				if (!(IsAssignment(inst, typeSystem: null, out _, out var value) && value.MatchLdLoc(out var inputVariable)))
+				if (!(IsAssignment(inst, compilation, out _, out var value) && value.MatchLdLoc(out var inputVariable)))
 					throw new InvalidOperationException("inst is not an assignment!");
 				Debug.Assert(patternVariables.Contains(inputVariable) || conversionVariables.Contains(inputVariable));
 			}

@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2014-2016 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -103,9 +103,9 @@ namespace ICSharpCode.Decompiler.IL
 			return clone;
 		}
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 			for (int i = 0; i < Instructions.Count - 1; i++)
 			{
 				// only the last instruction may have an unreachable endpoint
@@ -185,7 +185,25 @@ namespace ICSharpCode.Decompiler.IL
 					}
 					for (int i = 1; i < Instructions.Count; i++)
 					{
-						Debug.Assert(Instructions[i] is StLoc || AccessPathElement.GetAccessPath(Instructions[i], type2).Kind != AccessPathKind.Invalid);
+						if (Instructions[i] is StLoc { Variable: var v })
+						{
+							foreach (var inst in v.LoadInstructions)
+							{
+								Debug.Assert(inst.IsDescendantOf(this));
+							}
+							foreach (var inst in v.AddressInstructions)
+							{
+								Debug.Assert(inst.IsDescendantOf(this));
+							}
+							foreach (ILInstruction inst in v.StoreInstructions)
+							{
+								Debug.Assert(inst.IsDescendantOf(this));
+							}
+						}
+						else
+						{
+							Debug.Assert(AccessPathElement.GetAccessPath(Instructions[i], type2).Kind != AccessPathKind.Invalid);
+						}
 					}
 					break;
 				case BlockKind.DeconstructionConversions:
@@ -217,6 +235,27 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
+		public override IType InferType(ICompilation compilation)
+		{
+			return finalInstruction.InferType(compilation);
+		}
+
+		internal override bool CanInlineIntoSlot(int childIndex, ILInstruction expressionBeingMoved)
+		{
+			switch (Kind)
+			{
+				case BlockKind.ControlFlow when Parent is BlockContainer:
+				case BlockKind.ArrayInitializer:
+				case BlockKind.CollectionInitializer:
+				case BlockKind.ObjectInitializer:
+				case BlockKind.CallInlineAssign:
+					// Allow inlining into the first instruction of the block
+					return childIndex == 0;
+				default:
+					return false;
+			}
+		}
+
 		/// <summary>
 		/// Gets the name of this block.
 		/// </summary>
@@ -224,7 +263,7 @@ namespace ICSharpCode.Decompiler.IL
 			get { return Disassembler.DisassemblerHelpers.OffsetToString(this.StartILOffset); }
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("Block ");
@@ -324,14 +363,14 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public void RunTransforms(IEnumerable<IBlockTransform> transforms, BlockTransformContext context)
 		{
-			this.CheckInvariant(ILPhase.Normal);
+			this.CheckInvariant(ILPhase.Normal, context.TypeSystem);
 			foreach (var transform in transforms)
 			{
 				context.CancellationToken.ThrowIfCancellationRequested();
 				Debug.Assert(context.IndexOfFirstAlreadyTransformedInstruction <= this.Instructions.Count);
 				context.StepStartGroup(transform.GetType().Name);
 				transform.Run(this, context);
-				this.CheckInvariant(ILPhase.Normal);
+				this.CheckInvariant(ILPhase.Normal, context.TypeSystem);
 				context.StepEndGroup();
 			}
 		}
@@ -378,6 +417,22 @@ namespace ICSharpCode.Decompiler.IL
 			{
 				if (curr is Block b)
 					return b;
+				curr = curr.Parent;
+			}
+			return null;
+		}
+
+		/// <summary>
+		/// Gets the closest ancestor that is child of a control-flow (top-level) Block.
+		/// Returns null, if the instruction is not a descendant of a Block.
+		/// </summary>
+		public static ILInstruction? GetContainingStatement(ILInstruction inst)
+		{
+			var curr = inst;
+			while (curr != null)
+			{
+				if (curr.Parent is Block { Kind: BlockKind.ControlFlow })
+					return curr;
 				curr = curr.Parent;
 			}
 			return null;

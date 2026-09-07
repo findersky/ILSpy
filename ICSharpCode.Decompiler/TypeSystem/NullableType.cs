@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -72,16 +72,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return new ParameterizedType(nullableTypeDef, new[] { elementType });
 			else
 				return nullableType;
-		}
-
-		/// <summary>
-		/// Creates a nullable type reference.
-		/// </summary>
-		public static ParameterizedTypeReference Create(ITypeReference elementType)
-		{
-			if (elementType == null)
-				throw new ArgumentNullException(nameof(elementType));
-			return new ParameterizedTypeReference(KnownTypeReference.Get(KnownTypeCode.NullableOfT), new[] { elementType });
 		}
 	}
 }

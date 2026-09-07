@@ -16,10 +16,14 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection.Metadata;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
@@ -34,6 +38,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	public sealed class PatternStatementTransform : ContextTrackingVisitor<AstNode>, IAstTransform
 	{
 		readonly DeclareVariables declareVariables = new DeclareVariables();
+		[AllowNull]
 		TransformContext context;
 
 		public void Run(AstNode rootNode, TransformContext context)
@@ -61,7 +66,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Go through the children, and keep visiting a node as long as it changes.
 			// Because some transforms delete/replace nodes before and after the node being transformed, we rely
 			// on the transform's return value to know where we need to keep iterating.
-			for (AstNode child = node.FirstChild; child != null; child = child.NextSibling)
+			for (AstNode? child = node.FirstChild; child != null; child = child.NextSibling)
 			{
 				AstNode oldChild;
 				do
@@ -76,7 +81,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override AstNode VisitExpressionStatement(ExpressionStatement expressionStatement)
 		{
-			AstNode result = TransformForeachOnMultiDimArray(expressionStatement);
+			AstNode? result = TransformForeachOnMultiDimArray(expressionStatement);
 			if (result != null)
 				return result;
 			result = TransformFor(expressionStatement);
@@ -87,7 +92,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override AstNode VisitForStatement(ForStatement forStatement)
 		{
-			AstNode result = TransformForeachOnArray(forStatement);
+			AstNode? result = TransformForeachOnArray(forStatement);
+			if (result != null)
+				return result;
+			result = TransformForeachOnInlineArray(forStatement);
 			if (result != null)
 				return result;
 			return base.VisitForStatement(forStatement);
@@ -95,7 +103,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override AstNode VisitIfElseStatement(IfElseStatement ifElseStatement)
 		{
-			AstNode simplifiedIfElse = SimplifyCascadingIfElseStatements(ifElseStatement);
+			AstNode? simplifiedIfElse = SimplifyCascadingIfElseStatements(ifElseStatement);
 			if (simplifiedIfElse != null)
 				return simplifiedIfElse;
 			return base.VisitIfElseStatement(ifElseStatement);
@@ -103,27 +111,35 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override AstNode VisitPropertyDeclaration(PropertyDeclaration propertyDeclaration)
 		{
-			if (context.Settings.AutomaticProperties
-				&& (!propertyDeclaration.Setter.IsNull || context.Settings.GetterOnlyAutomaticProperties))
+			// Same rule as CSharpDecompiler.MemberIsHidden applies to the backing field: either
+			// setting on its own allows the field declaration to disappear, and
+			// GetterOnlyAutomaticProperties vetoes the getter-only case for both. Asking only
+			// about AutomaticProperties would skip the transform for a field-backed property
+			// while ExpressionBuilder.ConvertField has already printed "field" in its accessors,
+			// leaving the declaration and the keyword in the same output.
+			if ((context.Settings.AutomaticProperties || context.Settings.FieldKeyword)
+				&& (propertyDeclaration.Setter is not null || context.Settings.GetterOnlyAutomaticProperties))
 			{
-				AstNode result = TransformAutomaticProperty(propertyDeclaration);
+				AstNode? result = TransformAutomaticProperty(propertyDeclaration);
 				if (result != null)
 					return result;
 			}
 			return base.VisitPropertyDeclaration(propertyDeclaration);
 		}
 
-		public override AstNode VisitCustomEventDeclaration(CustomEventDeclaration eventDeclaration)
+		public override AstNode VisitEventDeclaration(EventDeclaration eventDeclaration)
 		{
-			// first apply transforms to the accessor bodies
-			base.VisitCustomEventDeclaration(eventDeclaration);
-			if (context.Settings.AutomaticEvents)
+			// A field-like event declaration hides its backing field; remove the field declaration
+			// if it was emitted because other members reference it. (This happens for events that
+			// CSharpDecompiler.DoDecompile already recognized as automatic: the backing field is
+			// hidden from the normal member list, but re-emitted via the work list when referenced.)
+			if (context.Settings.AutomaticEvents && eventDeclaration.GetSymbol() is IEvent symbol)
 			{
-				AstNode result = TransformAutomaticEvents(eventDeclaration);
-				if (result != null)
-					return result;
+				var fieldDecl = eventDeclaration.Parent?.Children.OfType<FieldDeclaration>()
+					.FirstOrDefault(fd => IsEventBackingFieldDeclaration(fd, symbol));
+				fieldDecl?.Remove();
 			}
-			return eventDeclaration;
+			return base.VisitEventDeclaration(eventDeclaration);
 		}
 
 		public override AstNode VisitMethodDeclaration(MethodDeclaration methodDeclaration)
@@ -173,7 +189,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		public ForStatement TransformFor(ExpressionStatement node)
+		public ForStatement? TransformFor(ExpressionStatement node)
 		{
 			if (!context.Settings.ForStatement)
 				return null;
@@ -181,11 +197,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (!m1.Success)
 				return null;
 			var variable = m1.Get<IdentifierExpression>("variable").Single().GetILVariable();
-			AstNode next = node.NextSibling;
+			AstNode? next = node.NextSibling;
+			if (next == null)
+				return null;
 			if (next is ForStatement forStatement && ForStatementUsesVariable(forStatement, variable))
 			{
+				context.Step("Move declaration into for initializer", node);
 				node.Remove();
-				next.InsertChildAfter(null, node, ForStatement.InitializerRole);
+				next.InsertChildAfter(null, node, Slots.ForInitializer);
 				return (ForStatement)next;
 			}
 			Match m3 = forPattern.Match(next);
@@ -195,6 +214,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (variable != m3.Get<IdentifierExpression>("ident").Single().GetILVariable())
 				return null;
 			WhileStatement loop = (WhileStatement)next;
+			// Cannot convert to for loop, if the iteration variable is a ref local used after the loop: its
+			// declaration is hoisted in front, leaving a headless `for (; cond; v = ref ...)` whose only
+			// initialization is the for-initializer ref-assignment -- which can't be split from a ref local
+			// (CS8174). Keeping it a while-loop matches the source and keeps the initializer on the decl.
+			if (variable != null && variable.Type.IsByRefLike && IsVariableUsedAfter(loop, variable))
+				return null;
 			// Cannot convert to for loop, if any variable that is used in the "iterator" part of the pattern,
 			// will be declared in the body of the while-loop.
 			var iteratorStatement = m3.Get<Statement>("iterator").Single();
@@ -205,6 +230,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Whereas continue in for jumps to the increment block.
 			if (loop.DescendantNodes(DescendIntoStatement).OfType<Statement>().Any(s => s is ContinueStatement))
 				return null;
+			context.Step("Transform while loop to for", loop);
 			node.Remove();
 			BlockStatement newBody = new BlockStatement();
 			foreach (Statement stmt in m3.Get<Statement>("statement"))
@@ -216,6 +242,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			forStatement.Iterators.Add(iteratorStatement.Detach());
 			forStatement.EmbeddedStatement = newBody;
 			loop.ReplaceWith(forStatement);
+			context.EndStep(forStatement);
 			return forStatement;
 		}
 
@@ -228,12 +255,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		bool ForStatementUsesVariable(ForStatement statement, IL.ILVariable variable)
+		bool ForStatementUsesVariable(ForStatement statement, IL.ILVariable? variable)
 		{
-			if (statement.Condition.DescendantsAndSelf.OfType<IdentifierExpression>().Any(ie => ie.GetILVariable() == variable))
+			if (statement.Condition?.DescendantsAndSelf.OfType<IdentifierExpression>().Any(ie => ie.GetILVariable() == variable) == true)
 				return true;
 			if (statement.Iterators.Any(i => i.DescendantsAndSelf.OfType<IdentifierExpression>().Any(ie => ie.GetILVariable() == variable)))
 				return true;
+			return false;
+		}
+
+		bool IsVariableUsedAfter(Statement loop, IL.ILVariable variable)
+		{
+			for (AstNode? sibling = loop.NextSibling; sibling != null; sibling = sibling.NextSibling)
+			{
+				if (sibling.DescendantsAndSelf.OfType<IdentifierExpression>().Any(ie => ie.GetILVariable() == variable))
+					return true;
+			}
 			return false;
 		}
 
@@ -316,7 +353,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return declPoint.Ancestors.Contains(loop) && !declareVariables.WasMerged(itemVar);
 		}
 
-		static bool AddressUsedForSingleCall(IL.ILVariable v, IL.BlockContainer loop)
+		static bool AddressUsedForSingleCall(IL.ILVariable v, IL.BlockContainer? loop)
 		{
 			if (v.StoreCount == 1 && v.AddressCount == 1 && v.LoadCount == 0 && v.Type.IsReferenceType == false)
 			{
@@ -338,7 +375,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return false;
 		}
 
-		Statement TransformForeachOnArray(ForStatement forStatement)
+		Statement? TransformForeachOnArray(ForStatement forStatement)
 		{
 			if (!context.Settings.ForEachStatement)
 				return null;
@@ -356,12 +393,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				return null;
 			if (indexVariable.StoreCount != 2 || indexVariable.LoadCount != 3 || indexVariable.AddressCount != 0)
 				return null;
+			context.Step("Introduce foreach over array", forStatement);
 			var body = new BlockStatement();
 			foreach (var statement in m.Get<Statement>("statements"))
 				body.Statements.Add(statement.Detach());
 			var foreachStmt = new ForeachStatement {
 				VariableType = context.Settings.AnonymousTypes && itemVariable.Type.ContainsAnonymousType() ? new SimpleType("var") : context.TypeSystemAstBuilder.ConvertType(itemVariable.Type),
-				VariableDesignation = new SingleVariableDesignation { Identifier = itemVariable.Name },
+				VariableDesignation = new SingleVariableDesignation { Identifier = itemVariable.Name! },
 				InExpression = m.Get<IdentifierExpression>("arrayVariable").Single().Detach(),
 				EmbeddedStatement = body
 			};
@@ -371,6 +409,113 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			foreachStmt.VariableDesignation.AddAnnotation(new ILVariableResolveResult(itemVariable, itemVariable.Type));
 			// TODO : add ForeachAnnotation
 			forStatement.ReplaceWith(foreachStmt);
+			context.EndStep(foreachStmt);
+			return foreachStmt;
+		}
+
+		static readonly ForStatement forOnInlineArrayPattern = new ForStatement {
+			Initializers = {
+				new ExpressionStatement(
+				new AssignmentExpression(
+					new NamedNode("indexVariable", new IdentifierExpression(Pattern.AnyString)),
+					new PrimitiveExpression(0)
+				))
+			},
+			Condition = new BinaryOperatorExpression(
+				new IdentifierExpressionBackreference("indexVariable"),
+				BinaryOperatorType.LessThan,
+				new NamedNode("length", new PrimitiveExpression(PrimitiveExpression.AnyValue))
+			),
+			Iterators = {
+				new ExpressionStatement(
+				new AssignmentExpression(
+					new IdentifierExpressionBackreference("indexVariable"),
+					new BinaryOperatorExpression(new IdentifierExpressionBackreference("indexVariable"), BinaryOperatorType.Add, new PrimitiveExpression(1))
+				))
+			},
+			EmbeddedStatement = new BlockStatement {
+				Statements = {
+					new ExpressionStatement(new AssignmentExpression(
+						new NamedNode("itemVariable", new IdentifierExpression(Pattern.AnyString)),
+						new NamedNode("elementAccess", new AnyNode())
+					)),
+					new Repeat(new AnyNode("statements"))
+				}
+			}
+		};
+
+		/// <summary>
+		/// Reconstructs a <c>foreach</c> over an inline array from the <c>for</c> loop the compiler
+		/// lowers it to: <c>for (i = 0; i &lt; N; i++) { item = &lt;PrivateImplementationDetails&gt;.InlineArrayElementRef(ref buffer, i); ... }</c>.
+		/// The rewrite is only sound because the loop bound <c>N</c> equals the inline array length,
+		/// which proves the index is always in range: <c>InlineArrayElementRef</c> is the compiler's
+		/// unchecked element accessor, whereas the C# inline-array indexer <c>buffer[i]</c> is
+		/// bounds-checked, so the two only agree when the index is provably in-bounds. A loop that
+		/// does not match this exact shape keeps the (unnameable but faithful) helper call.
+		/// </summary>
+		Statement? TransformForeachOnInlineArray(ForStatement forStatement)
+		{
+			if (!context.Settings.ForEachStatement || !context.Settings.InlineArrays)
+				return null;
+			Match m = forOnInlineArrayPattern.Match(forStatement);
+			if (!m.Success)
+				return null;
+			var itemVariable = m.Get<IdentifierExpression>("itemVariable").Single().GetILVariable();
+			var indexVariable = m.Get<IdentifierExpression>("indexVariable").Single().GetILVariable();
+			if (itemVariable == null || indexVariable == null)
+				return null;
+
+			// The loop body must start with `item = InlineArrayElementRef(ref buffer, index)`.
+			if (m.Get<Expression>("elementAccess").Single() is not InvocationExpression elementAccess)
+				return null;
+			if (elementAccess.GetSymbol() is not IMethod { DeclaringType.FullName: "<PrivateImplementationDetails>" } helper)
+				return null;
+			if (helper.Name is not ("InlineArrayElementRef" or "InlineArrayElementRefReadOnly"))
+				return null;
+			if (elementAccess.Arguments.Count != 2)
+				return null;
+			// arg0: `ref buffer`, arg1: the loop index.
+			if (elementAccess.Arguments.First() is not DirectionExpression { Expression: IdentifierExpression bufferIdentifier })
+				return null;
+			var bufferVariable = bufferIdentifier.GetILVariable();
+			if (bufferVariable == null)
+				return null;
+			if (elementAccess.Arguments.Last() is not IdentifierExpression indexIdentifier
+				|| indexIdentifier.GetILVariable() != indexVariable)
+				return null;
+
+			// Soundness: the loop counts 0..length-1 over exactly the inline array's length, so the
+			// index is provably in range. Any other bound (or a non-inline-array buffer) is rejected.
+			if (bufferVariable.Type.GetInlineArrayLength() is not int arrayLength)
+				return null;
+			if (m.Get<PrimitiveExpression>("length").Single().Value is not int loopBound || loopBound != arrayLength)
+				return null;
+
+			if (!VariableCanBeUsedAsForeachLocal(itemVariable, forStatement))
+				return null;
+			// The index is a pure counter: stored at init + increment, loaded at the condition,
+			// the increment, and the element access; never captured by address.
+			if (indexVariable.StoreCount != 2 || indexVariable.LoadCount != 3 || indexVariable.AddressCount != 0)
+				return null;
+
+			context.Step("Introduce foreach over inline array", forStatement);
+			// Take the buffer reference for the `in` expression before dropping the element access.
+			var inExpression = bufferIdentifier.Detach();
+			// Reuse the loop body (preserving its annotations) after removing its leading
+			// `item = <PrivateImplementationDetails>.InlineArrayElementRef(ref buffer, i)` statement.
+			var body = (BlockStatement)forStatement.EmbeddedStatement;
+			body.Statements.First().Remove();
+			var foreachStmt = new ForeachStatement {
+				VariableType = context.Settings.AnonymousTypes && itemVariable.Type.ContainsAnonymousType() ? new SimpleType("var") : context.TypeSystemAstBuilder.ConvertType(itemVariable.Type),
+				VariableDesignation = new SingleVariableDesignation { Identifier = itemVariable.Name! },
+				InExpression = inExpression,
+				EmbeddedStatement = body.Detach()
+			};
+			foreachStmt.CopyAnnotationsFrom(forStatement);
+			itemVariable.Kind = IL.VariableKind.ForeachLocal;
+			foreachStmt.VariableDesignation.AddAnnotation(new ILVariableResolveResult(itemVariable, itemVariable.Type));
+			forStatement.ReplaceWith(foreachStmt);
+			context.EndStep(foreachStmt);
 			return foreachStmt;
 		}
 
@@ -431,7 +576,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				)
 			)));
 
-		bool MatchLowerBound(int indexNum, out IL.ILVariable index, IL.ILVariable collection, Statement statement)
+		bool MatchLowerBound(int indexNum, [NotNullWhen(true)] out IL.ILVariable? index, IL.ILVariable collection, Statement statement)
 		{
 			index = null;
 			var m = variableAssignLowerBoundPattern.Match(statement);
@@ -443,7 +588,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return m.Get<IdentifierExpression>("collection").Single().GetILVariable() == collection;
 		}
 
-		bool MatchForeachOnMultiDimArray(IL.ILVariable[] upperBounds, IL.ILVariable collection, Statement firstInitializerStatement, out IdentifierExpression foreachVariable, out IList<Statement> statements, out IL.ILVariable[] lowerBounds)
+		bool MatchForeachOnMultiDimArray(IL.ILVariable[] upperBounds, IL.ILVariable collection, Statement firstInitializerStatement, [NotNullWhen(true)] out IdentifierExpression? foreachVariable, [NotNullWhen(true)] out IList<Statement>? statements, out IL.ILVariable[] lowerBounds)
 		{
 			int i = 0;
 			foreachVariable = null;
@@ -451,7 +596,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			lowerBounds = new IL.ILVariable[upperBounds.Length];
 			Statement stmt = firstInitializerStatement;
 			Match m = default(Match);
-			while (i < upperBounds.Length && MatchLowerBound(i, out IL.ILVariable indexVariable, collection, stmt))
+			while (i < upperBounds.Length && MatchLowerBound(i, out var indexVariable, collection, stmt))
 			{
 				m = forOnArrayMultiDimPattern.Match(stmt.GetNextStatement());
 				if (!m.Success)
@@ -476,14 +621,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		Statement TransformForeachOnMultiDimArray(ExpressionStatement expressionStatement)
+		Statement? TransformForeachOnMultiDimArray(ExpressionStatement expressionStatement)
 		{
 			if (!context.Settings.ForEachStatement)
 				return null;
 			Match m;
-			Statement stmt = expressionStatement;
-			IL.ILVariable collection = null;
-			IL.ILVariable[] upperBounds = null;
+			Statement? stmt = expressionStatement;
+			IL.ILVariable? collection = null;
+			IL.ILVariable[]? upperBounds = null;
 			List<Statement> statementsToDelete = new List<Statement>();
 			int i = 0;
 			// first we look for all the upper bound initializations
@@ -508,29 +653,31 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					break;
 				if (!int.TryParse(m.Get<PrimitiveExpression>("index").Single().Value?.ToString() ?? "", out int index) || index != i)
 					break;
-				upperBounds[i] = m.Get<IdentifierExpression>("variable").Single().GetILVariable();
+				upperBounds[i] = m.Get<IdentifierExpression>("variable").Single().GetILVariable()!;
 				stmt = stmt.GetNextStatement();
 				i++;
-			} while (stmt != null && i < upperBounds.Length);
+			} while (stmt != null && upperBounds != null && i < upperBounds.Length);
 
-			if (upperBounds?.LastOrDefault() == null || collection == null)
+			if (upperBounds?.LastOrDefault() == null || collection == null || stmt == null)
 				return null;
 			if (!MatchForeachOnMultiDimArray(upperBounds, collection, stmt, out var foreachVariable, out var statements, out var lowerBounds))
 				return null;
 			statementsToDelete.Add(stmt);
-			statementsToDelete.Add(stmt.GetNextStatement());
+			// The matched multi-dimensional foreach pattern guarantees a statement after stmt.
+			statementsToDelete.Add(stmt.GetNextStatement()!);
 			var itemVariable = foreachVariable.GetILVariable();
 			if (itemVariable == null || !itemVariable.IsSingleDefinition
 				|| (itemVariable.Kind != IL.VariableKind.Local && itemVariable.Kind != IL.VariableKind.StackSlot)
 				|| !upperBounds.All(ub => ub.IsSingleDefinition && ub.LoadCount == 1)
 				|| !lowerBounds.All(lb => lb.StoreCount == 2 && lb.LoadCount == 3 && lb.AddressCount == 0))
 				return null;
+			context.Step("Introduce foreach over multidimensional array", expressionStatement);
 			var body = new BlockStatement();
 			foreach (var statement in statements)
 				body.Statements.Add(statement.Detach());
 			var foreachStmt = new ForeachStatement {
 				VariableType = context.Settings.AnonymousTypes && itemVariable.Type.ContainsAnonymousType() ? new SimpleType("var") : context.TypeSystemAstBuilder.ConvertType(itemVariable.Type),
-				VariableDesignation = new SingleVariableDesignation { Identifier = itemVariable.Name },
+				VariableDesignation = new SingleVariableDesignation { Identifier = itemVariable.Name! },
 				InExpression = m.Get<IdentifierExpression>("collection").Single().Detach(),
 				EmbeddedStatement = body
 			};
@@ -542,6 +689,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			foreachStmt.VariableDesignation.AddAnnotation(new ILVariableResolveResult(itemVariable, itemVariable.Type));
 			// TODO : add ForeachAnnotation
 			expressionStatement.ReplaceWith(foreachStmt);
+			context.EndStep(foreachStmt);
 			return foreachStmt;
 		}
 
@@ -608,12 +756,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		PropertyDeclaration TransformAutomaticProperty(PropertyDeclaration propertyDeclaration)
+		PropertyDeclaration? TransformAutomaticProperty(PropertyDeclaration propertyDeclaration)
 		{
-			IProperty property = propertyDeclaration.GetSymbol() as IProperty;
-			if (!CanTransformToAutomaticProperty(property, !property.DeclaringTypeDefinition.Fields.Any(f => f.Name == "_" + property.Name && f.IsCompilerGenerated())))
+			IProperty? property = propertyDeclaration.GetSymbol() as IProperty;
+			if (property == null)
 				return null;
-			IField field = null;
+			if (context.Settings.FieldKeyword)
+				return TransformFieldBackedProperty(propertyDeclaration, property);
+			if (!CanTransformToAutomaticProperty(property, !(property.DeclaringTypeDefinition?.Fields.Any(f => f.Name == "_" + property.Name && f.IsCompilerGenerated()) ?? false)))
+				return null;
+			IField? field = null;
 			Match m = automaticPropertyPattern.Match(propertyDeclaration);
 			if (m.Success)
 			{
@@ -629,16 +781,30 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			if (field == null || !NameCouldBeBackingFieldOfAutomaticProperty(field.Name, out _))
 				return null;
-			if (propertyDeclaration.Setter.HasModifier(Modifiers.Readonly) || (propertyDeclaration.HasModifier(Modifiers.Readonly) && !propertyDeclaration.Setter.IsNull))
+			// In generic types the accessor bodies reference the field specialized by the
+			// type's own type parameters; the field declaration's symbol is the definition.
+			field = (IField)field.MemberDefinition;
+			if (propertyDeclaration.Setter?.HasModifier(Modifiers.Readonly) == true || (propertyDeclaration.HasModifier(Modifiers.Readonly) && propertyDeclaration.Setter is not null))
 				return null;
 			if (field.IsCompilerGenerated() && field.DeclaringTypeDefinition == property.DeclaringTypeDefinition)
 			{
-				RemoveCompilerGeneratedAttribute(propertyDeclaration.Getter.Attributes);
-				RemoveCompilerGeneratedAttribute(propertyDeclaration.Setter.Attributes);
-				propertyDeclaration.Getter.Body = null;
-				propertyDeclaration.Setter.Body = null;
+				context.Step("Convert property to auto-property", propertyDeclaration);
+				// Clearing the accessor body turns it into an auto-property accessor.
+				var getter = propertyDeclaration.Getter;
+				var setter = propertyDeclaration.Setter;
+				if (getter is not null)
+				{
+					RemoveCompilerGeneratedAttribute(getter.Attributes);
+					getter.Body = null;
+				}
+				if (setter is not null)
+				{
+					RemoveCompilerGeneratedAttribute(setter.Attributes);
+					setter.Body = null;
+				}
 				propertyDeclaration.Modifiers &= ~Modifiers.Readonly;
-				propertyDeclaration.Getter.Modifiers &= ~Modifiers.Readonly;
+				if (getter is not null)
+					getter.Modifiers &= ~Modifiers.Readonly;
 
 				var fieldDecl = propertyDeclaration.Parent?.Children.OfType<FieldDeclaration>()
 					.FirstOrDefault(fd => field.Equals(fd.GetSymbol()));
@@ -659,12 +825,233 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return null;
 		}
 
-		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections)
+		static readonly BlockStatement trivialFieldGetterBody = new BlockStatement {
+			new ReturnStatement {
+				Expression = new NamedNode("fieldReference", new IdentifierExpression("field"))
+			}
+		};
+
+		static readonly BlockStatement trivialFieldSetterBody = new BlockStatement {
+			new AssignmentExpression {
+				Left = new NamedNode("fieldReference", new IdentifierExpression("field")),
+				Right = new IdentifierExpression("value")
+			}
+		};
+
+		/// <summary>
+		/// Handles all field-backed properties when the C# 14 "field" keyword is available:
+		/// accessor bodies already refer to the backing field as "field" (see
+		/// ExpressionBuilder.ConvertField), so compiler-generated trivial accessors collapse
+		/// individually to "get;"/"set;" and the backing-field declaration disappears, with its
+		/// attributes re-hosted as "field:" sections on the property.
+		/// </summary>
+		PropertyDeclaration? TransformFieldBackedProperty(PropertyDeclaration propertyDeclaration, IProperty property)
+		{
+			if (!TryGetBackingField(property, out var field))
+				return null;
+			if (!OutsideReferencesAreExpressible(propertyDeclaration, field))
+			{
+				// The field stays declared, so the "field" keyword references emitted by
+				// ExpressionBuilder.ConvertField have to become ordinary field references again.
+				foreach (var identifierExpression in propertyDeclaration.Descendants.OfType<IdentifierExpression>())
+				{
+					if (identifierExpression.Identifier == "field"
+						&& identifierExpression.GetSymbol() is IField referencedField
+						&& field.Equals(referencedField.MemberDefinition))
+					{
+						identifierExpression.Identifier = field.Name;
+					}
+				}
+				return null;
+			}
+			context.Step("Transform field-backed property", propertyDeclaration);
+			var getter = propertyDeclaration.Getter;
+			var setter = propertyDeclaration.Setter;
+			if (context.Settings.AutomaticProperties)
+			{
+				// VB auto-properties do not mark their accessors [CompilerGenerated]; the
+				// pre-C# 14 transform recognizes them by their "_<PropertyName>" backing field
+				// instead. Keep that rule, or a VB auto-property grows explicit "field"
+				// accessors where every other compiler's collapses to "{ get; set; }".
+				bool accessorsMustBeCompilerGenerated = field.Name != "_" + property.Name;
+				CollapseTrivialAccessor(getter, trivialFieldGetterBody, field, accessorsMustBeCompilerGenerated);
+				// A readonly setter cannot become an auto-accessor (same rule as the pre-C# 14
+				// transform); readonly getters collapse fine because auto-getters are
+				// implicitly readonly.
+				if (setter?.HasModifier(Modifiers.Readonly) != true
+					&& !(propertyDeclaration.HasModifier(Modifiers.Readonly) && setter is not null))
+				{
+					CollapseTrivialAccessor(setter, trivialFieldSetterBody, field, accessorsMustBeCompilerGenerated);
+				}
+			}
+			if (getter?.Body == null && setter?.Body == null)
+			{
+				// The property became a full auto-property; readonly is implied like before.
+				propertyDeclaration.Modifiers &= ~Modifiers.Readonly;
+				if (getter is not null)
+					getter.Modifiers &= ~Modifiers.Readonly;
+			}
+			var fieldDecl = propertyDeclaration.Parent?.Children.OfType<FieldDeclaration>()
+				.FirstOrDefault(fd => field.Equals(fd.GetSymbol()));
+			if (fieldDecl != null)
+			{
+				fieldDecl.Remove();
+				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
+				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
+				foreach (var section in fieldDecl.Attributes)
+				{
+					section.AttributeTarget = "field";
+					propertyDeclaration.Attributes.Add(section.Detach());
+				}
+			}
+			return null;
+		}
+
+		void CollapseTrivialAccessor(Accessor? accessor, BlockStatement pattern, IField field,
+			bool accessorMustBeCompilerGenerated)
+		{
+			if (accessor?.Body is null)
+				return;
+			if (accessorMustBeCompilerGenerated
+				&& (accessor.GetSymbol() is not IMethod method || !method.IsCompilerGenerated()))
+			{
+				return;
+			}
+			Match m = pattern.Match(accessor.Body);
+			if (!m.Success)
+				return;
+			if (m.Get<AstNode>("fieldReference").Single().GetSymbol() is not IField referencedField
+				|| !field.Equals(referencedField.MemberDefinition))
+			{
+				return;
+			}
+			RemoveCompilerGeneratedAttribute(accessor.Attributes);
+			// Auto-accessors are implicitly readonly.
+			accessor.Modifiers &= ~Modifiers.Readonly;
+			// Clearing the accessor body turns it into an auto-property accessor.
+			accessor.Body = null;
+		}
+
+		internal static bool TryGetBackingField(IProperty property, [NotNullWhen(true)] out IField? field)
+		{
+			field = null;
+			if (property.Parameters.Count > 0 || property.DeclaringTypeDefinition == null)
+				return false;
+			// A type definition's fields are unspecialized, so compare against the property
+			// DEFINITION's return type; a specialized property in a generic type would
+			// otherwise never match its own backing field.
+			var propertyType = ((IProperty)property.MemberDefinition).ReturnType;
+			foreach (var candidate in property.DeclaringTypeDefinition.Fields)
+			{
+				if (candidate.IsCompilerGenerated()
+					&& candidate.IsStatic == property.IsStatic
+					// The trivial accessor bodies of a classic auto-property guaranteed this
+					// structurally; arbitrary accessor bodies do not. A field of a different
+					// type is not this property's storage, and removing it while printing
+					// `field` would substitute storage of the property's type instead.
+					&& candidate.Type.Equals(propertyType)
+					&& NameCouldBeBackingFieldOfAutomaticProperty(candidate.Name, out var propertyName)
+					&& propertyName == property.Name)
+				{
+					field = candidate;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		/// <summary>
+		/// The "field" keyword cannot express backing-field accesses outside the owning
+		/// property's accessors. The only shapes C# can express are stores in a constructor of
+		/// the declaring type (property initializers, or assignments to setter-less
+		/// properties); anything else means the field declaration has to be kept.
+		/// </summary>
+		bool OutsideReferencesAreExpressible(AstNode nodeInTree, IField field)
+		{
+			var root = nodeInTree.Ancestors.LastOrDefault() ?? nodeInTree;
+			if (outsideReferenceRoot != root)
+			{
+				outsideReferenceRoot = root;
+				outsideReferenceVerdicts = BuildOutsideReferenceIndex(root);
+			}
+			// Absent means no reference to this field was found outside its own property.
+			return !outsideReferenceVerdicts!.TryGetValue((IField)field.MemberDefinition, out bool expressible)
+				|| expressible;
+		}
+
+		// The verdict per backing field for one syntax tree. Answering each property with its
+		// own full walk made whole-module output quadratic in the number of properties, which
+		// a property-heavy assembly feels as minutes instead of seconds. Later transforms only
+		// ever REMOVE references to the field of the property they are rewriting, so a verdict
+		// computed up front stays valid for every other property in the tree.
+		AstNode? outsideReferenceRoot;
+		Dictionary<IField, bool>? outsideReferenceVerdicts;
+
+		/// <summary>
+		/// Whether a constructor store to <paramref name="field"/> still has a home once the
+		/// field declaration is gone. Something has to turn it into an initializer or a
+		/// property assignment, and not every store qualifies.
+		/// </summary>
+		bool StoreSurvivesAsInitializer(IField field)
+		{
+			// A setter-less property's store is rewritten to a property assignment by
+			// ReplaceBackingFieldUsage, in this same transform - no later transform involved.
+			if (IsBackingFieldOfAutomaticProperty(field, out var property) && !property.CanSet)
+				return true;
+			// Everything else waits for TransformFieldAndConstructorInitializers, which runs
+			// after this transform and declines to move non-constant stores out of an EXPLICIT
+			// static constructor (see its `onlyMoveConstants`). Removing the declaration here
+			// would leave that store referencing a field that no longer exists.
+			if (field.IsStatic && !context.Settings.AlwaysMoveInitializer
+				&& !IsBeforeFieldInit(field.DeclaringTypeDefinition))
+			{
+				return false;
+			}
+			return true;
+		}
+
+		bool IsBeforeFieldInit(ITypeDefinition? typeDefinition)
+		{
+			if (typeDefinition?.MetadataToken.IsNil != false)
+				return false;
+			var metadata = context.TypeSystem.MainModule.MetadataFile.Metadata;
+			var td = metadata.GetTypeDefinition((TypeDefinitionHandle)typeDefinition.MetadataToken);
+			return td.HasFlag(System.Reflection.TypeAttributes.BeforeFieldInit);
+		}
+
+		Dictionary<IField, bool> BuildOutsideReferenceIndex(AstNode root)
+		{
+			var verdicts = new Dictionary<IField, bool>();
+			foreach (var node in root.Descendants)
+			{
+				if (node is not (IdentifierExpression or MemberReferenceExpression))
+					continue;
+				if (node.GetSymbol() is not IField referencedField)
+					continue;
+				var definition = (IField)referencedField.MemberDefinition;
+				// A reference inside the accessors of the field's own property is exactly what
+				// the "field" keyword expresses; anything else is an outside reference.
+				if (node.Ancestors.OfType<PropertyDeclaration>().FirstOrDefault()?.GetSymbol() is IProperty owner
+					&& TryGetBackingField(owner, out var ownerField)
+					&& definition.Equals(ownerField.MemberDefinition))
+				{
+					continue;
+				}
+				var enclosingMethod = node.Ancestors.OfType<EntityDeclaration>().FirstOrDefault()?.GetSymbol() as IMethod;
+				if (!IsConstructorStore(node, definition, enclosingMethod) || !StoreSurvivesAsInitializer(definition))
+					verdicts[definition] = false;
+				else if (!verdicts.ContainsKey(definition))
+					verdicts[definition] = true;
+			}
+			return verdicts;
+		}
+
+		static void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections)
 		{
 			RemoveCompilerGeneratedAttribute(attributeSections, "System.Runtime.CompilerServices.CompilerGeneratedAttribute");
 		}
 
-		void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections, params string[] attributesToRemove)
+		static void RemoveCompilerGeneratedAttribute(AstNodeCollection<AttributeSection> attributeSections, params string[] attributesToRemove)
 		{
 			foreach (AttributeSection section in attributeSections)
 			{
@@ -684,35 +1071,38 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override AstNode VisitIdentifier(Identifier identifier)
 		{
-			if (context.Settings.AutomaticProperties)
+			if (context.Settings.AutomaticProperties || context.Settings.FieldKeyword)
 			{
 				var newIdentifier = ReplaceBackingFieldUsage(identifier);
 				if (newIdentifier != null)
 				{
 					identifier.ReplaceWith(newIdentifier);
+					context.EndStep(newIdentifier);
 					return newIdentifier;
 				}
-			}
-			if (context.Settings.AutomaticEvents)
-			{
-				var newIdentifier = ReplaceEventFieldAnnotation(identifier);
-				if (newIdentifier != null)
-					return newIdentifier;
 			}
 			return base.VisitIdentifier(identifier);
 		}
 
-		internal static bool IsBackingFieldOfAutomaticProperty(IField field, out IProperty property)
+		internal static bool IsBackingFieldOfAutomaticProperty(IField field, [NotNullWhen(true)] out IProperty? property)
 		{
 			property = null;
-			if (!NameCouldBeBackingFieldOfAutomaticProperty(field.Name, out string propertyName))
+			if (!NameCouldBeBackingFieldOfAutomaticProperty(field.Name, out var propertyName))
 				return false;
-			if (!field.IsCompilerGenerated())
-				return false;
-			property = field.DeclaringTypeDefinition
+			var candidate = field.DeclaringTypeDefinition?
 				.GetProperties(p => p.Name == propertyName, GetMemberOptions.IgnoreInheritedMembers)
 				.FirstOrDefault();
-			return property != null;
+			// Answering through TryGetBackingField keeps the two directions of the same question
+			// from disagreeing: it is the predicate every transform consults before removing a
+			// declaration, and it checks more than the name (compiler-generated, staticness and
+			// field type all have to match the property).
+			if (candidate == null || !TryGetBackingField(candidate, out var backingField)
+				|| !field.MemberDefinition.Equals(backingField.MemberDefinition))
+			{
+				return false;
+			}
+			property = candidate;
+			return true;
 		}
 
 		/// <summary>
@@ -725,7 +1115,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		static readonly System.Text.RegularExpressions.Regex automaticPropertyBackingFieldNameRegex
 			= new System.Text.RegularExpressions.Regex(@"^(<(?<name>.+)>k__BackingField|_(?<name>.+))$");
 
-		static bool NameCouldBeBackingFieldOfAutomaticProperty(string name, out string propertyName)
+		internal static bool NameCouldBeBackingFieldOfAutomaticProperty(string name, [NotNullWhen(true)] out string? propertyName)
 		{
 			propertyName = null;
 			var m = automaticPropertyBackingFieldNameRegex.Match(name);
@@ -735,317 +1125,113 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return true;
 		}
 
-		Identifier ReplaceBackingFieldUsage(Identifier identifier)
+		Identifier? ReplaceBackingFieldUsage(Identifier identifier)
 		{
-			if (NameCouldBeBackingFieldOfAutomaticProperty(identifier.Name, out _))
+			// The resolve result, not the spelling, identifies the member: after
+			// ExpressionBuilder.ConvertField the same backing field appears both as the C# 14 "field"
+			// keyword and under its metadata name, carrying the same annotation either way.
+			var parent = identifier.Parent;
+			if (parent == null)
+				return null;
+			var mrr = parent.Annotation<MemberResolveResult>();
+			if (mrr?.Member is not IField field || !IsBackingFieldOfAutomaticProperty(field, out var property)
+				|| currentMethod?.AccessorOwner == property)
 			{
-				var parent = identifier.Parent;
-				var mrr = parent.Annotation<MemberResolveResult>();
-				var field = mrr?.Member as IField;
-				if (field != null && IsBackingFieldOfAutomaticProperty(field, out var property)
-					&& CanTransformToAutomaticProperty(property, !(field.IsCompilerGenerated() && field.Name == "_" + property.Name))
-					&& currentMethod.AccessorOwner != property)
-				{
-					if (!property.CanSet && !context.Settings.GetterOnlyAutomaticProperties)
-						return null;
-					parent.RemoveAnnotations<MemberResolveResult>();
-					parent.AddAnnotation(new MemberResolveResult(mrr.TargetResult, property));
-					return Identifier.Create(property.Name);
-				}
+				return null;
 			}
-			return null;
+			// With the keyword available TransformAutomaticProperty routes every property through
+			// TransformFieldBackedProperty, so its verdict on the declaration is the only one that
+			// counts: while the field stays declared, a field reference remains the correct - and
+			// only compilable - rendering.
+			if (context.Settings.FieldKeyword && !BackingFieldWillBeRemoved(property, field, parent))
+				return null;
+			if (context.Settings.AutomaticProperties
+				&& CanTransformToAutomaticProperty(property, !(field.IsCompilerGenerated() && field.Name == "_" + property.Name)))
+			{
+				if (!property.CanSet && !context.Settings.GetterOnlyAutomaticProperties)
+					return null;
+			}
+			else if (context.Settings.FieldKeyword && !property.CanSet && IsConstructorStoreTarget(parent, field))
+			{
+				// A setter-less field-backed property keeping explicit accessors is still assignable
+				// by name inside a constructor of its declaring type, and that is the only form the
+				// store has left once the declaration is gone.
+			}
+			else
+			{
+				// The property keeps explicit accessors and a setter, so its name would invoke that
+				// setter. The store stays a field reference and TransformFieldAndConstructorInitializers
+				// lifts it into the property initializer, which is what field-backed storage means.
+				return null;
+			}
+			context.Step("Replace backing field use with property", identifier);
+			parent.RemoveAnnotations<MemberResolveResult>();
+			parent.AddAnnotation(new MemberResolveResult(mrr.TargetResult, property));
+			return Identifier.Create(property.Name);
 		}
 
-		Identifier ReplaceEventFieldAnnotation(Identifier identifier)
+		bool IsConstructorStoreTarget(AstNode node, IField field)
+			=> IsConstructorStore(node, field, currentMethod);
+
+		/// <summary>
+		/// Whether <see cref="TransformFieldBackedProperty"/> will remove this field's
+		/// declaration. Rewriting a store before knowing that produces an assignment to a
+		/// property that keeps explicit, setter-less accessors.
+		/// </summary>
+		bool BackingFieldWillBeRemoved(IProperty property, IField field, AstNode nodeInTree)
 		{
-			var parent = identifier.Parent;
-			var mrr = parent.Annotation<MemberResolveResult>();
-			var field = mrr?.Member as IField;
-			if (field == null || field.Accessibility != Accessibility.Private)
-				return null;
-			foreach (var ev in field.DeclaringType.GetEvents(null, GetMemberOptions.IgnoreInheritedMembers))
+			return context.Settings.FieldKeyword
+				// The same gate VisitPropertyDeclaration applies: a setter-less property is only
+				// transformed where getter-only auto-properties are allowed.
+				&& (property.CanSet || context.Settings.GetterOnlyAutomaticProperties)
+				&& TryGetBackingField(property, out var backingField)
+				&& field.MemberDefinition.Equals(backingField.MemberDefinition)
+				&& OutsideReferencesAreExpressible(nodeInTree, backingField);
+		}
+
+		/// <summary>
+		/// True when <paramref name="node"/> is the left-hand side of a plain assignment to
+		/// <paramref name="field"/> inside a constructor of the field's declaring type - the
+		/// only outside reference the "field" keyword can still express (as a property
+		/// initializer, or an assignment to a setter-less property).
+		/// </summary>
+		/// <remarks>
+		/// Shared by <see cref="OutsideReferencesAreExpressible"/>, which decides whether the
+		/// field declaration may be removed, and <see cref="ReplaceBackingFieldUsage"/>, which
+		/// rewrites the store. The two must agree: if only one of them accepts a store, the
+		/// output either references a removed field or assigns a property that stayed
+		/// field-backed. They differ only in how the enclosing method is known, which is why
+		/// it is a parameter here.
+		/// </remarks>
+		static bool IsConstructorStore(AstNode node, IField field, IMethod? enclosingMethod)
+		{
+			if (node.Parent is not AssignmentExpression { Operator: AssignmentOperatorType.Assign } assignment
+				|| assignment.Left != node)
 			{
-				if (CSharpDecompiler.IsEventBackingFieldName(field.Name, ev.Name, out int suffixLength) &&
-					currentMethod.AccessorOwner != ev)
-				{
-					parent.RemoveAnnotations<MemberResolveResult>();
-					parent.AddAnnotation(new MemberResolveResult(mrr.TargetResult, ev));
-					if (suffixLength != 0)
-						identifier.Name = identifier.Name.Substring(0, identifier.Name.Length - suffixLength);
-					return identifier;
-				}
+				return false;
 			}
-			return null;
+			return enclosingMethod is { IsConstructor: true } ctor
+				&& ctor.IsStatic == field.IsStatic
+				&& ctor.DeclaringTypeDefinition == field.DeclaringTypeDefinition;
 		}
 
 		#region Automatic Events
-		static readonly Expression fieldReferencePattern = new Choice {
-			new IdentifierExpression(Pattern.AnyString),
-			new MemberReferenceExpression {
-				Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
-				MemberName = Pattern.AnyString
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV2 = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("field", fieldReferencePattern),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new CastExpression(
-						new AnyNode("type"),
-						new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new Backreference("field"), new IdentifierExpression("value"))
-					)
-				},
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4 = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode("field", fieldReferencePattern)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new NamedNode("var3", new IdentifierExpression(Pattern.AnyString)),
-							Operator = AssignmentOperatorType.Assign,
-							Right = new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value")))
-						},
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange"),
-								new Expression[] { // arguments
-									new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") },
-									new IdentifierExpressionBackreference("var3"),
-									new IdentifierExpressionBackreference("var2")
-								}
-							)}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
-					},
-				}
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4AggressivelyInlined = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode("field", fieldReferencePattern)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange"),
-								new Expression[] { // arguments
-									new NamedArgumentExpression("value", new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value")))),
-									new NamedArgumentExpression("location1", new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") }),
-									new NamedArgumentExpression("comparand", new IdentifierExpressionBackreference("var2"))
-								}
-							)}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
-					},
-				}
-			}
-		};
-
-		static readonly Accessor automaticEventPatternV4MCS = new Accessor {
-			Attributes = { new Repeat(new AnyNode()) },
-			Body = new BlockStatement {
-				new AssignmentExpression {
-					Left = new NamedNode("var1", new IdentifierExpression(Pattern.AnyString)),
-					Operator = AssignmentOperatorType.Assign,
-					Right = new NamedNode(
-						"field",
-						new MemberReferenceExpression {
-								Target = new Choice { new ThisReferenceExpression(), new TypeReferenceExpression { Type = new AnyNode() } },
-								MemberName = Pattern.AnyString
-						}
-					)
-				},
-				new DoWhileStatement {
-					EmbeddedStatement = new BlockStatement {
-						new AssignmentExpression(new NamedNode("var2", new IdentifierExpression(Pattern.AnyString)), new IdentifierExpressionBackreference("var1")),
-						new AssignmentExpression {
-							Left = new IdentifierExpressionBackreference("var1"),
-							Right = new InvocationExpression(new MemberReferenceExpression(new TypeReferenceExpression(new TypePattern(typeof(System.Threading.Interlocked)).ToType()),
-								"CompareExchange",
-								new AstType[] { new Repeat(new AnyNode()) }), // optional type arguments
-								new Expression[] { // arguments
-									new DirectionExpression { FieldDirection = FieldDirection.Ref, Expression = new Backreference("field") },
-									new CastExpression(new AnyNode("type"), new InvocationExpression(new AnyNode("delegateCombine").ToExpression(), new IdentifierExpressionBackreference("var2"), new IdentifierExpression("value"))),
-									new IdentifierExpressionBackreference("var1")
-								}
-							)
-						}
-					},
-					Condition = new BinaryOperatorExpression {
-						Left = new CastExpression(new TypePattern(typeof(object)), new IdentifierExpressionBackreference("var1")),
-						Operator = BinaryOperatorType.InEquality,
-						Right = new IdentifierExpressionBackreference("var2")
-					},
-				}
-			}
-		};
-
-		bool CheckAutomaticEventMatch(Match m, CustomEventDeclaration ev, bool isAddAccessor)
-		{
-			if (!m.Success)
-				return false;
-			Expression fieldExpression = m.Get<Expression>("field").Single();
-			// field name must match event name
-			switch (fieldExpression)
-			{
-				case IdentifierExpression identifier:
-					if (!CSharpDecompiler.IsEventBackingFieldName(identifier.Identifier, ev.Name, out _))
-						return false;
-					break;
-				case MemberReferenceExpression memberRef:
-					if (!CSharpDecompiler.IsEventBackingFieldName(memberRef.MemberName, ev.Name, out _))
-						return false;
-					break;
-				default:
-					return false;
-			}
-			var returnType = ev.ReturnType.GetResolveResult().Type;
-			var eventType = m.Get<AstType>("type").Single().GetResolveResult().Type;
-			// ignore tuple element names, dynamic and nullability
-			if (!NormalizeTypeVisitor.TypeErasure.EquivalentTypes(returnType, eventType))
-				return false;
-			var combineMethod = m.Get<AstNode>("delegateCombine").Single().Parent.GetSymbol() as IMethod;
-			if (combineMethod == null || combineMethod.Name != (isAddAccessor ? "Combine" : "Remove"))
-				return false;
-			return combineMethod.DeclaringType.FullName == "System.Delegate";
-		}
-
-		static readonly string[] attributeTypesToRemoveFromAutoEvents = new[] {
-			"System.Runtime.CompilerServices.CompilerGeneratedAttribute",
-			"System.Diagnostics.DebuggerBrowsableAttribute",
-			"System.Runtime.CompilerServices.MethodImplAttribute"
-		};
-
 		internal static readonly string[] attributeTypesToRemoveFromAutoProperties = new[] {
 			"System.Runtime.CompilerServices.CompilerGeneratedAttribute",
 			"System.Diagnostics.DebuggerBrowsableAttribute"
 		};
 
-		bool CheckAutomaticEventV4(CustomEventDeclaration ev)
+		static bool IsEventBackingFieldDeclaration(FieldDeclaration fd, IEvent ev)
 		{
-			Match addMatch = automaticEventPatternV4.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
+			if (fd.Variables.Count > 1)
 				return false;
-			Match removeMatch = automaticEventPatternV4.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
+			if (fd.GetSymbol() is not IField f)
 				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV4AggressivelyInlined(CustomEventDeclaration ev)
-		{
-			if (!context.Settings.AggressiveInlining)
+			if (f.ParentModule is not MetadataModule module)
 				return false;
-			Match addMatch = automaticEventPatternV4AggressivelyInlined.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
-				return false;
-			Match removeMatch = automaticEventPatternV4AggressivelyInlined.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
-				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV2(CustomEventDeclaration ev)
-		{
-			Match addMatch = automaticEventPatternV2.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, isAddAccessor: true))
-				return false;
-			Match removeMatch = automaticEventPatternV2.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, isAddAccessor: false))
-				return false;
-			return true;
-		}
-
-		bool CheckAutomaticEventV4MCS(CustomEventDeclaration ev)
-		{
-			Match addMatch = automaticEventPatternV4MCS.Match(ev.AddAccessor);
-			if (!CheckAutomaticEventMatch(addMatch, ev, true))
-				return false;
-			Match removeMatch = automaticEventPatternV4MCS.Match(ev.RemoveAccessor);
-			if (!CheckAutomaticEventMatch(removeMatch, ev, false))
-				return false;
-			return true;
-		}
-
-		EventDeclaration TransformAutomaticEvents(CustomEventDeclaration ev)
-		{
-			if (!ev.PrivateImplementationType.IsNull)
-				return null;
-			const Modifiers withoutBody = Modifiers.Abstract | Modifiers.Extern;
-			if (ev.GetSymbol() is not IEvent symbol)
-				return null;
-			if ((ev.Modifiers & withoutBody) == 0)
-			{
-				if (!CheckAutomaticEventV4AggressivelyInlined(ev) && !CheckAutomaticEventV4(ev) && !CheckAutomaticEventV2(ev) && !CheckAutomaticEventV4MCS(ev))
-					return null;
-			}
-			RemoveCompilerGeneratedAttribute(ev.AddAccessor.Attributes, attributeTypesToRemoveFromAutoEvents);
-			EventDeclaration ed = new EventDeclaration();
-			ev.Attributes.MoveTo(ed.Attributes);
-			foreach (var attr in ev.AddAccessor.Attributes)
-			{
-				attr.AttributeTarget = "method";
-				ed.Attributes.Add(attr.Detach());
-			}
-			ed.ReturnType = ev.ReturnType.Detach();
-			ed.Modifiers = ev.Modifiers;
-			ed.Variables.Add(new VariableInitializer(ev.Name));
-			ed.CopyAnnotationsFrom(ev);
-
-			var fieldDecl = ev.Parent?.Children.OfType<FieldDeclaration>()
-				.FirstOrDefault(IsEventBackingField);
-			if (fieldDecl != null)
-			{
-				fieldDecl.Remove();
-				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.CompilerGenerated);
-				CSharpDecompiler.RemoveAttribute(fieldDecl, KnownAttribute.DebuggerBrowsable);
-				foreach (var section in fieldDecl.Attributes)
-				{
-					section.AttributeTarget = "field";
-					ed.Attributes.Add(section.Detach());
-				}
-			}
-
-			ev.ReplaceWith(ed);
-			return ed;
-
-			bool IsEventBackingField(FieldDeclaration fd)
-			{
-				if (fd.Variables.Count > 1)
-					return false;
-				if (fd.GetSymbol() is not IField f)
-					return false;
-				return f.Accessibility == Accessibility.Private
-					&& symbol.ReturnType.Equals(f.ReturnType)
-					&& CSharpDecompiler.IsEventBackingFieldName(f.Name, ev.Name, out _);
-			}
+			return f.Accessibility == Accessibility.Private
+				&& ev.ReturnType.Equals(f.ReturnType)
+				&& module.MetadataFile.PropertyAndEventBackingFieldLookup.IsEventBackingField((FieldDefinitionHandle)f.MetadataToken, out _);
 		}
 		#endregion
 
@@ -1067,28 +1253,33 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			Body = destructorBodyPattern
 		};
 
-		DestructorDeclaration TransformDestructor(MethodDeclaration methodDef)
+		DestructorDeclaration? TransformDestructor(MethodDeclaration methodDef)
 		{
 			Match m = destructorPattern.Match(methodDef);
 			if (m.Success)
 			{
+				context.Step("Convert Finalize method to destructor", methodDef);
 				DestructorDeclaration dd = new DestructorDeclaration();
 				methodDef.Attributes.MoveTo(dd.Attributes);
 				dd.CopyAnnotationsFrom(methodDef);
 				dd.Modifiers = methodDef.Modifiers & ~(Modifiers.Protected | Modifiers.Override);
 				dd.Body = m.Get<BlockStatement>("body").Single().Detach();
-				dd.Name = currentTypeDefinition?.Name;
+				// A destructor only appears inside a type declaration, so the context tracker
+				// has an enclosing type at this point.
+				dd.Name = currentTypeDefinition!.Name;
 				methodDef.ReplaceWith(dd);
+				context.EndStep(dd);
 				return dd;
 			}
 			return null;
 		}
 
-		DestructorDeclaration TransformDestructorBody(DestructorDeclaration dtorDef)
+		DestructorDeclaration? TransformDestructorBody(DestructorDeclaration dtorDef)
 		{
 			Match m = destructorBodyPattern.Match(dtorDef.Body);
 			if (m.Success)
 			{
+				context.Step("Simplify destructor body", dtorDef);
 				dtorDef.Body = m.Get<BlockStatement>("body").Single().Detach();
 				return dtorDef;
 			}
@@ -1111,10 +1302,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// Simplify nested 'try { try {} catch {} } finally {}'.
 		/// This transformation must run after the using/lock tranformations.
 		/// </summary>
-		TryCatchStatement TransformTryCatchFinally(TryCatchStatement tryFinally)
+		TryCatchStatement? TransformTryCatchFinally(TryCatchStatement tryFinally)
 		{
 			if (tryCatchFinallyPattern.IsMatch(tryFinally))
 			{
+				context.Step("Merge nested try-catch-finally", tryFinally);
 				TryCatchStatement tryCatch = (TryCatchStatement)tryFinally.TryBlock.Statements.Single();
 				tryFinally.TryBlock = tryCatch.TryBlock.Detach();
 				tryCatch.CatchClauses.MoveTo(tryFinally.CatchClauses);
@@ -1142,11 +1334,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		};
 
-		AstNode SimplifyCascadingIfElseStatements(IfElseStatement node)
+		AstNode? SimplifyCascadingIfElseStatements(IfElseStatement node)
 		{
 			Match m = cascadingIfElsePattern.Match(node);
 			if (m.Success)
 			{
+				context.Step("Simplify cascading if-else", node);
 				IfElseStatement elseIf = m.Get<IfElseStatement>("nestedIfStatement").Single();
 				node.FalseStatement = elseIf.Detach();
 			}
@@ -1167,13 +1360,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					var bAndC = expr.Right as BinaryOperatorExpression;
 					if (bAndC != null && bAndC.Operator == expr.Operator)
 					{
-						// make bAndC the parent and expr the child
-						var b = bAndC.Left.Detach();
-						var c = bAndC.Right.Detach();
+						context.Step("Reassociate conditional logic", expr);
+						// make bAndC the parent and expr the child.
+						// A conditional-and/or operator always has both operands present.
+						var b = bAndC.Left!.Detach();
+						var c = bAndC.Right!.Detach();
 						expr.ReplaceWith(bAndC.Detach());
 						bAndC.Left = expr;
 						bAndC.Right = c;
 						expr.Right = b;
+						context.EndStep(bAndC);
 						return base.VisitBinaryOperatorExpression(bAndC);
 					}
 					break;
@@ -1185,8 +1381,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			if (expr.Operator == UnaryOperatorType.Not && expr.Expression is BinaryOperatorExpression { Operator: BinaryOperatorType.Equality } binary)
 			{
+				context.Step("Replace negated equality with inequality", expr);
 				binary.Operator = BinaryOperatorType.InEquality;
 				expr.ReplaceWith(binary.Detach());
+				context.EndStep(binary);
 				return VisitBinaryOperatorExpression(binary);
 			}
 			return base.VisitUnaryOperatorExpression(expr);
@@ -1215,6 +1413,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						Expression target = m.Get<Expression>("target").Single();
 						if (target.GetResolveResult().Type.IsReferenceType == false)
 						{
+							context.Step("Use pattern-based fixed statement", fixedStatement);
 							v.Initializer = target.Detach();
 						}
 					}
@@ -1237,6 +1436,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (!(usingStatement.ResourceAcquisition is VariableDeclarationStatement))
 				return usingStatement;
 
+			context.Step("Use enhanced using statement", usingStatement);
 			usingStatement.IsEnhanced = true;
 			return usingStatement;
 		}

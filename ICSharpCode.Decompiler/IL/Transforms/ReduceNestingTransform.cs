@@ -195,7 +195,9 @@ namespace ICSharpCode.Decompiler.IL
 					return;
 
 				context.Step("Replace leave with keyword exit", ifInst.TrueInst);
-				block.Instructions.Last().ReplaceWith(keywordExit.Clone());
+				var keywordExitClone = keywordExit.Clone();
+				block.Instructions.Last().ReplaceWith(keywordExitClone);
+				context.EndStep(keywordExitClone);
 			}
 
 			ConditionDetection.InvertIf(block, ifInst, context);
@@ -234,7 +236,9 @@ namespace ICSharpCode.Decompiler.IL
 				{
 					Debug.Assert(ifInst.TrueInst is Leave);
 					context.Step("Replace leave with keyword exit", ifInst.TrueInst);
-					ifInst.TrueInst.ReplaceWith(exitInst.Clone());
+					var exitClone = exitInst.Clone();
+					ifInst.TrueInst.ReplaceWith(exitClone);
+					context.EndStep(exitClone);
 				}
 				return true;
 			}
@@ -250,7 +254,9 @@ namespace ICSharpCode.Decompiler.IL
 				ifInst = elseIfInst;
 			}
 
-			if (!ShouldReduceNesting(ifInst.FalseInst, maxStatements, maxDepth))
+			// A chain with no trailing else has no block to reduce: ifInst.FalseInst is a bare Nop.
+			// Guarding here keeps the else-block cast in ExtractElseBlock safe (#3891).
+			if (ifInst.FalseInst is not Block falseBlock || !ShouldReduceNesting(falseBlock, maxStatements, maxDepth))
 				return false;
 
 			// extract the else block and insert exit points all the way up the else-if tree
@@ -430,7 +436,9 @@ namespace ICSharpCode.Decompiler.IL
 			if (!block.HasFlag(InstructionFlags.EndPointUnreachable))
 			{
 				context.Step("Duplicate block exit", fallthroughExit);
-				block.Instructions.Add(fallthroughExit.Clone());
+				var exitClone = fallthroughExit.Clone();
+				block.Instructions.Add(exitClone);
+				context.EndStep(exitClone);
 			}
 		}
 
@@ -576,16 +584,16 @@ namespace ICSharpCode.Decompiler.IL
 
 		/// <summary>
 		/// Heuristic to determine whether it is worth duplicating exits into the preceeding sibling blocks (then/else-if/case)
-		/// in order to reduce the nesting of inst by 1
+		/// in order to reduce the nesting of block by 1
 		/// </summary>
-		/// <param name="inst">The instruction heading the nested candidate block</param>
+		/// <param name="block">The nested candidate block (an else or default block)</param>
 		/// <param name="maxStatements">The number of statements in the largest sibling block</param>
 		/// <param name="maxDepth">The relative depth of the most nested statement in the sibling blocks</param>
 		/// <returns></returns>
-		private bool ShouldReduceNesting(ILInstruction inst, int maxStatements, int maxDepth)
+		private bool ShouldReduceNesting(Block block, int maxStatements, int maxDepth)
 		{
 			int maxStatements2 = 0, maxDepth2 = 0;
-			UpdateStats(inst, ref maxStatements2, ref maxDepth2);
+			UpdateStats(block, ref maxStatements2, ref maxDepth2);
 			// if the max depth is 2, always reduce nesting (total depth 3 or more)
 			// if the max depth is 1, reduce nesting if this block is the largest
 			// otherwise reduce nesting only if this block is twice as large as any other

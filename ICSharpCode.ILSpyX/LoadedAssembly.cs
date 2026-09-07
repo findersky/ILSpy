@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -31,8 +31,8 @@ using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 using ICSharpCode.ILSpyX.FileLoaders;
+using ICSharpCode.ILSpyX.Instrumentation;
 using ICSharpCode.ILSpyX.PdbProvider;
-
 
 #nullable enable
 
@@ -53,7 +53,7 @@ namespace ICSharpCode.ILSpyX
 	///   * a file that is still being loaded in the background
 	/// </summary>
 	[DebuggerDisplay("[LoadedAssembly {shortName}]")]
-	public sealed class LoadedAssembly
+	public sealed class LoadedAssembly : IDisposable
 	{
 		/// <summary>
 		/// Maps from MetadataFile (successfully loaded .NET module) back to the LoadedAssembly instance
@@ -61,7 +61,25 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		internal static readonly ConditionalWeakTable<MetadataFile, LoadedAssembly> loadedAssemblies = new ConditionalWeakTable<MetadataFile, LoadedAssembly>();
 
-		readonly Task<LoadResult> loadingTask;
+		readonly Lazy<Task<LoadResult>> lazyLoadingTask;
+		// Routes through Lazy so the actual Task.Run(LoadAsync) only kicks off on first
+		// demand (any caller that awaits or reads .Result). Status checks below use
+		// IsValueCreated so they don't accidentally trigger the load just by polling.
+		Task<LoadResult> loadingTask => lazyLoadingTask.Value;
+
+		/// <summary>
+		/// Fires once when the lazy load task transitions to a completed state (success
+		/// or failure). Subscribers use it to refresh derived state (tree-node icons,
+		/// cached metadata pointers) without themselves calling
+		/// <see cref="GetLoadResultAsync"/>, which would trigger the load.
+		///
+		/// If the load has already finished by the time you subscribe, the event will
+		/// not fire retroactively — check <see cref="IsLoaded"/> after subscribing and
+		/// invoke your handler manually if it returns true.
+		/// </summary>
+		public event Action? Loaded;
+
+		void RaiseLoaded() => Loaded?.Invoke();
 		readonly AssemblyList assemblyList;
 		readonly string fileName;
 		readonly string shortName;
@@ -87,7 +105,23 @@ namespace ICSharpCode.ILSpyX
 			this.applyWinRTProjections = applyWinRTProjections;
 			this.useDebugSymbols = useDebugSymbols;
 
-			this.loadingTask = Task.Run(() => LoadAsync(stream)); // requires that this.fileName is set
+			// Lazy: the first GetLoadResultAsync / await / .Result kicks off the work. Lets
+			// callers (e.g. AssemblyListTreeNode) construct LoadedAssembly entries en masse
+			// without flooding the thread pool with metadata-loading tasks; the active
+			// assembly's path-restore awaits first and gets a clean run.
+			//
+			// Continuation hooks the Loaded event so subscribers can refresh their display
+			// (icon / tooltip / lazy children) without themselves triggering the load — they
+			// observe completion rather than start it.
+			var localStream = stream;
+			this.lazyLoadingTask = new Lazy<Task<LoadResult>>(
+				() => {
+					var task = Task.Run(() => LoadAsync(localStream));
+					task.ContinueWith(static (_, state) => ((LoadedAssembly)state!).RaiseLoaded(),
+						this, TaskScheduler.Default);
+					return task;
+				},
+				LazyThreadSafetyMode.ExecutionAndPublication); // requires that this.fileName is set
 			this.shortName = Path.GetFileNameWithoutExtension(fileName);
 		}
 
@@ -104,13 +138,27 @@ namespace ICSharpCode.ILSpyX
 		string? targetFrameworkId;
 
 		/// <summary>
-		/// Returns a target framework identifier in the form '&lt;framework&gt;Version=v&lt;version&gt;'.
-		/// Returns an empty string if no TargetFrameworkAttribute was found
-		/// or the file doesn't contain an assembly header, i.e., is only a module.
-		/// 
-		/// Throws an exception if the file does not contain any .NET metadata (e.g. file of unknown format).
+		/// Returns the effective target framework identifier in the form '&lt;framework&gt;,Version=v&lt;version&gt;'.
+		/// An explicit override wins over the detected value.
 		/// </summary>
 		public async Task<string> GetTargetFrameworkIdAsync()
+		{
+			// An explicit override wins over (and bypasses) detection, even once detection has
+			// already cached a value, so the user's framework hint drives reference resolution.
+			// The setter normalizes blank to null, so a non-null override is always a usable TFM.
+			if (TargetFrameworkIdOverride is { } tfmOverride)
+				return tfmOverride;
+			return await GetDetectedTargetFrameworkIdAsync().ConfigureAwait(false);
+		}
+
+		/// <summary>
+		/// Returns the detected target framework identifier in the form '&lt;framework&gt;,Version=v&lt;version&gt;'.
+		/// Returns an empty string if no TargetFrameworkAttribute was found
+		/// or the file doesn't contain an assembly header, i.e., is only a module.
+		///
+		/// Throws an exception if the file does not contain any .NET metadata (e.g. file of unknown format).
+		/// </summary>
+		public async Task<string> GetDetectedTargetFrameworkIdAsync()
 		{
 			var value = LazyInit.VolatileRead(ref targetFrameworkId);
 			if (value == null)
@@ -250,13 +298,25 @@ namespace ICSharpCode.ILSpyX
 
 		public string ShortName => shortName;
 
+		// Cached once a successful Text computation completes. Reads after Dispose return
+		// this value (or ShortName fallback) instead of re-walking the metadata, whose
+		// MemoryMappedFile may have been unmapped -- a dereference AVs and the CLR fails
+		// fast on the resulting CorruptingStateException.
+		string? cachedText;
+		volatile bool isDisposed;
+
 		public string Text {
 			get {
+				if (cachedText is not null)
+					return cachedText;
+				if (isDisposed)
+					return ShortName;
 				if (IsLoaded && !HasLoadError)
 				{
 					var result = GetLoadResultAsync().GetAwaiter().GetResult();
 					if (result.MetadataFile != null)
 					{
+						string computed;
 						switch (result.MetadataFile.Kind)
 						{
 							case MetadataFile.MetadataFileKind.PortableExecutable:
@@ -273,16 +333,22 @@ namespace ICSharpCode.ILSpyX
 								{
 									versionOrInfo = ".netmodule";
 								}
-								if (versionOrInfo == null)
-									return ShortName;
-								return string.Format("{0} ({1})", ShortName, versionOrInfo);
+								computed = versionOrInfo == null
+									? ShortName
+									: string.Format("{0} ({1})", ShortName, versionOrInfo);
+								break;
 							case MetadataFile.MetadataFileKind.ProgramDebugDatabase:
-								return ShortName + " (Debug Metadata)";
+								computed = ShortName + " (Debug Metadata)";
+								break;
 							case MetadataFile.MetadataFileKind.Metadata:
-								return ShortName + " (Metadata)";
+								computed = ShortName + " (Metadata)";
+								break;
 							default:
-								return ShortName;
+								computed = ShortName;
+								break;
 						}
+						cachedText = computed;
+						return computed;
 					}
 				}
 				return ShortName;
@@ -291,15 +357,21 @@ namespace ICSharpCode.ILSpyX
 
 		/// <summary>
 		/// Gets whether loading finished for this file (either successfully or unsuccessfully).
+		/// Reading this property must NOT trigger the lazy load — callers poll it as a status
+		/// check (e.g. tree-icon overlays) and would deadlock if every poll started another
+		/// metadata load.
 		/// </summary>
-		public bool IsLoaded => loadingTask.IsCompleted;
+		public bool IsLoaded => lazyLoadingTask.IsValueCreated && lazyLoadingTask.Value.IsCompleted;
 
 		/// <summary>
 		/// Gets whether this file was loaded successfully as an assembly (not as a bundle).
 		/// </summary>
 		public bool IsLoadedAsValidAssembly {
 			get {
-				return loadingTask.Status == TaskStatus.RanToCompletion && loadingTask.Result.MetadataFile is { IsMetadataOnly: false };
+				if (!lazyLoadingTask.IsValueCreated)
+					return false;
+				var task = lazyLoadingTask.Value;
+				return task.Status == TaskStatus.RanToCompletion && task.Result.MetadataFile is { IsMetadataOnly: false };
 			}
 		}
 
@@ -307,7 +379,7 @@ namespace ICSharpCode.ILSpyX
 		/// Gets whether loading failed (file does not exist, unknown file format).
 		/// Returns false for valid assemblies and valid bundles.
 		/// </summary>
-		public bool HasLoadError => loadingTask.IsFaulted;
+		public bool HasLoadError => lazyLoadingTask.IsValueCreated && lazyLoadingTask.Value.IsFaulted;
 
 		public bool IsAutoLoaded { get; set; }
 
@@ -316,7 +388,44 @@ namespace ICSharpCode.ILSpyX
 		/// </summary>
 		public string? PdbFileName { get; private set; }
 
+		string? targetFrameworkIdOverride;
+
+		/// <summary>
+		/// Overrides the target framework used to resolve this assembly's references, in the
+		/// '&lt;framework&gt;,Version=v&lt;version&gt;' form (e.g. ".NETFramework,Version=v4.8").
+		/// Null means the framework detected from the TargetFrameworkAttribute is used. Blank or
+		/// whitespace-only values (e.g. a hand-edited assembly-list XML with <c>TargetFramework=""</c>)
+		/// are normalized to null and incidental whitespace is trimmed, so an override never
+		/// suppresses detection with an empty effective TFM.
+		/// Set this before the assembly's references are first resolved (initial load) or follow
+		/// a change with a reload: the resolver is built once per LoadedAssembly and frozen.
+		/// </summary>
+		public string? TargetFrameworkIdOverride {
+			get => targetFrameworkIdOverride;
+			set {
+				var trimmed = value?.Trim();
+				targetFrameworkIdOverride = string.IsNullOrEmpty(trimmed) ? null : trimmed;
+			}
+		}
+
 		async Task<LoadResult> LoadAsync(Task<Stream?>? streamTask)
+		{
+			ILSpyXEventSource.Log.AssemblyLoadStart(fileName);
+			string loaderName = "";
+			bool success = false;
+			try
+			{
+				var result = await LoadCoreAsync(streamTask, name => loaderName = name).ConfigureAwait(false);
+				success = result.MetadataFile != null || result.Package != null;
+				return result;
+			}
+			finally
+			{
+				ILSpyXEventSource.Log.AssemblyLoadStop(fileName, loaderName, success);
+			}
+		}
+
+		async Task<LoadResult> LoadCoreAsync(Task<Stream?>? streamTask, Action<string> reportLoaderName)
 		{
 			using var stream = await PrepareStream();
 			FileLoadContext settings = new FileLoadContext(applyWinRTProjections, ParentBundle);
@@ -342,6 +451,7 @@ namespace ICSharpCode.ILSpyX
 							result = nextResult;
 							if (result.IsSuccess)
 							{
+								reportLoaderName(loader.GetType().Name);
 								break;
 							}
 						}
@@ -359,6 +469,8 @@ namespace ICSharpCode.ILSpyX
 				try
 				{
 					result = await PEFileLoader.LoadPEFile(fileName, stream, settings).ConfigureAwait(false);
+					if (result.IsSuccess)
+						reportLoaderName(nameof(PEFileLoader));
 				}
 				catch (Exception ex)
 				{
@@ -414,6 +526,25 @@ namespace ICSharpCode.ILSpyX
 
 		IDebugInfoProvider? LoadDebugInfo(PEFile? module)
 		{
+			if (module == null || !useDebugSymbols)
+			{
+				return LoadDebugInfoCore(module);
+			}
+			ILSpyXEventSource.Log.DebugInfoLoadStart(fileName);
+			IDebugInfoProvider? provider = null;
+			try
+			{
+				provider = LoadDebugInfoCore(module);
+				return provider;
+			}
+			finally
+			{
+				ILSpyXEventSource.Log.DebugInfoLoadStop(fileName, provider?.GetType().Name ?? "none");
+			}
+		}
+
+		IDebugInfoProvider? LoadDebugInfoCore(PEFile? module)
+		{
 			if (module == null)
 			{
 				return null;
@@ -447,7 +578,7 @@ namespace ICSharpCode.ILSpyX
 			return debugInfoProvider;
 		}
 
-		sealed class MyAssemblyResolver : IAssemblyResolver
+		sealed class MyAssemblyResolver : IAssemblyResolver, IReferenceLoadInfoProvider
 		{
 			readonly LoadedAssembly parent;
 			readonly bool loadOnDemand;
@@ -478,9 +609,37 @@ namespace ICSharpCode.ILSpyX
 				this.referenceLoadInfo = parent.LoadedAssemblyReferencesInfo;
 			}
 
+			/// <summary>
+			/// The log the resolution messages go to, so the type system can report the forwarder
+			/// chains it cannot follow to the same place.
+			/// </summary>
+			public ReferenceLoadInfo LoadInfo => referenceLoadInfo;
+
+			/// <inheritdoc/>
+			public IDisposable? BeginSnapshot()
+			{
+				return parent.GetUniversalResolver(applyWinRTProjections).BeginSnapshot();
+			}
+
 			public MetadataFile? Resolve(IAssemblyReference reference)
 			{
 				return ResolveAsync(reference).GetAwaiter().GetResult();
+			}
+
+			public async Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
+			{
+				ILSpyXEventSource.Log.AssemblyResolveStart(reference);
+				var outcome = AssemblyResolveOutcome.NotFound;
+				try
+				{
+					var (module, resolvedVia) = await ResolveCoreAsync(reference).ConfigureAwait(false);
+					outcome = resolvedVia;
+					return module;
+				}
+				finally
+				{
+					ILSpyXEventSource.Log.AssemblyResolveStop(reference, outcome);
+				}
 			}
 
 			/// <summary>
@@ -495,7 +654,7 @@ namespace ICSharpCode.ILSpyX
 			/// 8) search C:\Windows\Microsoft.NET\Framework64\v4.0.30319
 			/// 9) try to find match by asm name (no tfm/version) in loaded assemblies
 			/// </summary>
-			public async Task<MetadataFile?> ResolveAsync(IAssemblyReference reference)
+			async Task<(MetadataFile? Module, AssemblyResolveOutcome Outcome)> ResolveCoreAsync(IAssemblyReference reference)
 			{
 				MetadataFile? module;
 				// 0) if we're inside a package, look for filename.dll in parent directories
@@ -503,7 +662,7 @@ namespace ICSharpCode.ILSpyX
 				{
 					module = await providedAssemblyResolver.ResolveAsync(reference).ConfigureAwait(false);
 					if (module != null)
-						return module;
+						return (module, AssemblyResolveOutcome.ProvidedByParentResolver);
 				}
 
 				string tfm = await tfmTask.ConfigureAwait(false);
@@ -513,7 +672,7 @@ namespace ICSharpCode.ILSpyX
 				if (module != null)
 				{
 					referenceLoadInfo.AddMessageOnce(reference.FullName, MessageKind.Info, "Success - Found in Assembly List");
-					return module;
+					return (module, AssemblyResolveOutcome.FoundInList);
 				}
 
 				string? file = parent.GetUniversalResolver(applyWinRTProjections).FindAssemblyFile(reference);
@@ -533,9 +692,10 @@ namespace ICSharpCode.ILSpyX
 					if (asm != null)
 					{
 						referenceLoadInfo.AddMessage(reference.FullName, MessageKind.Info, "Success - Loading from: " + file);
-						return await asm.GetMetadataFileOrNullAsync().ConfigureAwait(false);
+						module = await asm.GetMetadataFileOrNullAsync().ConfigureAwait(false);
+						return (module, module != null ? AssemblyResolveOutcome.LoadedFromDisk : AssemblyResolveOutcome.NotFound);
 					}
-					return null;
+					return (null, AssemblyResolveOutcome.NotFound);
 				}
 				else
 				{
@@ -544,12 +704,13 @@ namespace ICSharpCode.ILSpyX
 					if (module == null)
 					{
 						referenceLoadInfo.AddMessageOnce(reference.FullName, MessageKind.Error, "Could not find reference: " + reference.FullName);
+						return (null, AssemblyResolveOutcome.NotFound);
 					}
 					else
 					{
 						referenceLoadInfo.AddMessageOnce(reference.FullName, MessageKind.Info, "Success - Found in Assembly List with different TFM or version: " + module.FileName);
+						return (module, AssemblyResolveOutcome.SimilarNameMatch);
 					}
-					return module;
 				}
 			}
 
@@ -653,5 +814,23 @@ namespace ICSharpCode.ILSpyX
 		}
 
 		UniversalAssemblyResolver? universalResolver;
+
+		public void Dispose()
+		{
+			// Order matters: set the flag BEFORE unmapping the metadata, so any concurrent
+			// Text reader that hasn't yet cached a value bails to ShortName instead of
+			// dereferencing the about-to-be-freed MemoryMappedFile pages. Once set, the flag
+			// also short-circuits future Text getter walks even if cachedText is still null
+			// (load never completed).
+			isDisposed = true;
+			// Only inspect the load task if it's been started. Disposing a never-loaded
+			// LoadedAssembly must not synchronously kick off the load just to dispose its
+			// (still-non-existent) MetadataFile.
+			if (lazyLoadingTask.IsValueCreated && lazyLoadingTask.Value.Status == TaskStatus.RanToCompletion)
+			{
+				lazyLoadingTask.Value.Result.MetadataFile?.Dispose();
+			}
+			(debugInfoProvider as IDisposable)?.Dispose();
+		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 Siegfried Pammer
+// Copyright (c) 2019 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -65,7 +65,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// leave (elseValue)
 			// =>
 			// leave (if (cond) value else elseValue)
-			IfInstruction value = new IfInstruction(ifInst.Condition, leave.Value, leaveElse.Value);
+			IfInstruction value = new IfInstruction(ifInst.Condition, leave.Value, leaveElse.Value, leave.TargetContainer.ExpectedResultType);
 			value.AddILRange(ifInst);
 			Leave combinedLeave = new Leave(leave.TargetContainer, value);
 			combinedLeave.AddILRange(leaveElse);

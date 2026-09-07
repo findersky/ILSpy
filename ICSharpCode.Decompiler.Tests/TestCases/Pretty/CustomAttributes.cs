@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -168,6 +168,13 @@ namespace CustomAttributes
 		[Generic<object>("Hi")]
 		[Generic<object>((short)42)]
 		public static void UseGenericAttributeWithArg()
+		{
+		}
+		[Generic<List<int>>]
+		[Generic<Dictionary<string, List<int>>>]
+		[Generic<int[]>]
+		[Generic<StringComparison>(StringComparison.Ordinal)]
+		public static void UseGenericAttributeWithComplexTypes()
 		{
 		}
 #endif

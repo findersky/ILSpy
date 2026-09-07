@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // 
 // AstNode.cs
 //
@@ -26,6 +26,7 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -37,228 +38,323 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public abstract class AstNode : AbstractAnnotatable, IFreezable, INode, ICloneable
+	[DecompilerAstNode(hasPatternPlaceholder: true)]
+	public abstract partial class AstNode : AbstractAnnotatable, INode, ICloneable
 	{
-		// the Root role must be available when creating the null nodes, so we can't put it in the Roles class
-		internal static readonly Role<AstNode?> RootRole = new Role<AstNode?>("Root", null);
-
-		#region Null
-		public static readonly AstNode Null = new NullAstNode();
-
-		sealed class NullAstNode : AstNode
-		{
-			public override NodeType NodeType {
-				get {
-					return NodeType.Unknown;
-				}
-			}
-
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-		#endregion
-
-		#region PatternPlaceholder
-		public static implicit operator AstNode?(PatternMatching.Pattern? pattern)
-		{
-			return pattern != null ? new PatternPlaceholder(pattern) : null;
-		}
-
-		sealed class PatternPlaceholder : AstNode, INode
-		{
-			readonly PatternMatching.Pattern child;
-
-			public PatternPlaceholder(PatternMatching.Pattern child)
-			{
-				this.child = child;
-			}
-
-			public override NodeType NodeType {
-				get { return NodeType.Pattern; }
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitPatternPlaceholder(this, child, data);
-			}
-
-			protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
-			{
-				return child.DoMatch(other, match);
-			}
-
-			bool PatternMatching.INode.DoMatchCollection(Role? role, PatternMatching.INode? pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
-			{
-				return child.DoMatchCollection(role, pos, match, backtrackingInfo);
-			}
-		}
-		#endregion
-
 		AstNode? parent;
-		AstNode? prevSibling;
-		AstNode? nextSibling;
-		AstNode? firstChild;
-		AstNode? lastChild;
+		// Flattened index of this node within its parent's child-index space (-1 when unparented).
+		// Recomputed lazily by the parent (EnsureChildIndices) after a structural mutation.
+		internal int childIndex = -1;
 
-		// Flags, from least significant to most significant bits:
-		// - Role.RoleIndexBits: role index
-		// - 1 bit: IsFrozen
-		protected uint flags = RootRole.Index;
-		// Derived classes may also use a few bits,
-		// for example Identifier uses 1 bit for IsVerbatim
+		TextLocation startLocation = TextLocation.Empty;
+		TextLocation endLocation = TextLocation.Empty;
 
-		const uint roleIndexMask = (1u << Role.RoleIndexBits) - 1;
-		const uint frozenBit = 1u << Role.RoleIndexBits;
-		protected const int AstNodeFlagsUsedBits = Role.RoleIndexBits + 1;
-
-		protected AstNode()
-		{
-			if (IsNull)
-				Freeze();
-		}
-
-		public bool IsFrozen {
-			get { return (flags & frozenBit) != 0; }
-		}
-
-		public void Freeze()
-		{
-			if (!IsFrozen)
-			{
-				for (AstNode? child = firstChild; child != null; child = child.nextSibling)
-					child.Freeze();
-				flags |= frozenBit;
-			}
-		}
-
-		protected void ThrowIfFrozen()
-		{
-			if (IsFrozen)
-				throw new InvalidOperationException("Cannot mutate frozen " + GetType().Name);
-		}
-
-		public abstract NodeType NodeType {
-			get;
-		}
-
-		public virtual bool IsNull {
-			get {
-				return false;
-			}
-		}
-
+		// Source locations are assigned at print time (the output visitor brackets every node with
+		// StartNode/EndNode and InsertMissingTokensDecorator records the writer's position) rather than
+		// computed by recursion to child token positions. A node's span runs from its first printed
+		// token to its last; leaf nodes that print as a single token override these with their own value.
 		public virtual TextLocation StartLocation {
 			get {
-				var child = firstChild;
-				if (child == null)
-					return TextLocation.Empty;
-				return child.StartLocation;
+				return startLocation;
 			}
 		}
 
 		public virtual TextLocation EndLocation {
 			get {
-				var child = lastChild;
-				if (child == null)
-					return TextLocation.Empty;
-				return child.EndLocation;
+				return endLocation;
 			}
 		}
+
+		internal void StorePrintStart(TextLocation value)
+		{
+			startLocation = value;
+		}
+
+		internal void StorePrintEnd(TextLocation value)
+		{
+			endLocation = value;
+		}
+
+		#region Trivia
+		// Comments and preprocessor directives attached to this node, kept off the child-index space.
+		// The holder lives in the annotation channel, so a node without trivia (the overwhelmingly
+		// common case) costs nothing extra, and CloneAnnotations copies it for free.
+		internal sealed class NodeTrivia : ICloneable
+		{
+			public List<Trivia>? Leading;
+			public List<Trivia>? Trailing;
+
+			public object Clone()
+			{
+				return new NodeTrivia {
+					Leading = Leading?.Select(t => (Trivia)t.Clone()).ToList(),
+					Trailing = Trailing?.Select(t => (Trivia)t.Clone()).ToList(),
+				};
+			}
+		}
+
+		/// <summary>Trivia printed before this node (in insertion order); empty when none.</summary>
+		public IEnumerable<Trivia> LeadingTrivia {
+			get { return Annotation<NodeTrivia>()?.Leading ?? Enumerable.Empty<Trivia>(); }
+		}
+
+		/// <summary>Trivia printed after this node (in insertion order); empty when none.</summary>
+		public IEnumerable<Trivia> TrailingTrivia {
+			get { return Annotation<NodeTrivia>()?.Trailing ?? Enumerable.Empty<Trivia>(); }
+		}
+
+		public void AddLeadingTrivia(Trivia trivia)
+		{
+			NodeTrivia holder = GetOrCreateTrivia();
+			var list = holder.Leading ??= new List<Trivia>();
+			InsertTrivia(list, list.Count, trivia);
+		}
+
+		/// <summary>
+		/// Inserts trivia at the start of this node's leading trivia, before any already attached. Used for
+		/// a file header comment that must precede generated leading directives such as <c>#define</c>.
+		/// </summary>
+		public void PrependLeadingTrivia(Trivia trivia)
+		{
+			NodeTrivia holder = GetOrCreateTrivia();
+			InsertTrivia(holder.Leading ??= new List<Trivia>(), 0, trivia);
+		}
+
+		public void AddTrailingTrivia(Trivia trivia)
+		{
+			NodeTrivia holder = GetOrCreateTrivia();
+			var list = holder.Trailing ??= new List<Trivia>();
+			InsertTrivia(list, list.Count, trivia);
+		}
+
+		// The single mutation path for attaching trivia: validate, insert, then reindex from the
+		// insertion point so every trivia's parent/list/index state is consistent for any position.
+		void InsertTrivia(List<Trivia> list, int index, Trivia trivia)
+		{
+			ValidateNewTrivia(trivia);
+			list.Insert(index, trivia);
+			ReindexTrivia(this, list, index);
+		}
+
+		void ValidateNewTrivia(Trivia trivia)
+		{
+			if (trivia == null)
+				throw new ArgumentNullException(nameof(trivia));
+			if (trivia == this)
+				throw new ArgumentException("Cannot add a node to itself as trivia.", nameof(trivia));
+			if (trivia.parent != null)
+				throw new ArgumentException("Node is already used in another tree.", nameof(trivia));
+		}
+
+		static void ReindexTrivia(AstNode parent, List<Trivia> list, int start)
+		{
+			for (int i = start; i < list.Count; i++)
+				list[i].SetTriviaParent(parent, list, i);
+		}
+
+		// Points the trivia held in this node's annotation back at this node. Clone needs this:
+		// the cloned NodeTrivia's deep-copied trivia still carry the source owner's parent state.
+		void ReparentTrivia()
+		{
+			var holder = Annotation<NodeTrivia>();
+			if (holder == null)
+				return;
+			if (holder.Leading != null)
+				ReindexTrivia(this, holder.Leading, 0);
+			if (holder.Trailing != null)
+				ReindexTrivia(this, holder.Trailing, 0);
+		}
+
+		// Deep-copies another node's trivia onto this node, appending to any trivia already present.
+		// The NodeTrivia holder must never be shared between nodes: each trivia's parent points at
+		// its single owning node, so an annotation-copying operation clones the trivia instead.
+		internal void CopyTriviaFrom(AstNode other)
+		{
+			var otherHolder = other.Annotation<NodeTrivia>();
+			if (otherHolder == null)
+				return;
+			if (otherHolder.Leading != null)
+			{
+				foreach (var trivia in otherHolder.Leading)
+					AddLeadingTrivia((Trivia)trivia.Clone());
+			}
+			if (otherHolder.Trailing != null)
+			{
+				foreach (var trivia in otherHolder.Trailing)
+					AddTrailingTrivia((Trivia)trivia.Clone());
+			}
+		}
+
+		NodeTrivia GetOrCreateTrivia()
+		{
+			NodeTrivia? holder = Annotation<NodeTrivia>();
+			if (holder == null)
+			{
+				holder = new NodeTrivia();
+				AddAnnotation(holder);
+			}
+			return holder;
+		}
+		#endregion
 
 		public AstNode? Parent {
 			get { return parent; }
 		}
 
-		public Role Role {
-			get {
-				return Role.GetByIndex(flags & roleIndexMask);
-			}
-			set {
-				if (value == null)
-					throw new ArgumentNullException(nameof(value));
-				if (!value.IsValid(this))
-					throw new ArgumentException("This node is not valid in the new role.");
-				ThrowIfFrozen();
-				SetRole(value);
-			}
-		}
-
-		internal uint RoleIndex {
-			get { return flags & roleIndexMask; }
-		}
-
-		void SetRole(Role role)
-		{
-			flags = (flags & ~roleIndexMask) | role.Index;
-		}
-
 		public AstNode? NextSibling {
-			get { return nextSibling; }
+			get {
+				if (parent == null)
+					return null;
+				if (this is Trivia { triviaSiblings: { } siblings })
+					return childIndex + 1 < siblings.Count ? siblings[childIndex + 1] : null;
+				// Inline the validity check: sibling navigation is one of the hottest operations, and the
+				// indices are almost always already current, so skip the (non-inlinable) call when valid.
+				if (!parent.childIndicesValid)
+					parent.EnsureChildIndices();
+				int count = parent.GetChildCount();
+				for (int i = childIndex + 1; i < count; i++)
+				{
+					AstNode? c = parent.GetChild(i);
+					if (c != null)
+						return c;
+				}
+				return null;
+			}
 		}
 
 		public AstNode? PrevSibling {
-			get { return prevSibling; }
+			get {
+				if (parent == null)
+					return null;
+				if (this is Trivia { triviaSiblings: { } siblings })
+					return childIndex > 0 ? siblings[childIndex - 1] : null;
+				if (!parent.childIndicesValid)
+					parent.EnsureChildIndices();
+				for (int i = childIndex - 1; i >= 0; i--)
+				{
+					AstNode? c = parent.GetChild(i);
+					if (c != null)
+						return c;
+				}
+				return null;
+			}
 		}
 
 		public AstNode? FirstChild {
-			get { return firstChild; }
+			get {
+				int count = GetChildCount();
+				for (int i = 0; i < count; i++)
+				{
+					AstNode? c = GetChild(i);
+					if (c != null)
+						return c;
+				}
+				return null;
+			}
 		}
 
 		public AstNode? LastChild {
-			get { return lastChild; }
+			get {
+				for (int i = GetChildCount() - 1; i >= 0; i--)
+				{
+					AstNode? c = GetChild(i);
+					if (c != null)
+						return c;
+				}
+				return null;
+			}
 		}
 
 		public bool HasChildren {
 			get {
-				return firstChild != null;
+				return FirstChild != null;
 			}
 		}
 
-		public IEnumerable<AstNode> Children {
-			get {
-				AstNode? next;
-				for (AstNode? cur = firstChild; cur != null; cur = next)
-				{
-					Debug.Assert(cur.parent == this);
-					// Remember next before yielding cur.
-					// This allows removing/replacing nodes while iterating through the list.
-					next = cur.nextSibling;
-					yield return cur;
+		/// <summary>
+		/// The children of this node in document order. The collection and its enumerator are structs, so
+		/// a <c>foreach</c> over <see cref="Children"/> allocates nothing; only enumeration through the
+		/// <see cref="IEnumerable{T}"/> interface (e.g. LINQ) boxes the enumerator. The enumerator captures
+		/// the successor before handing out each child, so the loop body may remove or replace the current
+		/// child mid-traversal (the behavior the visitor and transforms rely on).
+		/// </summary>
+		public ChildrenCollection Children => new ChildrenCollection(this);
+
+		public readonly struct ChildrenCollection : IReadOnlyList<AstNode>
+		{
+			readonly AstNode node;
+
+			internal ChildrenCollection(AstNode node) => this.node = node;
+
+			public ChildEnumerator GetEnumerator() => new ChildEnumerator(node);
+			IEnumerator<AstNode> IEnumerable<AstNode>.GetEnumerator() => new ChildEnumerator(node);
+			IEnumerator IEnumerable.GetEnumerator() => new ChildEnumerator(node);
+
+			public int Count {
+				get {
+					int count = 0;
+					for (ChildEnumerator e = GetEnumerator(); e.MoveNext();)
+						count++;
+					return count;
 				}
 			}
+
+			public AstNode this[int index] {
+				get {
+					int i = 0;
+					foreach (AstNode child in this)
+					{
+						if (i++ == index)
+							return child;
+					}
+					throw new ArgumentOutOfRangeException(nameof(index));
+				}
+			}
+		}
+
+		/// <summary>
+		/// Zero-allocation enumerator over a node's children. It captures each child's successor before
+		/// the child is handed out, so removing or replacing the current child in the loop body does not
+		/// disturb the traversal -- the same guarantee the old linked-list enumerator gave.
+		/// </summary>
+		public struct ChildEnumerator : IEnumerator<AstNode>
+		{
+			readonly AstNode node;
+			AstNode? current;
+			AstNode? next;
+			bool started;
+
+			internal ChildEnumerator(AstNode node)
+			{
+				this.node = node;
+				this.current = null;
+				this.next = null;
+				this.started = false;
+			}
+
+			public readonly AstNode Current => current!;
+			readonly object IEnumerator.Current => current!;
+
+			public bool MoveNext()
+			{
+				current = started ? next : node.FirstChild;
+				started = true;
+				if (current == null)
+					return false;
+				// Remember the successor before the child is yielded, so the loop body may remove or
+				// replace 'current' without losing our place.
+				next = current.NextSibling;
+				return true;
+			}
+
+			public void Reset()
+			{
+				current = null;
+				next = null;
+				started = false;
+			}
+
+			public readonly void Dispose() { }
 		}
 
 		/// <summary>
@@ -309,7 +405,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return GetDescendantsImpl(true, descendIntoChildren);
 		}
 
-
 		IEnumerable<AstNode> GetDescendantsImpl(bool includeSelf, Func<AstNode, bool>? descendIntoChildren = null)
 		{
 			if (includeSelf)
@@ -321,36 +416,39 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 			Stack<AstNode?> nextStack = new Stack<AstNode?>();
 			nextStack.Push(null);
-			AstNode? pos = firstChild;
+			AstNode? pos = FirstChild;
 			while (pos != null)
 			{
 				// Remember next before yielding pos.
-				// This allows removing/replacing nodes while iterating through the list.
-				if (pos.nextSibling != null)
-					nextStack.Push(pos.nextSibling);
+				// This allows removing/replacing nodes while iterating.
+				AstNode? posNext = pos.NextSibling;
+				if (posNext != null)
+					nextStack.Push(posNext);
 				yield return pos;
-				if (pos.firstChild != null && (descendIntoChildren == null || descendIntoChildren(pos)))
-					pos = pos.firstChild;
+				AstNode? posFirstChild = pos.FirstChild;
+				if (posFirstChild != null && (descendIntoChildren == null || descendIntoChildren(pos)))
+					pos = posFirstChild;
 				else
 					pos = nextStack.Pop();
 			}
 		}
 
 		/// <summary>
-		/// Gets the first child with the specified role.
-		/// Returns the role's null object if the child is not found.
+		/// Gets the first child occupying <paramref name="slot"/>, or null if the slot is empty (or the
+		/// node declares no such slot). <paramref name="slot"/> is a canonical <c>Slots</c> kind; the
+		/// result type is inferred from it.
 		/// </summary>
-		public T GetChildByRole<T>(Role<T> role) where T : AstNode?
+		public T? GetChild<T>(CSharpSlotInfo<T> slot) where T : AstNode
 		{
-			if (role == null)
-				throw new ArgumentNullException(nameof(role));
-			uint roleIndex = role.Index;
-			for (var cur = firstChild; cur != null; cur = cur.nextSibling)
+			int count = GetChildCount();
+			for (int i = 0; i < count; i++)
 			{
-				if ((cur.flags & roleIndexMask) == roleIndex)
-					return (T)cur;
+				if (GetChildSlotInfo(i).Kind == slot)
+				{
+					return GetChild(i) as T;
+				}
 			}
-			return role.NullObject;
+			return null;
 		}
 
 		public T? GetParent<T>() where T : AstNode
@@ -363,116 +461,289 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return pred != null ? Ancestors.FirstOrDefault(pred) : Ancestors.FirstOrDefault();
 		}
 
-		public AstNodeCollection<T> GetChildrenByRole<T>(Role<T> role) where T : AstNode
+		/// <summary>Gets the collection occupying <paramref name="slot"/>; the element type is inferred from the slot.</summary>
+		public AstNodeCollection<T> GetChildren<T>(CSharpSlotInfo<T> slot) where T : AstNode
 		{
-			return new AstNodeCollection<T>(this, role);
+			AstNodeCollection? collection = GetCollectionByKind(slot);
+			// A node has no children of a kind it does not declare a collection slot for. Reads of such
+			// a kind (e.g. the parameters of a non-indexer property) get a detached empty collection;
+			// writes go through AddChild/SetChild, which reject a missing slot.
+			return collection != null ? (AstNodeCollection<T>)collection : new AstNodeCollection<T>(this, slot);
 		}
 
-		protected void SetChildByRole<T>(Role<T> role, T newChild) where T : AstNode
-		{
-			AstNode oldChild = GetChildByRole(role);
-			if (oldChild.IsNull)
-				AddChild(newChild, role);
-			else
-				oldChild.ReplaceWith(newChild);
+		/// <summary>Sets the single child occupying <paramref name="slot"/>; the child type is inferred from the slot.</summary>
+		protected void SetChild<T>(CSharpSlotInfo<T> slot, T? newChild) where T : AstNode => SetChildByKindUntyped(slot, newChild);
+
+		#region Slot storage contract
+		// Each concrete node's slots form a flattened child-index space, in source-declaration order.
+		// A single slot occupies exactly one index (even when empty, where GetChild returns null); a
+		// collection slot occupies a contiguous run of its current length. The generator emits these
+		// four members per node from its [Slot] partial-property declarations; nodes without children
+		// (and the placeholder nodes) keep the zero-child defaults below.
+
+		internal virtual int GetChildCount() => 0;
+
+		internal virtual AstNode? GetChild(int index) => throw new ArgumentOutOfRangeException(nameof(index));
+
+		internal virtual void SetChild(int index, AstNode? value) => throw new ArgumentOutOfRangeException(nameof(index));
+
+		// The CSharpSlotInfo for the slot at the given flattened index; generator-emitted per leaf.
+		internal virtual CSharpSlotInfo GetChildSlotInfo(int index) => throw new ArgumentOutOfRangeException(nameof(index));
+
+		/// <summary>
+		/// The slot this node occupies in its parent, or null if it has no parent. Compare against a
+		/// node type's generated slot statics (e.g. <c>node.Slot == BinaryOperatorExpression.LeftSlot</c>).
+		/// </summary>
+		public CSharpSlotInfo? Slot {
+			get {
+				if (parent == null)
+					return null;
+				// Trivia occupies no child slot; its childIndex indexes its owning trivia list instead.
+				if (this is Trivia { triviaSiblings: not null })
+					return null;
+				parent.EnsureChildIndices();
+				return parent.GetChildSlotInfo(childIndex);
+			}
 		}
 
-		public void AddChild<T>(T child, Role<T> role) where T : AstNode
+		// Returns the collection occupying the slot with the given kind, or null if there is none.
+		// Overridden by the generator for nodes that have collection slots.
+		internal virtual AstNodeCollection? GetCollectionByKind(CSharpSlotInfo kind) => null;
+
+		// Deep-copies this node's children into the (memberwise-cloned) copy, which initially shares
+		// this node's child references. Overridden by the generator for nodes that have slots.
+		internal virtual void CloneChildrenInto(AstNode copy) { }
+
+		// Whether this node's children currently carry correct flattened childIndex values. Cleared on
+		// every structural mutation and restored lazily on the first index read, so bulk construction
+		// (many appends with no interleaved index reads) renumbers once instead of once per mutation.
+		bool childIndicesValid = true;
+
+		// Whether this node's children currently carry correct flattened childIndex values, so a
+		// collection can decide between maintaining them incrementally and invalidating the whole set.
+		internal bool ChildIndicesValid => childIndicesValid;
+
+		// Marks this node's children's flattened indices stale. Called by the slot setters and the
+		// collection after any structural change.
+		internal void InvalidateChildIndices()
 		{
-			if (role == null)
-				throw new ArgumentNullException(nameof(role));
-			if (child == null || child.IsNull)
+			childIndicesValid = false;
+		}
+
+		// Assigns each child its flattened index if a mutation has invalidated them. The flattened-index
+		// arithmetic lives in the generated GetChild/GetChildCount, which depend only on the backing
+		// fields, so this is well-defined regardless of the current childIndex values.
+		void EnsureChildIndices()
+		{
+			if (childIndicesValid)
 				return;
-			ThrowIfFrozen();
-			if (child == this)
-				throw new ArgumentException("Cannot add a node to itself as a child.", nameof(child));
-			if (child.parent != null)
-				throw new ArgumentException("Node is already used in another tree.", nameof(child));
-			if (child.IsFrozen)
-				throw new ArgumentException("Cannot add a frozen node.", nameof(child));
-			AddChildUnsafe(child, role);
-		}
-
-		public void AddChildWithExistingRole(AstNode? child)
-		{
-			if (child == null || child.IsNull)
-				return;
-			ThrowIfFrozen();
-			if (child == this)
-				throw new ArgumentException("Cannot add a node to itself as a child.", nameof(child));
-			if (child.parent != null)
-				throw new ArgumentException("Node is already used in another tree.", nameof(child));
-			if (child.IsFrozen)
-				throw new ArgumentException("Cannot add a frozen node.", nameof(child));
-			AddChildUnsafe(child, child.Role);
+			childIndicesValid = true;
+			int count = GetChildCount();
+			for (int i = 0; i < count; i++)
+			{
+				AstNode? c = GetChild(i);
+				if (c != null)
+					c.childIndex = i;
+			}
 		}
 
 		/// <summary>
-		/// Adds a child without performing any safety checks.
+		/// Recursively verifies the slot structure of this subtree (DEBUG only):
+		/// <list type="bullet">
+		/// <item>every required (non-optional) single slot holds a child, so a transform that drops a
+		/// mandatory node is caught here rather than as malformed output;</item>
+		/// <item>each present child points its <see cref="Parent"/> back at this node;</item>
+		/// <item>its stored flattened index matches its slot position; and</item>
+		/// <item>its runtime type is valid for the slot.</item>
+		/// </list>
+		/// The transform pipeline runs this after each transform, the analog of
+		/// <c>ILInstruction.CheckInvariant</c>, so a transform that corrupts the tree fails at the exact
+		/// transform rather than as a downstream output diff. The other tree invariants (no node reused
+		/// across trees, no node parented to itself) are enforced eagerly by the child setters and follow
+		/// from the parent back-pointer check above. A node type overrides this (calling <c>base</c>) to
+		/// assert its own constraints -- the scalar invariants its setters enforce eagerly, e.g.
+		/// <c>ComposedType.PointerRank &gt;= 0</c>.
 		/// </summary>
-		internal void AddChildUnsafe(AstNode child, Role role)
+		[System.Diagnostics.Conditional("DEBUG")]
+		internal virtual void CheckInvariant()
 		{
-			child.parent = this;
-			child.SetRole(role);
-			if (firstChild == null)
+			EnsureChildIndices();
+			int count = GetChildCount();
+			for (int i = 0; i < count; i++)
 			{
-				lastChild = firstChild = child;
+				CSharpSlotInfo slot = GetChildSlotInfo(i);
+				AstNode? child = GetChild(i);
+				if (child == null)
+				{
+					// A single slot reads null only when empty; that is valid only if the slot is optional.
+					// (Collection slots never yield a null index, so this branch is always a single slot.)
+					Debug.Assert(slot.IsOptional, $"required slot '{slot.Name}' on {GetType().Name} must not be empty");
+					continue;
+				}
+				Debug.Assert(child.parent == this, "child's Parent must point back to this node");
+				Debug.Assert(child.childIndex == i, "child's flattened index must match its slot position");
+				Debug.Assert(slot.ChildType.IsInstanceOfType(child), "child's type must be valid in its slot");
+				child.CheckInvariant();
 			}
-			else
+			var trivia = Annotation<NodeTrivia>();
+			if (trivia != null)
 			{
-				lastChild!.nextSibling = child;
-				child.prevSibling = lastChild;
-				lastChild = child;
+				CheckTriviaInvariant(trivia.Leading);
+				CheckTriviaInvariant(trivia.Trailing);
 			}
 		}
 
-		public void InsertChildBefore<T>(AstNode? nextSibling, T child, Role<T> role) where T : AstNode
+		// Trivia lives outside the slot space but carries the same parent/index invariants, scoped
+		// to the Leading/Trailing list that holds it.
+		[System.Diagnostics.Conditional("DEBUG")]
+		void CheckTriviaInvariant(List<Trivia>? list)
 		{
-			if (role == null)
-				throw new ArgumentNullException(nameof(role));
-			if (nextSibling == null || nextSibling.IsNull)
-			{
-				AddChild(child, role);
+			if (list == null)
 				return;
+			for (int i = 0; i < list.Count; i++)
+			{
+				Trivia t = list[i];
+				Debug.Assert(t.parent == this, "trivia's Parent must point back to its owning node");
+				Debug.Assert(t.triviaSiblings == list, "trivia's sibling list must be the list that holds it");
+				Debug.Assert(t.childIndex == i, "trivia's index must match its position in the trivia list");
 			}
+		}
 
-			if (child == null || child.IsNull)
+		// Self-reference and two-tree guards shared by the single-slot setters; lifts a node out of the
+		// subtree currently being replaced (e.g. "x.Right = ((BinaryOperatorExpression)x.Right).Right;").
+		void ValidateNewSingleChild<T>(T? value, T? oldChild) where T : AstNode
+		{
+			if (value == null)
 				return;
-			ThrowIfFrozen();
-			if (child.parent != null)
-				throw new ArgumentException("Node is already used in another tree.", nameof(child));
-			if (child.IsFrozen)
-				throw new ArgumentException("Cannot add a frozen node.", nameof(child));
-			if (nextSibling.parent != this)
-				throw new ArgumentException("NextSibling is not a child of this node.", nameof(nextSibling));
-			// No need to test for "Cannot add children to null nodes",
-			// as there isn't any valid nextSibling in null nodes.
-			InsertChildBeforeUnsafe(nextSibling, child, role);
+			if (value == this)
+				throw new ArgumentException("Cannot add a node to itself as a child.", nameof(value));
+			if (value.parent != null)
+			{
+				if (oldChild != null && value.Ancestors.Contains(oldChild))
+					value.Remove();
+				else
+					throw new ArgumentException("Node is already used in another tree.", nameof(value));
+			}
 		}
 
-		internal void InsertChildBeforeUnsafe(AstNode nextSibling, AstNode child, Role role)
+		// Writes a single-slot backing field when the slot's flattened index is not statically known
+		// (a single slot following a collection). A single slot always occupies the same index, so an
+		// in-place replace keeps it (carry the old child's index); a set or clear leaves the new child's
+		// index unknown here and invalidates, to be reassigned by the next EnsureChildIndices.
+		internal void SetChildNode<T>(ref T? field, T? value) where T : AstNode
 		{
-			child.parent = this;
-			child.SetRole(role);
-			child.nextSibling = nextSibling;
-			child.prevSibling = nextSibling.prevSibling;
-
-			if (nextSibling.prevSibling != null)
-			{
-				Debug.Assert(nextSibling.prevSibling.nextSibling == nextSibling);
-				nextSibling.prevSibling.nextSibling = child;
-			}
+			if (field == value)
+				return;
+			ValidateNewSingleChild(value, field);
+			T? oldField = field;
+			int oldChildIndex = oldField?.childIndex ?? -1;
+			oldField?.ClearParentAndIndex();
+			field = value;
+			value?.SetParent(this);
+			if (oldField != null && value != null)
+				value.childIndex = oldChildIndex;
 			else
-			{
-				Debug.Assert(firstChild == nextSibling);
-				firstChild = child;
-			}
-			nextSibling.prevSibling = child;
+				InvalidateChildIndices();
 		}
 
-		public void InsertChildAfter<T>(AstNode? prevSibling, T child, Role<T> role) where T : AstNode
+		// Writes a single-slot backing field whose flattened index is known (the generated setter passes
+		// it when no collection precedes the slot, and SetChild passes its argument). Filling, clearing,
+		// or replacing a single slot moves no other child, so assign the index directly and never
+		// invalidate -- childIndex stays maintained by construction, as in the IL AST.
+		internal void SetChildNode<T>(ref T? field, T? value, int index) where T : AstNode
 		{
-			InsertChildBefore((prevSibling == null || prevSibling.IsNull) ? firstChild : prevSibling.nextSibling, child, role);
+			if (field == value)
+				return;
+			ValidateNewSingleChild(value, field);
+			field?.ClearParentAndIndex();
+			field = value;
+			if (value != null)
+			{
+				value.SetParent(this);
+				value.childIndex = index;
+			}
+		}
+
+		internal void SetParent(AstNode newParent)
+		{
+			parent = newParent;
+		}
+
+		internal void ClearParentAndIndex()
+		{
+			parent = null;
+			if (this is Trivia trivia)
+				trivia.triviaSiblings = null;
+			childIndex = -1;
+		}
+		#endregion
+
+		public void AddChild<T>(T child, CSharpSlotInfo kind) where T : AstNode
+		{
+			if (child == null)
+				return;
+			AddChildUnsafe(child, kind);
+		}
+
+		/// <summary>
+		/// Adds a child into the slot matching <paramref name="kind"/> (appending to a collection slot,
+		/// or filling a single slot).
+		/// </summary>
+		internal void AddChildUnsafe(AstNode child, CSharpSlotInfo kind)
+		{
+			AstNodeCollection? collection = GetCollectionByKind(kind);
+			if (collection != null)
+				collection.AddNode(child);
+			else
+				SetChildByKindUntyped(kind, child);
+		}
+
+		// Sets the single slot matching the kind (used by the non-generic mutation API). Unlike
+		// GetChild, which returns null when this node declares no slot of that kind, writing a
+		// child to a kind the node has no slot for throws.
+		internal void SetChildByKindUntyped(CSharpSlotInfo kind, AstNode? child)
+		{
+			int count = GetChildCount();
+			for (int i = 0; i < count; i++)
+			{
+				if (GetChildSlotInfo(i).Kind == kind)
+				{
+					SetChild(i, child);
+					return;
+				}
+			}
+			throw new InvalidOperationException($"{GetType().Name} has no slot of kind '{kind}'.");
+		}
+
+		public void InsertChildBefore<T>(AstNode? nextSibling, T child, CSharpSlotInfo kind) where T : AstNode
+		{
+			if (child == null)
+				return;
+			AstNodeCollection? collection = GetCollectionByKind(kind);
+			if (collection != null)
+				collection.InsertNodeBefore(nextSibling, child);
+			else
+				SetChildByKindUntyped(kind, child);
+		}
+
+		internal void InsertChildBeforeUnsafe(AstNode nextSibling, AstNode child, CSharpSlotInfo kind)
+		{
+			AstNodeCollection? collection = GetCollectionByKind(kind);
+			if (collection != null)
+				collection.InsertNodeBefore(nextSibling, child);
+			else
+				SetChildByKindUntyped(kind, child);
+		}
+
+		public void InsertChildAfter<T>(AstNode? prevSibling, T child, CSharpSlotInfo kind) where T : AstNode
+		{
+			if (child == null)
+				return;
+			AstNodeCollection? collection = GetCollectionByKind(kind);
+			if (collection != null)
+				collection.InsertNodeAfter(prevSibling, child);
+			else
+				SetChildByKindUntyped(kind, child);
 		}
 
 		/// <summary>
@@ -480,33 +751,24 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public void Remove()
 		{
-			if (parent != null)
+			if (parent == null)
+				return;
+			if (this is Trivia { triviaSiblings: { } siblings })
 			{
-				ThrowIfFrozen();
-				if (prevSibling != null)
-				{
-					Debug.Assert(prevSibling.nextSibling == this);
-					prevSibling.nextSibling = nextSibling;
-				}
-				else
-				{
-					Debug.Assert(parent.firstChild == this);
-					parent.firstChild = nextSibling;
-				}
-				if (nextSibling != null)
-				{
-					Debug.Assert(nextSibling.prevSibling == this);
-					nextSibling.prevSibling = prevSibling;
-				}
-				else
-				{
-					Debug.Assert(parent.lastChild == this);
-					parent.lastChild = prevSibling;
-				}
-				parent = null;
-				prevSibling = null;
-				nextSibling = null;
+				var oldParent = parent;
+				int oldIndex = childIndex;
+				siblings.RemoveAt(oldIndex);
+				ClearParentAndIndex();
+				ReindexTrivia(oldParent, siblings, oldIndex);
+				return;
 			}
+			parent.EnsureChildIndices();
+			CSharpSlotInfo kind = parent.GetChildSlotInfo(childIndex).Kind!;
+			AstNodeCollection? collection = parent.GetCollectionByKind(kind);
+			if (collection != null)
+				collection.RemoveNode(this);
+			else
+				parent.SetChild(childIndex, null);
 		}
 
 		/// <summary>
@@ -514,7 +776,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public void ReplaceWith(AstNode? newNode)
 		{
-			if (newNode == null || newNode.IsNull)
+			if (newNode == null)
 			{
 				Remove();
 				return;
@@ -523,14 +785,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				return; // nothing to do...
 			if (parent == null)
 			{
-				throw new InvalidOperationException(this.IsNull ? "Cannot replace the null nodes" : "Cannot replace the root node");
+				throw new InvalidOperationException("Cannot replace the root node");
 			}
-			ThrowIfFrozen();
-			// Because this method doesn't statically check the new node's type with the role,
+			ThrowIfTrivia();
+			parent.EnsureChildIndices();
+			CSharpSlotInfo slot = parent.GetChildSlotInfo(childIndex);
+			// Because this method doesn't statically check the new node's type with the slot,
 			// we perform a runtime test:
-			if (!this.Role.IsValid(newNode))
+			if (!slot.ChildType.IsInstanceOfType(newNode))
 			{
-				throw new ArgumentException(string.Format("The new node '{0}' is not valid in the role {1}", newNode.GetType().Name, this.Role.ToString()), nameof(newNode));
+				throw new ArgumentException(string.Format("The new node '{0}' is not valid in the slot {1}", newNode.GetType().Name, slot.ToString()), nameof(newNode));
 			}
 			if (newNode.parent != null)
 			{
@@ -546,37 +810,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					throw new ArgumentException("Node is already used in another tree.", nameof(newNode));
 				}
 			}
-			if (newNode.IsFrozen)
-				throw new ArgumentException("Cannot add a frozen node.", nameof(newNode));
+			parent.SetChild(childIndex, newNode);
+		}
 
-			newNode.parent = parent;
-			newNode.SetRole(this.Role);
-			newNode.prevSibling = prevSibling;
-			newNode.nextSibling = nextSibling;
-
-			if (prevSibling != null)
-			{
-				Debug.Assert(prevSibling.nextSibling == this);
-				prevSibling.nextSibling = newNode;
-			}
-			else
-			{
-				Debug.Assert(parent.firstChild == this);
-				parent.firstChild = newNode;
-			}
-			if (nextSibling != null)
-			{
-				Debug.Assert(nextSibling.prevSibling == this);
-				nextSibling.prevSibling = newNode;
-			}
-			else
-			{
-				Debug.Assert(parent.lastChild == this);
-				parent.lastChild = newNode;
-			}
-			parent = null;
-			prevSibling = null;
-			nextSibling = null;
+		// Attached trivia has no child slot to substitute into: its childIndex indexes the owning
+		// trivia list, which the slot arithmetic in ReplaceWith must never touch. Trivia is replaced
+		// by removing it and attaching new trivia to the owning node.
+		void ThrowIfTrivia()
+		{
+			if (this is Trivia { triviaSiblings: not null })
+				throw new InvalidOperationException("Cannot replace trivia; remove it and attach the replacement to the owning node instead.");
 		}
 
 		public AstNode? ReplaceWith(Func<AstNode, AstNode?> replaceFunction)
@@ -585,28 +828,30 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				throw new ArgumentNullException(nameof(replaceFunction));
 			if (parent == null)
 			{
-				throw new InvalidOperationException(this.IsNull ? "Cannot replace the null nodes" : "Cannot replace the root node");
+				throw new InvalidOperationException("Cannot replace the root node");
 			}
+			ThrowIfTrivia();
 			AstNode oldParent = parent;
-			AstNode? oldSuccessor = nextSibling;
-			Role oldRole = this.Role;
+			AstNode? oldSuccessor = NextSibling;
+			CSharpSlotInfo? oldSlot = this.Slot;
+			CSharpSlotInfo? oldKind = oldSlot?.Kind;
 			Remove();
 			AstNode? replacement = replaceFunction(this);
 			if (oldSuccessor != null && oldSuccessor.parent != oldParent)
 				throw new InvalidOperationException("replace function changed nextSibling of node being replaced?");
-			if (!(replacement == null || replacement.IsNull))
+			if (replacement != null && oldKind != null)
 			{
 				if (replacement.parent != null)
 					throw new InvalidOperationException("replace function must return the root of a tree");
-				if (!oldRole.IsValid(replacement))
+				if (oldSlot != null && !oldSlot.ChildType.IsInstanceOfType(replacement))
 				{
-					throw new InvalidOperationException(string.Format("The new node '{0}' is not valid in the role {1}", replacement.GetType().Name, oldRole.ToString()));
+					throw new InvalidOperationException(string.Format("The new node '{0}' is not valid in the slot {1}", replacement.GetType().Name, oldSlot.ToString()));
 				}
 
 				if (oldSuccessor != null)
-					oldParent.InsertChildBeforeUnsafe(oldSuccessor, replacement, oldRole);
+					oldParent.InsertChildBeforeUnsafe(oldSuccessor, replacement, oldKind);
 				else
-					oldParent.AddChildUnsafe(replacement, oldRole);
+					oldParent.AddChildUnsafe(replacement, oldKind);
 			}
 			return replacement;
 		}
@@ -618,23 +863,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public AstNode Clone()
 		{
 			AstNode copy = (AstNode)MemberwiseClone();
-			// First, reset the shallow pointer copies
 			copy.parent = null;
-			copy.firstChild = null;
-			copy.lastChild = null;
-			copy.prevSibling = null;
-			copy.nextSibling = null;
-			copy.flags &= ~frozenBit; // unfreeze the copy
-
-			// Then perform a deep copy:
-			for (AstNode? cur = firstChild; cur != null; cur = cur.nextSibling)
-			{
-				copy.AddChildUnsafe(cur.Clone(), cur.Role);
-			}
-
+			copy.childIndex = -1;
+			// MemberwiseClone copied the source's trivia-list reference; the copy is detached.
+			if (copy is Trivia copiedTrivia)
+				copiedTrivia.triviaSiblings = null;
+			// Deep-copy the children (CloneChildrenInto first drops the shallow field copies that
+			// MemberwiseClone left pointing at this node's children).
+			CloneChildrenInto(copy);
 			// Finally, clone the annotation, if necessary
 			copy.CloneAnnotations();
-
+			copy.ReparentTrivia();
 			return copy;
 		}
 
@@ -655,6 +894,16 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return PatternMatching.Pattern.MatchString(pattern, text);
 		}
 
+		/// <summary>
+		/// Matches two optional children: both absent (null), or both present and matching.
+		/// When the pattern side is present, its own DoMatch decides (e.g. an OptionalNode matches an
+		/// absent candidate). When it is absent, the candidate must be absent too.
+		/// </summary>
+		protected static bool MatchOptional(AstNode? thisChild, AstNode? otherChild, PatternMatching.Match match)
+		{
+			return thisChild != null ? thisChild.DoMatch(otherChild, match) : otherChild == null;
+		}
+
 		protected internal abstract bool DoMatch(AstNode? other, PatternMatching.Match match);
 
 		bool PatternMatching.INode.DoMatch(PatternMatching.INode? other, PatternMatching.Match match)
@@ -664,18 +913,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return (other == null || o != null) && DoMatch(o, match);
 		}
 
-		bool PatternMatching.INode.DoMatchCollection(Role? role, PatternMatching.INode? pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo? backtrackingInfo)
+		bool PatternMatching.INode.DoMatchCollection(System.Collections.Generic.IReadOnlyList<PatternMatching.INode> other, int pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
 		{
-			AstNode? o = pos as AstNode;
-			return (pos == null || o != null) && DoMatch(o, match);
-		}
-
-		PatternMatching.INode? PatternMatching.INode.NextSibling {
-			get { return nextSibling; }
-		}
-
-		PatternMatching.INode? PatternMatching.INode.FirstChild {
-			get { return firstChild; }
+			PatternMatching.INode? raw = pos < other.Count ? other[pos] : null;
+			AstNode? o = raw as AstNode;
+			// matches a single element: succeeds only if the element is absent or an AstNode
+			return (raw == null || o != null) && DoMatch(o, match);
 		}
 
 		#endregion
@@ -684,6 +927,10 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			if (NextSibling != null)
 				return NextSibling;
+			// Trivia navigation ends at its owning list: leading trivia precedes its owner in document
+			// order, so continuing into the owner's sibling space would skip the owner's whole subtree.
+			if (this is Trivia)
+				return null;
 			if (Parent != null)
 				return Parent.GetNextNode();
 			return null;
@@ -706,6 +953,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 			if (PrevSibling != null)
 				return PrevSibling;
+			// Trivia navigation ends at its owning list; see GetNextNode.
+			if (this is Trivia)
+				return null;
 			if (Parent != null)
 				return Parent.GetPrevNode();
 			return null;
@@ -722,18 +972,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			while (prev != null && !pred(prev))
 				prev = prev.GetPrevNode();
 			return prev;
-		}
-		// filters all non c# nodes (comments, white spaces or pre processor directives)
-		public AstNode? GetCSharpNodeBefore(AstNode node)
-		{
-			var n = node.PrevSibling;
-			while (n != null)
-			{
-				if (n.Role != Roles.Comment)
-					return n;
-				n = n.GetPrevNode();
-			}
-			return null;
 		}
 
 		/// <summary>
@@ -762,223 +1000,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return prev;
 		}
 
-		#region GetNodeAt
-		/// <summary>
-		/// Gets the node specified by T at the location line, column. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End exclusive)
-		/// </summary>
-		public AstNode? GetNodeAt(int line, int column, Predicate<AstNode>? pred = null)
-		{
-			return GetNodeAt(new TextLocation(line, column), pred);
-		}
-
-		/// <summary>
-		/// Gets the node specified by pred at location. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End exclusive)
-		/// </summary>
-		public AstNode? GetNodeAt(TextLocation location, Predicate<AstNode>? pred = null)
-		{
-			AstNode? result = null;
-			AstNode node = this;
-			while (node.LastChild != null)
-			{
-				var child = node.LastChild;
-				while (child != null && child.StartLocation > location)
-					child = child.prevSibling;
-				if (child != null && location < child.EndLocation)
-				{
-					if (pred == null || pred(child))
-						result = child;
-					node = child;
-				}
-				else
-				{
-					// found no better child node - therefore the parent is the right one.
-					break;
-				}
-			}
-			return result;
-		}
-
-		/// <summary>
-		/// Gets the node specified by T at the location line, column. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End exclusive)
-		/// </summary>
-		public T? GetNodeAt<T>(int line, int column) where T : AstNode
-		{
-			return GetNodeAt<T>(new TextLocation(line, column));
-		}
-
-		/// <summary>
-		/// Gets the node specified by T at location. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End exclusive)
-		/// </summary>
-		public T? GetNodeAt<T>(TextLocation location) where T : AstNode
-		{
-			T? result = null;
-			AstNode node = this;
-			while (node.LastChild != null)
-			{
-				var child = node.LastChild;
-				while (child != null && child.StartLocation > location)
-					child = child.prevSibling;
-				if (child != null && location < child.EndLocation)
-				{
-					if (child is T)
-						result = (T)child;
-					node = child;
-				}
-				else
-				{
-					// found no better child node - therefore the parent is the right one.
-					break;
-				}
-			}
-			return result;
-		}
-
-		#endregion
-
-		#region GetAdjacentNodeAt
-		/// <summary>
-		/// Gets the node specified by pred at the location line, column. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End inclusive)
-		/// </summary>
-		public AstNode? GetAdjacentNodeAt(int line, int column, Predicate<AstNode>? pred = null)
-		{
-			return GetAdjacentNodeAt(new TextLocation(line, column), pred);
-		}
-
-		/// <summary>
-		/// Gets the node specified by pred at location. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End inclusive)
-		/// </summary>
-		public AstNode? GetAdjacentNodeAt(TextLocation location, Predicate<AstNode>? pred = null)
-		{
-			AstNode? result = null;
-			AstNode node = this;
-			while (node.LastChild != null)
-			{
-				var child = node.LastChild;
-				while (child != null && child.StartLocation > location)
-					child = child.prevSibling;
-				if (child != null && location <= child.EndLocation)
-				{
-					if (pred == null || pred(child))
-						result = child;
-					node = child;
-				}
-				else
-				{
-					// found no better child node - therefore the parent is the right one.
-					break;
-				}
-			}
-			return result;
-		}
-
-		/// <summary>
-		/// Gets the node specified by T at the location line, column. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End inclusive)
-		/// </summary>
-		public T? GetAdjacentNodeAt<T>(int line, int column) where T : AstNode
-		{
-			return GetAdjacentNodeAt<T>(new TextLocation(line, column));
-		}
-
-		/// <summary>
-		/// Gets the node specified by T at location. This is useful for getting a specific node from the tree. For example searching
-		/// the current method declaration.
-		/// (End inclusive)
-		/// </summary>
-		public T? GetAdjacentNodeAt<T>(TextLocation location) where T : AstNode
-		{
-			T? result = null;
-			AstNode node = this;
-			while (node.LastChild != null)
-			{
-				var child = node.LastChild;
-				while (child != null && child.StartLocation > location)
-					child = child.prevSibling;
-				if (child != null && location <= child.EndLocation)
-				{
-					if (child is T t)
-						result = t;
-					node = child;
-				}
-				else
-				{
-					// found no better child node - therefore the parent is the right one.
-					break;
-				}
-			}
-			return result;
-		}
-		#endregion
-
-
-		/// <summary>
-		/// Gets the node that fully contains the range from startLocation to endLocation.
-		/// </summary>
-		public AstNode GetNodeContaining(TextLocation startLocation, TextLocation endLocation)
-		{
-			for (AstNode? child = firstChild; child != null; child = child.nextSibling)
-			{
-				if (child.StartLocation <= startLocation && endLocation <= child.EndLocation)
-					return child.GetNodeContaining(startLocation, endLocation);
-			}
-			return this;
-		}
-
-		/// <summary>
-		/// Returns the root nodes of all subtrees that are fully contained in the specified region.
-		/// </summary>
-		public IEnumerable<AstNode> GetNodesBetween(int startLine, int startColumn, int endLine, int endColumn)
-		{
-			return GetNodesBetween(new TextLocation(startLine, startColumn), new TextLocation(endLine, endColumn));
-		}
-
-		/// <summary>
-		/// Returns the root nodes of all subtrees that are fully contained between <paramref name="start"/> and <paramref name="end"/> (inclusive).
-		/// </summary>
-		public IEnumerable<AstNode> GetNodesBetween(TextLocation start, TextLocation end)
-		{
-			AstNode? node = this;
-			while (node != null)
-			{
-				AstNode? next;
-				if (start <= node.StartLocation && node.EndLocation <= end)
-				{
-					// Remember next before yielding node.
-					// This allows iteration to continue when the caller removes/replaces the node.
-					next = node.GetNextNode();
-					yield return node;
-				}
-				else
-				{
-					if (node.EndLocation <= start)
-					{
-						next = node.GetNextNode();
-					}
-					else
-					{
-						next = node.FirstChild;
-					}
-				}
-
-				if (next != null && next.StartLocation > end)
-					yield break;
-				node = next;
-			}
-		}
-
 		/// <summary>
 		/// Gets the node as formatted C# output.
 		/// </summary>
@@ -987,8 +1008,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </param>
 		public virtual string ToString(CSharpFormattingOptions? formattingOptions)
 		{
-			if (IsNull)
-				return "";
 			var w = new StringWriter();
 			AcceptVisitor(new CSharpOutputVisitor(w, formattingOptions ?? FormattingOptionsFactory.CreateMono()));
 			return w.ToString();
@@ -1043,17 +1062,8 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return this.StartLocation <= location && location <= this.EndLocation;
 		}
 
-		public override void AddAnnotation(object annotation)
-		{
-			if (this.IsNull)
-				throw new InvalidOperationException("Cannot add annotations to the null node");
-			base.AddAnnotation(annotation);
-		}
-
 		internal string DebugToString()
 		{
-			if (IsNull)
-				return "Null";
 			string text = ToString();
 			text = text.TrimEnd().Replace("\t", "").Replace(Environment.NewLine, " ");
 			if (text.Length > 100)

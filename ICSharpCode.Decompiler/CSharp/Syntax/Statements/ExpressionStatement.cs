@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ExpressionStatement.cs
 //  
 // Author:
@@ -24,51 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Expression;
+	/// <c>expression_statement ::= expression ';'</c> (C# grammar §13.7)
 	/// </summary>
-	public class ExpressionStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class ExpressionStatement : Statement
 	{
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitExpressionStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitExpressionStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitExpressionStatement(this, data);
-		}
-
-		public ExpressionStatement()
-		{
-		}
-
-		public ExpressionStatement(Expression expression)
-		{
-			this.Expression = expression;
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ExpressionStatement o = other as ExpressionStatement;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

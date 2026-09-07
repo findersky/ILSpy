@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Diagnostics;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
@@ -28,8 +30,8 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	public abstract class ContextTrackingVisitor<TResult> : DepthFirstAstVisitor<TResult>
 	{
-		protected ITypeDefinition currentTypeDefinition;
-		protected IMethod currentMethod;
+		protected ITypeDefinition? currentTypeDefinition;
+		protected IMethod? currentMethod;
 
 		protected void Initialize(TransformContext context)
 		{
@@ -45,7 +47,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		public override TResult VisitTypeDeclaration(TypeDeclaration typeDeclaration)
 		{
-			ITypeDefinition oldType = currentTypeDefinition;
+			ITypeDefinition? oldType = currentTypeDefinition;
 			try
 			{
 				currentTypeDefinition = typeDeclaration.GetSymbol() as ITypeDefinition;

@@ -31,6 +31,7 @@
 //	includes code by Mike Krüger and Lluis Sanchez
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -40,6 +41,10 @@ using ICSharpCode.Decompiler.Metadata;
 
 namespace ICSharpCode.Decompiler.Util
 {
+	[SuppressMessage("Usage", "CA1063:Implement IDisposable Correctly",
+		Justification = "Ported from the Mono ResXResourceWriter implementation; preserved verbatim for fidelity with the upstream.")]
+	[SuppressMessage("Usage", "CA2213:Disposable fields should be disposed",
+		Justification = "By design: the writer doesn't own the underlying stream/textwriter passed in by the caller. Mono behavior preserved.")]
 #if INSIDE_SYSTEM_WEB
 	internal
 #else

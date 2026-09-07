@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Daniel Grunwald
+// Copyright (c) 2017 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 
@@ -26,6 +25,8 @@ using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.Util;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp
 {
@@ -76,7 +77,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			/// <summary>
 			/// The function containing this sequence point.
 			/// </summary>
-			internal ILFunction Function;
+			internal ILFunction? Function;
 
 			public StatePerSequencePoint(AstNode primaryNode)
 			{
@@ -95,9 +96,9 @@ namespace ICSharpCode.Decompiler.CSharp
 		// Collects information for the current sequence point.
 		StatePerSequencePoint current;
 
-		void VisitAsSequencePoint(AstNode node)
+		void VisitAsSequencePoint(AstNode? node)
 		{
-			if (node.IsNull)
+			if (node is null)
 				return;
 			StartSequencePoint(node);
 			node.AcceptVisitor(this);
@@ -120,7 +121,7 @@ namespace ICSharpCode.Decompiler.CSharp
 				var blockContainer = blockStatement.Annotation<BlockContainer>();
 				if (blockContainer != null)
 				{
-					StartSequencePoint(blockStatement.LBraceToken);
+					StartSequencePoint(blockStatement);
 					int intervalStart;
 					if (blockContainer.Parent is TryCatchHandler handler && !handler.ExceptionSpecifierILRange.IsEmpty)
 					{
@@ -141,7 +142,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					intervals.Add(interval);
 					current.Intervals.AddRange(intervals);
 					current.Function = blockContainer.Ancestors.OfType<ILFunction>().FirstOrDefault();
-					EndSequencePoint(blockStatement.LBraceToken.StartLocation, blockStatement.LBraceToken.EndLocation);
+					EndSequencePoint(blockStatement.StartLocation, Offset(blockStatement.StartLocation, 1));
 				}
 				else
 				{
@@ -158,17 +159,30 @@ namespace ICSharpCode.Decompiler.CSharp
 			var implicitReturn = blockStatement.Annotation<ImplicitReturnAnnotation>();
 			if (implicitReturn != null && !isEnhancedUsing)
 			{
-				StartSequencePoint(blockStatement.RBraceToken);
+				StartSequencePoint(blockStatement);
 				AddToSequencePoint(implicitReturn.Leave);
-				EndSequencePoint(blockStatement.RBraceToken.StartLocation, blockStatement.RBraceToken.EndLocation);
+				EndSequencePoint(Offset(blockStatement.EndLocation, -1), blockStatement.EndLocation);
 			}
+		}
+
+		public override void VisitFieldDeclaration(FieldDeclaration fieldDeclaration)
+		{
+			foreach (var variable in fieldDeclaration.Variables)
+			{
+				VisitMemberInitializer(variable.Initializer);
+			}
+			base.VisitFieldDeclaration(fieldDeclaration);
 		}
 
 		public override void VisitPropertyDeclaration(PropertyDeclaration propertyDeclaration)
 		{
-			if (!propertyDeclaration.ExpressionBody.IsNull)
+			if (propertyDeclaration.ExpressionBody is not null)
 			{
 				VisitAsSequencePoint(propertyDeclaration.ExpressionBody);
+			}
+			else if (propertyDeclaration.Initializer is not null)
+			{
+				VisitMemberInitializer(propertyDeclaration.Initializer);
 			}
 			else
 			{
@@ -176,9 +190,32 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
+		// A field/auto-property/event initializer is emitted once at the declaration but, in IL,
+		// runs in every instance constructor that does not chain to this(...) (and static
+		// initializers run in the static constructor). The primary sequence point covers the
+		// constructor the initializer was lifted from; MemberInitializerInOtherConstructorsAnnotation
+		// carries the initializer's copies from the remaining constructors, so a matching sequence
+		// point is emitted - at the same source location, but with the other constructor's IL - for
+		// each of them.
+		void VisitMemberInitializer(Expression? initializer)
+		{
+			if (initializer is null)
+				return;
+			VisitAsSequencePoint(initializer);
+			var annotation = initializer.Annotation<MemberInitializerInOtherConstructorsAnnotation>();
+			if (annotation is null)
+				return;
+			foreach (var other in annotation.Initializers)
+			{
+				StartSequencePoint(initializer);
+				other.AcceptVisitor(this);
+				EndSequencePoint(initializer.StartLocation, initializer.EndLocation);
+			}
+		}
+
 		public override void VisitIndexerDeclaration(IndexerDeclaration indexerDeclaration)
 		{
-			if (!indexerDeclaration.ExpressionBody.IsNull)
+			if (indexerDeclaration.ExpressionBody is not null)
 			{
 				VisitAsSequencePoint(indexerDeclaration.ExpressionBody);
 			}
@@ -203,6 +240,15 @@ namespace ICSharpCode.Decompiler.CSharp
 			VisitAsSequencePoint(forStatement.EmbeddedStatement);
 		}
 
+		public override void VisitEventDeclaration(EventDeclaration eventDeclaration)
+		{
+			foreach (var variable in eventDeclaration.Variables)
+			{
+				VisitMemberInitializer(variable.Initializer);
+			}
+			base.VisitEventDeclaration(eventDeclaration);
+		}
+
 		public override void VisitSwitchStatement(SwitchStatement switchStatement)
 		{
 			StartSequencePoint(switchStatement);
@@ -215,7 +261,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			// add switch statement itself to sequence point
 			// (call only after the sections are visited)
 			AddToSequencePoint(switchStatement);
-			EndSequencePoint(switchStatement.StartLocation, switchStatement.RParToken.EndLocation);
+			EndSequencePoint(switchStatement.StartLocation, Offset(switchStatement.Expression.EndLocation, 1));
 		}
 
 		public override void VisitSwitchSection(Syntax.SwitchSection switchSection)
@@ -241,7 +287,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		public override void VisitQueryFromClause(QueryFromClause queryFromClause)
 		{
-			if (queryFromClause.Parent.FirstChild != queryFromClause)
+			if (queryFromClause.Parent!.FirstChild != queryFromClause)
 			{
 				AddToSequencePoint(queryFromClause);
 				VisitAsSequencePoint(queryFromClause.Expression);
@@ -299,7 +345,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (usingStatement.IsEnhanced)
 				EndSequencePoint(usingStatement.StartLocation, usingStatement.ResourceAcquisition.EndLocation);
 			else
-				EndSequencePoint(usingStatement.StartLocation, usingStatement.RParToken.EndLocation);
+				EndSequencePoint(usingStatement.StartLocation, Offset(usingStatement.ResourceAcquisition.EndLocation, 1));
 		}
 
 		public override void VisitForeachStatement(ForeachStatement foreachStatement)
@@ -318,7 +364,7 @@ namespace ICSharpCode.Decompiler.CSharp
 
 			StartSequencePoint(foreachStatement);
 			AddToSequencePoint(foreachInfo.MoveNextCall);
-			EndSequencePoint(foreachStatement.InToken.StartLocation, foreachStatement.InToken.EndLocation);
+			EndSequencePoint(Offset(foreachStatement.VariableDesignation.EndLocation, 1), Offset(foreachStatement.VariableDesignation.EndLocation, 1 + "in".Length));
 
 			StartSequencePoint(foreachStatement);
 			AddToSequencePoint(foreachInfo.GetCurrentCall);
@@ -333,7 +379,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			lockStatement.Expression.AcceptVisitor(this);
 			VisitAsSequencePoint(lockStatement.EmbeddedStatement);
 			AddToSequencePoint(lockStatement);
-			EndSequencePoint(lockStatement.StartLocation, lockStatement.RParToken.EndLocation);
+			EndSequencePoint(lockStatement.StartLocation, Offset(lockStatement.Expression.EndLocation, 1));
 		}
 
 		public override void VisitIfElseStatement(IfElseStatement ifElseStatement)
@@ -343,7 +389,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			VisitAsSequencePoint(ifElseStatement.TrueStatement);
 			VisitAsSequencePoint(ifElseStatement.FalseStatement);
 			AddToSequencePoint(ifElseStatement);
-			EndSequencePoint(ifElseStatement.StartLocation, ifElseStatement.RParToken.EndLocation);
+			EndSequencePoint(ifElseStatement.StartLocation, Offset(ifElseStatement.Condition.EndLocation, 1));
 		}
 
 		public override void VisitWhileStatement(WhileStatement whileStatement)
@@ -352,7 +398,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			whileStatement.Condition.AcceptVisitor(this);
 			VisitAsSequencePoint(whileStatement.EmbeddedStatement);
 			AddToSequencePoint(whileStatement);
-			EndSequencePoint(whileStatement.StartLocation, whileStatement.RParToken.EndLocation);
+			EndSequencePoint(whileStatement.StartLocation, Offset(whileStatement.Condition.EndLocation, 1));
 		}
 
 		public override void VisitDoWhileStatement(DoWhileStatement doWhileStatement)
@@ -361,7 +407,8 @@ namespace ICSharpCode.Decompiler.CSharp
 			VisitAsSequencePoint(doWhileStatement.EmbeddedStatement);
 			doWhileStatement.Condition.AcceptVisitor(this);
 			AddToSequencePoint(doWhileStatement);
-			EndSequencePoint(doWhileStatement.WhileToken.StartLocation, doWhileStatement.RParToken.EndLocation);
+			// The trailing 'while (' precedes the condition: "while" + ' ' + '('.
+			EndSequencePoint(Offset(doWhileStatement.Condition.StartLocation, -("while".Length + 2)), Offset(doWhileStatement.Condition.EndLocation, 1));
 		}
 
 		public override void VisitFixedStatement(FixedStatement fixedStatement)
@@ -385,22 +432,23 @@ namespace ICSharpCode.Decompiler.CSharp
 
 		public override void VisitCatchClause(CatchClause catchClause)
 		{
-			if (catchClause.Condition.IsNull)
+			if (catchClause.Condition is null)
 			{
 				var tryCatchHandler = catchClause.Annotation<TryCatchHandler>();
 				if (tryCatchHandler != null && !tryCatchHandler.ExceptionSpecifierILRange.IsEmpty)
 				{
-					StartSequencePoint(catchClause.CatchToken);
+					StartSequencePoint(catchClause);
 					var function = tryCatchHandler.Ancestors.OfType<ILFunction>().FirstOrDefault();
 					AddToSequencePointRaw(function, new[] { tryCatchHandler.ExceptionSpecifierILRange });
-					EndSequencePoint(catchClause.CatchToken.StartLocation, catchClause.RParToken.IsNull ? catchClause.CatchToken.EndLocation : catchClause.RParToken.EndLocation);
+					EndSequencePoint(catchClause.StartLocation, CatchHeaderEnd(catchClause));
 				}
 			}
 			else
 			{
-				StartSequencePoint(catchClause.WhenToken);
+				StartSequencePoint(catchClause);
 				AddToSequencePoint(catchClause.Condition);
-				EndSequencePoint(catchClause.WhenToken.StartLocation, catchClause.CondRParToken.EndLocation);
+				// The 'when (' precedes the condition: "when" + ' ' + '('.
+				EndSequencePoint(Offset(catchClause.Condition.StartLocation, -("when".Length + 2)), Offset(catchClause.Condition.EndLocation, 1));
 			}
 			VisitAsSequencePoint(catchClause.Body);
 		}
@@ -412,6 +460,29 @@ namespace ICSharpCode.Decompiler.CSharp
 		{
 			outerStates.Push(current);
 			current = new StatePerSequencePoint(primaryNode);
+		}
+
+		// Token nodes are not part of the AST, so the brace/parenthesis/keyword positions that
+		// statement-header sequence points address are derived from the surrounding real nodes plus a
+		// fixed column offset. The offsets assume the decompiler's own formatting -- one space before a
+		// header's '(' and none within it, single spaces around keywords -- which holds because output is
+		// always printed with DecompilerSettings.CSharpFormattingOptions (CreateAllman plus those
+		// overrides). Sequence points are only valid under that formatting: printing the tree with a
+		// customized CSharpFormattingOptions (e.g. SpacesWithinWhileParentheses) before generating them
+		// would shift these columns and produce wrong PDB line/column mappings.
+		static TextLocation Offset(TextLocation location, int columns)
+		{
+			return new TextLocation(location.Line, location.Column + columns);
+		}
+
+		// End of a 'catch' header: the ')' after the variable (or the type, if unnamed), or just past
+		// the 'catch' keyword when there is no exception specifier.
+		static TextLocation CatchHeaderEnd(CatchClause catchClause)
+		{
+			if (catchClause.Type is null)
+				return Offset(catchClause.StartLocation, "catch".Length);
+			AstNode beforeRParen = catchClause.VariableNameToken is null ? catchClause.Type : catchClause.VariableNameToken;
+			return Offset(beforeRParen.EndLocation, 1);
 		}
 
 		void EndSequencePoint(TextLocation startLocation, TextLocation endLocation)
@@ -435,7 +506,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			current = outerStates.Pop();
 		}
 
-		void AddToSequencePointRaw(ILFunction function, IEnumerable<Interval> ranges)
+		void AddToSequencePointRaw(ILFunction? function, IEnumerable<Interval> ranges)
 		{
 			current.Intervals.AddRange(ranges);
 			Debug.Assert(current.Function == null || current.Function == function);
@@ -465,7 +536,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			if (HasUsableILRange(inst) && current.Intervals != null)
 			{
 				current.Intervals.AddRange(inst.ILRanges);
-				var function = inst.Parent.Ancestors.OfType<ILFunction>().FirstOrDefault();
+				var function = inst.Parent!.Ancestors.OfType<ILFunction>().FirstOrDefault();
 				Debug.Assert(current.Function == null || current.Function == function);
 				current.Function = function;
 			}
@@ -546,8 +617,7 @@ namespace ICSharpCode.Decompiler.CSharp
 					newList.Add(hidden);
 				}
 
-
-				List<int> sequencePointCandidates = function.SequencePointCandidates;
+				List<int> sequencePointCandidates = function.SequencePointCandidates!;
 				int currSPCandidateIndex = 0;
 
 				for (int i = 0; i < newList.Count - 1; i++)

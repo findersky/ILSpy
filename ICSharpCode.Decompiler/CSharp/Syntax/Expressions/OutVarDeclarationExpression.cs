@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,58 +16,28 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// out type expression
+	/// <c>out_var_declaration_expression ::= type variable_initializer</c> (C# grammar §12.20)
 	/// </summary>
-	public class OutVarDeclarationExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class OutVarDeclarationExpression : Expression
 	{
-		public readonly static TokenRole OutKeywordRole = DirectionExpression.OutKeywordRole;
+		public const string OutKeyword = DirectionExpression.OutKeyword;
 
-		public CSharpTokenNode OutKeywordToken {
-			get { return GetChildByRole(OutKeywordRole); }
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public VariableInitializer Variable {
-			get { return GetChildByRole(Roles.Variable); }
-			set { SetChildByRole(Roles.Variable, value); }
-		}
-
-		public OutVarDeclarationExpression()
-		{
-		}
+		[Slot("Variable")]
+		public partial VariableInitializer Variable { get; set; }
 
 		public OutVarDeclarationExpression(AstType type, string name)
 		{
 			this.Type = type;
 			this.Variable = new VariableInitializer(name);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitOutVarDeclarationExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitOutVarDeclarationExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitOutVarDeclarationExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as OutVarDeclarationExpression;
-			return o != null && this.Type.DoMatch(o.Type, match) && this.Variable.DoMatch(o.Variable, match);
 		}
 	}
 }

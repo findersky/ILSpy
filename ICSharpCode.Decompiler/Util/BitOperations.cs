@@ -1,4 +1,10 @@
-﻿using System;
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+//
+// Vendored from dotnet/runtime: the System.Numerics.BitOperations members used by this
+// project, as a polyfill for target frameworks that lack the type.
+
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -7,6 +13,10 @@ namespace System.Numerics
 {
 	internal static class BitOperations
 	{
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static uint RotateLeft(uint value, int offset)
+			=> (value << offset) | (value >> (32 - offset));
+
 		private static ReadOnlySpan<byte> TrailingZeroCountDeBruijn => new byte[32]
 {
 			00, 01, 28, 02, 29, 14, 24, 03,

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -31,7 +31,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 	[Shared]
 	class TypeExtensionMethodsAnalyzer : IAnalyzer
 	{
-		public bool Show(ISymbol symbol) => symbol is ITypeDefinition entity && !entity.IsStatic;
+		public bool Show(ISymbol? symbol) => symbol is ITypeDefinition entity && !entity.IsStatic;
 
 		public IEnumerable<ISymbol> Analyze(ISymbol analyzedSymbol, AnalyzerContext context)
 		{
@@ -46,7 +46,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 
 		IEnumerable<IEntity> ScanType(ITypeDefinition analyzedType, ITypeDefinition type, AnalyzerContext context)
 		{
-			if (!type.HasExtensionMethods)
+			if (!type.HasExtensions)
 				yield break;
 
 			if (analyzedType.ParentModule?.MetadataFile == null)

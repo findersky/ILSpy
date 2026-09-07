@@ -83,7 +83,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write("switch");
@@ -143,18 +143,19 @@ namespace ICSharpCode.Decompiler.IL
 			return clone;
 		}
 
-		StackType resultType = StackType.Void;
+		IType? resultType = null;
 
-		public override StackType ResultType => resultType;
+		public override StackType ResultType => resultType?.GetStackType() ?? StackType.Void;
+		public override IType InferType(ICompilation compilation) => resultType ?? compilation.FindType(KnownTypeCode.Void);
 
-		public void SetResultType(StackType resultType)
+		public void SetResultType(IType resultType)
 		{
 			this.resultType = resultType;
 		}
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 			bool expectNullSection = this.IsLifted;
 			LongSet sets = LongSet.Empty;
 			foreach (var section in Sections)
@@ -166,7 +167,7 @@ namespace ICSharpCode.Decompiler.IL
 				}
 				Debug.Assert(!section.Labels.IsEmpty || section.HasNullLabel);
 				Debug.Assert(!section.Labels.Overlaps(sets));
-				Debug.Assert(section.Body.ResultType == this.ResultType);
+				Debug.Assert(section.Body.ResultType == this.ResultType || section.Body.HasDirectFlag(InstructionFlags.EndPointUnreachable));
 				sets = sets.UnionWith(section.Labels);
 			}
 			Debug.Assert(sets.SetEquals(LongSet.Universe), "switch does not handle all possible cases");
@@ -203,6 +204,12 @@ namespace ICSharpCode.Decompiler.IL
 		public bool HasNullLabel { get; set; }
 
 		/// <summary>
+		/// If true, this section only contains a compiler-generated throw helper
+		/// used in a switch expression and will not be visible in the decompiled source code.
+		/// </summary>
+		public bool IsCompilerGeneratedDefaultSection { get; set; }
+
+		/// <summary>
 		/// The set of labels that cause execution to jump to this switch section.
 		/// </summary>
 		public LongSet Labels { get; set; }
@@ -218,9 +225,11 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
+			if (IsCompilerGeneratedDefaultSection)
+				output.Write("generated.");
 			output.WriteLocalReference("case", this, isDefinition: true);
 			output.Write(' ');
 			if (HasNullLabel)

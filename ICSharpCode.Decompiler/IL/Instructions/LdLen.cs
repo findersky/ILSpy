@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -19,11 +19,10 @@
 
 using System.Diagnostics;
 
+using ICSharpCode.Decompiler.TypeSystem;
+
 namespace ICSharpCode.Decompiler.IL
 {
-	/// <summary>
-	/// Description of LdLen.
-	/// </summary>
 	public sealed partial class LdLen
 	{
 		readonly StackType resultType;
@@ -39,7 +38,12 @@ namespace ICSharpCode.Decompiler.IL
 			get { return resultType; }
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		public override IType InferType(ICompilation compilation)
+		{
+			return compilation.FindType(resultType);
+		}
+
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // DelegateDeclaration.cs
 //
 // Author:
@@ -24,69 +24,38 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// delegate ReturnType Name&lt;TypeParameters&gt;(Parameters) where Constraints;
+	/// <c>delegate_declaration ::= attribute_section* modifier* 'delegate' ( 'ref' 'readonly'? )? type identifier type_parameter* '(' parameter* ')' constraint*</c> (C# grammar §21.2)
 	/// </summary>
-	public class DelegateDeclaration : EntityDeclaration
+	[DecompilerAstNode]
+	public sealed partial class DelegateDeclaration : EntityDeclaration
 	{
-		public override NodeType NodeType {
-			get { return NodeType.TypeDeclaration; }
-		}
-
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.TypeDefinition; }
 		}
 
-		public CSharpTokenNode DelegateToken {
-			get { return GetChildByRole(Roles.DelegateKeyword); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public AstNodeCollection<TypeParameterDeclaration> TypeParameters {
-			get { return GetChildrenByRole(Roles.TypeParameter); }
-		}
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
+		[Slot("Identifier")]
+		public override partial Identifier NameToken { get; set; }
 
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("TypeParameter")]
+		public partial AstNodeCollection<TypeParameterDeclaration> TypeParameters { get; }
 
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		public AstNodeCollection<Constraint> Constraints {
-			get { return GetChildrenByRole(Roles.Constraint); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDelegateDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDelegateDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDelegateDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			DelegateDeclaration o = other as DelegateDeclaration;
-			return o != null && MatchString(this.Name, o.Name)
-				&& this.MatchAttributesAndModifiers(o, match) && this.ReturnType.DoMatch(o.ReturnType, match)
-				&& this.TypeParameters.DoMatch(o.TypeParameters, match) && this.Parameters.DoMatch(o.Parameters, match)
-				&& this.Constraints.DoMatch(o.Constraints, match);
-		}
+		[Slot("Constraint")]
+		public partial AstNodeCollection<Constraint> Constraints { get; }
 	}
 }

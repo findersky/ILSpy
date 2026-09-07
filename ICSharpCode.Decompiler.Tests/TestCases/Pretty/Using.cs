@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -50,12 +50,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if !ROSLYN3
 			public static implicit operator TypeB_Issue3385(TypeA_Issue3385 a)
 			{
+#if CS71
+				return default;
+#else
 				return default(TypeB_Issue3385);
+#endif
 			}
 #else
 			public static implicit operator TypeB_Issue3385(in TypeA_Issue3385 a)
 			{
+#if CS71
+				return default;
+#else
 				return default(TypeB_Issue3385);
+#endif
 			}
 #endif
 		}
@@ -191,9 +199,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public static void Issue3385()
 		{
 #if ROSLYN3
+#if CS71
+			using (TypeA_Issue3385 a = default)
+#else
 			using (TypeA_Issue3385 a = default(TypeA_Issue3385))
+#endif
+#else
+#if CS71
+			using (TypeA_Issue3385 typeA_Issue = default)
 #else
 			using (TypeA_Issue3385 typeA_Issue = default(TypeA_Issue3385))
+#endif
 #endif
 			{
 #if ROSLYN3

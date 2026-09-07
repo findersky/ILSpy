@@ -1,4 +1,22 @@
-﻿using System;
+// Copyright (c) 2018 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -10,6 +28,8 @@ using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 using static ICSharpCode.Decompiler.Metadata.ILOpCodeExtensions;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp
 {
@@ -37,7 +57,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			var collector = new RequiredNamespaceCollector(namespaces);
 			foreach (var type in module.TypeDefinitions)
 			{
-				collector.CollectNamespaces(type, module, (CodeMappingInfo)null);
+				collector.CollectNamespaces(type, module, (CodeMappingInfo?)null);
 			}
 			collector.HandleAttributes(module.GetAssemblyAttributes());
 			collector.HandleAttributes(module.GetModuleAttributes());
@@ -50,13 +70,13 @@ namespace ICSharpCode.Decompiler.CSharp
 			collector.HandleAttributes(module.GetModuleAttributes());
 		}
 
-		public static void CollectNamespaces(IEntity entity, MetadataModule module, HashSet<string> namespaces)
+		public static void CollectNamespaces(IEntity? entity, MetadataModule module, HashSet<string> namespaces)
 		{
 			var collector = new RequiredNamespaceCollector(namespaces);
 			collector.CollectNamespaces(entity, module);
 		}
 
-		void CollectNamespaces(IEntity entity, MetadataModule module, CodeMappingInfo mappingInfo = null)
+		void CollectNamespaces(IEntity? entity, MetadataModule module, CodeMappingInfo? mappingInfo = null)
 		{
 			if (entity == null || entity.MetadataToken.IsNil || module.MetadataFile is not MetadataFile corFile)
 				return;
@@ -65,6 +85,12 @@ namespace ICSharpCode.Decompiler.CSharp
 			switch (entity)
 			{
 				case ITypeDefinition td:
+					var extensionInfo = td.DeclaringTypeDefinition?.ExtensionInfo ?? td.DeclaringTypeDefinition?.DeclaringTypeDefinition?.ExtensionInfo;
+					if (extensionInfo?.IsExtensionMarkerType(td, out _) == true || extensionInfo?.IsExtensionGroupType(td) == true)
+					{
+						td = extensionInfo.Container;
+					}
+
 					namespaces.Add(td.Namespace);
 					HandleAttributes(td.GetAttributes());
 					HandleTypeParameters(td.TypeParameters);
@@ -76,6 +102,9 @@ namespace ICSharpCode.Decompiler.CSharp
 
 					foreach (var nestedType in td.NestedTypes)
 					{
+						bool isGroupOrMarker = extensionInfo?.IsExtensionGroupType(nestedType) == true || extensionInfo?.IsExtensionMarkerType(nestedType, out _) == true;
+						if (isGroupOrMarker)
+							continue;
 						CollectNamespaces(nestedType, module, mappingInfo);
 					}
 
@@ -221,7 +250,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		void HandleAttributeValue(IType type, object value)
+		void HandleAttributeValue(IType type, object? value)
 		{
 			CollectNamespacesForTypeReference(type);
 			if (value is IType typeofType)
@@ -334,7 +363,7 @@ namespace ICSharpCode.Decompiler.CSharp
 							case HandleKind.MethodDefinition:
 							case HandleKind.MethodSpecification:
 							case HandleKind.MemberReference:
-								IMember member;
+								IMember? member;
 								try
 								{
 									member = module.ResolveEntity(handle, genericContext) as IMember;
@@ -385,7 +414,7 @@ namespace ICSharpCode.Decompiler.CSharp
 			}
 		}
 
-		void CollectNamespacesForMemberReference(IMember member)
+		void CollectNamespacesForMemberReference(IMember? member)
 		{
 			switch (member)
 			{

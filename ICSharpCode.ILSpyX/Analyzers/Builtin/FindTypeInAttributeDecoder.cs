@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 Siegfried Pammer
+// Copyright (c) 2022 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -112,8 +112,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 			}
 			try
 			{
-				IType type = ReflectionHelper.ParseReflectionName(name)
-					.Resolve(new SimpleTypeResolveContext(currentModule));
+				IType type = ReflectionHelper.ParseReflectionName(name, new SimpleTypeResolveContext(currentModule));
 				return GetResultFromResolvedType(type);
 			}
 			catch (ReflectionNameParseException)

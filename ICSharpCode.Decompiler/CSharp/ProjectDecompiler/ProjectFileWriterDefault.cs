@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Siegfried Pammer
+// Copyright (c) 2020 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -32,13 +32,16 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 	/// <summary>
 	/// A <see cref="IProjectFileWriter"/> implementation that creates the projects in the default format.
 	/// </summary>
-	sealed class ProjectFileWriterDefault : IProjectFileWriter
+	public sealed class ProjectFileWriterDefault : IProjectFileWriter
 	{
 		/// <summary>
-		/// Creates a new instance of the <see cref="ProjectFileWriterDefault"/> class.
+		/// Gets the singleton instance of the <see cref="ProjectFileWriterDefault"/> class.
 		/// </summary>
-		/// <returns>A new instance of the <see cref="ProjectFileWriterDefault"/> class.</returns>
-		public static IProjectFileWriter Create() => new ProjectFileWriterDefault();
+		public static ProjectFileWriterDefault Instance { get; } = new();
+
+		ProjectFileWriterDefault()
+		{
+		}
 
 		/// <inheritdoc />
 		public void Write(
@@ -98,6 +101,7 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 
 				w.WriteElementString("OutputType", outputType);
 				w.WriteElementString("LangVersion", project.LanguageVersion.ToString().Replace("CSharp", "").Replace('_', '.'));
+				w.WriteElementString("CheckForOverflowUnderflow", project.CheckForOverflowUnderflow ? "true" : "false");
 
 				w.WriteElementString("AssemblyName", module.Name);
 				if (targetFramework.Identifier != null)
@@ -143,7 +147,6 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 				w.WriteElementString("Optimize", "true");
 				w.WriteEndElement(); // </PropertyGroup> (Release)
 
-
 				w.WriteStartElement("ItemGroup"); // References
 				foreach (var r in module.AssemblyReferences)
 				{
@@ -170,8 +173,11 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 						w.WriteAttributeString("Include", item.FileName);
 						if (item.AdditionalProperties != null)
 						{
+							// Item metadata as attributes is MSBuild 15 syntax. This format is what an
+							// export targets when the toolchain predates that, so the metadata goes where
+							// every non-SDK project keeps it: in child elements.
 							foreach (var (key, value) in item.AdditionalProperties)
-								w.WriteAttributeString(key, value);
+								w.WriteElementString(key, value);
 						}
 						w.WriteEndElement();
 					}

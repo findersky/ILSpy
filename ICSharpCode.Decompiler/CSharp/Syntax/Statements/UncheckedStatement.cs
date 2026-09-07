@@ -1,4 +1,4 @@
-﻿// 
+// 
 // UncheckedStatement.cs
 //  
 // Author:
@@ -24,53 +24,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// unchecked BodyBlock
+	/// <c>unchecked_statement ::= 'unchecked' block</c> (C# grammar §13.12)
 	/// </summary>
-	public class UncheckedStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class UncheckedStatement : Statement
 	{
-		public static readonly TokenRole UncheckedKeywordRole = new TokenRole("unchecked");
+		public const string UncheckedKeyword = "unchecked";
 
-		public CSharpTokenNode UncheckedToken {
-			get { return GetChildByRole(UncheckedKeywordRole); }
-		}
-
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
-
-		public UncheckedStatement()
-		{
-		}
-
-		public UncheckedStatement(BlockStatement body)
-		{
-			AddChild(body, Roles.Body);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitUncheckedStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitUncheckedStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitUncheckedStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			UncheckedStatement o = other as UncheckedStatement;
-			return o != null && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("Body")]
+		public partial BlockStatement Body { get; set; }
 	}
 }

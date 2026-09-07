@@ -1,4 +1,4 @@
-﻿// 
+// 
 // PrimitiveExpression.cs
 //
 // Author:
@@ -24,7 +24,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using System;
+#nullable enable
 
 using ICSharpCode.Decompiler.Util;
 
@@ -47,8 +47,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 	/// <summary>
 	/// Represents a literal value.
+	/// <code>
+	/// literal ::=
+	///       boolean_literal
+	///     | integer_literal
+	///     | real_literal
+	///     | character_literal
+	///     | string_literal
+	///     | null_literal
+	/// </code>
+	/// (C# grammar §6.4.5.1)
 	/// </summary>
-	public class PrimitiveExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class PrimitiveExpression : Expression
 	{
 		public static readonly object AnyValue = new object();
 
@@ -59,93 +70,35 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		internal void SetLocation(TextLocation startLocation, TextLocation endLocation)
 		{
-			ThrowIfFrozen();
 			this.startLocation = startLocation;
 			this.endLocation = endLocation;
 		}
 
 		object value;
-		LiteralFormat format;
 
 		public object Value {
 			get { return this.value; }
 			set {
-				ThrowIfFrozen();
 				this.value = value;
 			}
 		}
 
-
-		public LiteralFormat Format {
-			get { return format; }
-			set {
-				ThrowIfFrozen();
-				format = value;
-			}
-		}
+		public LiteralFormat Format { get; set; }
 
 		public PrimitiveExpression(object value)
 		{
-			this.Value = value;
+			this.value = value;
 		}
 
 		public PrimitiveExpression(object value, LiteralFormat format)
 		{
-			this.Value = value;
-			this.format = format;
+			this.value = value;
+			this.Format = format;
 		}
 
-		public override void AcceptVisitor(IAstVisitor visitor)
+		protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
 		{
-			visitor.VisitPrimitiveExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitPrimitiveExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitPrimitiveExpression(this, data);
-		}
-
-		unsafe static TextLocation AdvanceLocation(TextLocation startLocation, string str)
-		{
-			int line = startLocation.Line;
-			int col = startLocation.Column;
-			fixed (char* start = str)
-			{
-				char* p = start;
-				char* endPtr = start + str.Length;
-				while (p < endPtr)
-				{
-					var nl = NewLine.GetDelimiterLength(*p, () => {
-						char* nextp = p + 1;
-						if (nextp < endPtr)
-							return *nextp;
-						return '\0';
-					});
-					if (nl > 0)
-					{
-						line++;
-						col = 1;
-						if (nl == 2)
-							p++;
-					}
-					else
-					{
-						col++;
-					}
-					p++;
-				}
-			}
-			return new TextLocation(line, col);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			PrimitiveExpression o = other as PrimitiveExpression;
+			PrimitiveExpression? o = other as PrimitiveExpression;
 			return o != null && (this.Value == AnyValue || object.Equals(this.Value, o.Value));
 		}
 	}

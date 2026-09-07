@@ -18,8 +18,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Reflection.Metadata;
 
+using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
@@ -49,6 +52,31 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			BaseTypeCollector collector = new BaseTypeCollector();
 			collector.CollectBaseTypes(type);
 			return collector;
+		}
+
+		/// <summary>
+		/// Returns <paramref name="interfaceType"/> as <paramref name="implementingType"/> implements it -
+		/// the entry from its base-type list - falling back to <paramref name="interfaceType"/> itself.
+		/// </summary>
+		/// <remarks>
+		/// Tuple element names and nullability are not part of a type's identity, so an interface resolved
+		/// through one of its members carries neither; the implementing type's base-type list is where they
+		/// are recorded. Naming an explicit interface implementation requires the spelling from that list -
+		/// C# rejects <c>void I&lt;(int, int)&gt;.M()</c> on a type declared as <c>I&lt;(int A, int B)&gt;</c>
+		/// with CS0540. At most one base type can match, because implementing two interfaces that differ
+		/// only in tuple element names or nullability is itself an error (CS8140, CS8645).
+		/// </remarks>
+		internal static IType GetInterfaceAsImplementedBy(this IType interfaceType, IType implementingType)
+		{
+			foreach (var baseType in implementingType.GetAllBaseTypes())
+			{
+				if (baseType.Kind == TypeKind.Interface
+					&& NormalizeTypeVisitor.IgnoreNullabilityAndTuples.EquivalentTypes(baseType, interfaceType))
+				{
+					return baseType;
+				}
+			}
+			return interfaceType;
 		}
 
 		/// <summary>
@@ -169,6 +197,17 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 
 		/// <summary>
+		/// Gets whether the property is a parameterized property that is not an indexer,
+		/// i.e. a named property with parameters (a VB.NET parameterized property or a
+		/// C++/CLI indexed property). C# has no syntax for declaring or using such a
+		/// property; only its accessor methods can be represented.
+		/// </summary>
+		public static bool IsParameterizedProperty(this IProperty property)
+		{
+			return property.SymbolKind == SymbolKind.Property && property.Parameters.Count > 0;
+		}
+
+		/// <summary>
 		/// Gets whether the type is an open type (contains type parameters).
 		/// </summary>
 		/// <example>
@@ -271,8 +310,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 					case KnownTypeCode.IntPtr:
 					case KnownTypeCode.UIntPtr:
 					case KnownTypeCode.TypedReference:
-						//case KnownTypeCode.ArgIterator:
-						//case KnownTypeCode.RuntimeArgumentHandle:
+					//case KnownTypeCode.ArgIterator:
+					case KnownTypeCode.RuntimeArgumentHandle:
 						return true;
 				}
 				if (type.Kind == TypeKind.Struct)
@@ -304,6 +343,49 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				}
 				return false;
 			}
+		}
+
+		public static bool IsArrayInterfaceType(this IType type)
+		{
+			if (type == null || type.TypeParameterCount != 1)
+				return false;
+			switch (type.GetDefinition()?.KnownTypeCode)
+			{
+				case KnownTypeCode.IEnumerableOfT:
+				case KnownTypeCode.ICollectionOfT:
+				case KnownTypeCode.IListOfT:
+				case KnownTypeCode.IReadOnlyCollectionOfT:
+				case KnownTypeCode.IReadOnlyListOfT:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		public static bool IsInlineArrayType(this IType type)
+		{
+			if (type.Kind != TypeKind.Struct)
+				return false;
+			var td = type.GetDefinition();
+			if (td == null)
+				return false;
+			return td.HasAttribute(KnownAttribute.InlineArray);
+		}
+
+		public static int? GetInlineArrayLength(this IType type)
+		{
+			if (type.Kind != TypeKind.Struct)
+				return null;
+			var td = type.GetDefinition();
+			if (td == null)
+				return null;
+			var attr = td.GetAttribute(KnownAttribute.InlineArray);
+			return attr?.FixedArguments.FirstOrDefault().Value as int?;
+		}
+
+		public static IType GetInlineArrayElementType(this IType arrayType)
+		{
+			return arrayType?.GetFields(f => !f.IsStatic).SingleOrDefault()?.Type ?? SpecialType.UnknownType;
 		}
 
 		/// <summary>
@@ -415,21 +497,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		{
 			return compilation.Modules.SelectMany(a => a.TopLevelTypeDefinitions);
 		}
-		#endregion
-
-		#region Resolve on collections
-		public static IReadOnlyList<IType> Resolve(this IList<ITypeReference> typeReferences, ITypeResolveContext context)
-		{
-			if (typeReferences == null)
-				throw new ArgumentNullException(nameof(typeReferences));
-			if (typeReferences.Count == 0)
-				return EmptyList<IType>.Instance;
-			else
-				return new ProjectedList<ITypeResolveContext, ITypeReference, IType>(context, typeReferences, (c, t) => t.Resolve(c));
-		}
-
-		// There is intentionally no Resolve() overload for IList<IMemberReference>: the resulting IList<Member> would
-		// contains nulls when there are resolve errors.
 		#endregion
 
 		#region IAssembly.GetTypeDefinition()
@@ -612,6 +679,65 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		}
 		#endregion
 
+		#region Lifetime annotations
+		internal static bool IsRefLikeOrAllowsRefLikeType(this IType type)
+		{
+			return type.IsByRefLike
+				|| type is ITypeParameter { AllowsRefLikeType: true };
+		}
+
+		/// <summary>
+		/// Gets the parameter's effective scope after applying implicit scope rules and
+		/// <c>UnscopedRefAttribute</c>.
+		/// </summary>
+		internal static ScopedKind GetEffectiveScope(this IParameter parameter)
+		{
+			LifetimeAnnotation lifetime = parameter.Lifetime;
+			if (lifetime.HasUnscopedRefAttribute)
+				return ScopedKind.None;
+
+			if (lifetime.DeclaredScope != ScopedKind.None)
+				return lifetime.DeclaredScope;
+
+			if (parameter.Owner?.ParentModule is MetadataModule module)
+			{
+				if ((module.TypeSystemOptions & TypeSystemOptions.ScopedRef) == 0)
+					return ScopedKind.None;
+
+				if (module.UseUpdatedEscapeRules && parameter.ReferenceKind == ReferenceKind.Out)
+					return ScopedKind.ScopedRef;
+			}
+
+			if (parameter.IsParams && parameter.Type.IsRefLikeOrAllowsRefLikeType())
+				return ScopedKind.ScopedValue;
+
+			return ScopedKind.None;
+		}
+
+		/// <summary>
+		/// Gets the effective scope of the implicit <c>this</c> parameter.
+		/// </summary>
+		internal static ScopedKind GetThisParameterScope(this IMethod method)
+		{
+			if (method.IsStatic || method.DeclaringTypeDefinition?.Kind != TypeKind.Struct)
+				return ScopedKind.None;
+
+			if (method.ParentModule is MetadataModule module)
+			{
+				if ((module.TypeSystemOptions & TypeSystemOptions.ScopedRef) == 0)
+					return ScopedKind.None;
+
+				bool hasUnscopedRefAttribute = method.HasAttribute(KnownAttribute.UnscopedRef)
+					|| method.AccessorOwner is IProperty property
+						&& property.HasAttribute(KnownAttribute.UnscopedRef);
+				if (hasUnscopedRefAttribute && module.UseUpdatedEscapeRules)
+					return ScopedKind.None;
+			}
+
+			return ScopedKind.ScopedRef;
+		}
+		#endregion
+
 		#region IParameter.IsDefaultValueAssignmentAllowed
 		/// <summary>
 		/// Checks if the parameter is allowed to be assigned a default value.
@@ -636,6 +762,9 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				IParameter otherParameter = parameter.Owner.Parameters[i];
 				if (otherParameter == parameter)
 					break;
+
+				if (LocalFunctionDecompiler.IsClosureParameter(otherParameter, otherParameter.Owner.DeclaringTypeDefinition))
+					continue;
 
 				if (DefaultValueAssignmentAllowedIndividual(otherParameter) || otherParameter.IsParams)
 					continue;
@@ -682,6 +811,14 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			else if (rr is ConversionResolveResult)
 			{
 				return ((ConversionResolveResult)rr).Input.GetSymbol();
+			}
+			else if (rr is DynamicMemberResolveResult dynamicMember)
+			{
+				return dynamicMember.Symbol;
+			}
+			else if (rr is DynamicInvocationResolveResult dynamicInvocation)
+			{
+				return dynamicInvocation.Symbol;
 			}
 
 			return null;
@@ -771,6 +908,25 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			return null;
 		}
 
+		public static IModule FindModuleByAssemblyNameInfo(this ICompilation compilation, AssemblyNameInfo assemblyName)
+		{
+			foreach (var module in compilation.Modules)
+			{
+				if (string.Equals(module.FullAssemblyName, assemblyName.FullName, StringComparison.OrdinalIgnoreCase))
+				{
+					return module;
+				}
+			}
+			foreach (var module in compilation.Modules)
+			{
+				if (string.Equals(module.Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase))
+				{
+					return module;
+				}
+			}
+			return null;
+		}
+
 		/// <summary>
 		/// When given a generic type definition, returns the self-parameterized type
 		/// (i.e. the type of "this" within the type definition).
@@ -788,7 +944,8 @@ namespace ICSharpCode.Decompiler.TypeSystem
 			}
 		}
 
-		public static INamespace GetNamespaceByFullName(this ICompilation compilation, string name)
+#nullable enable
+		public static INamespace? GetNamespaceByFullName(this ICompilation compilation, string? name)
 		{
 			if (string.IsNullOrEmpty(name))
 				return compilation.RootNamespace;
@@ -802,6 +959,34 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				ns = child;
 			}
 			return ns;
+		}
+
+		/// <summary>
+		/// Returns the <see cref="ExtensionInfo"/> of the container type the member's extension
+		/// block belongs to, or null if the member is not part of an extension block. Fields and
+		/// events always return null: extension blocks cannot declare them.
+		/// </summary>
+		public static ExtensionInfo? ResolveExtensionInfo(this IMember member)
+		{
+			if (member is null)
+			{
+				throw new ArgumentNullException(nameof(member));
+			}
+			var td = member.DeclaringTypeDefinition;
+			Debug.Assert(td != null, "IMember.DeclaringTypeDefinition should never be null");
+			var info = td.DeclaringTypeDefinition?.ExtensionInfo ?? td.DeclaringTypeDefinition?.DeclaringTypeDefinition?.ExtensionInfo;
+			if (info == null)
+				return null;
+			// The container's info only applies to members declared in one of its extension
+			// blocks; members of other nested types must not pick it up.
+			IMethod? method = member switch {
+				IMethod m => m,
+				IProperty p => p.Getter ?? p.Setter,
+				_ => null
+			};
+			if (method == null || info.InfoOfExtensionMember((IMethod)method.MemberDefinition) == null)
+				return null;
+			return info;
 		}
 	}
 }

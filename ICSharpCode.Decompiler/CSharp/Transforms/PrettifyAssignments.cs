@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
@@ -39,6 +42,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </remarks>
 	class PrettifyAssignments : DepthFirstAstVisitor, IAstTransform
 	{
+		[AllowNull]
 		TransformContext context;
 
 		public override void VisitAssignmentExpression(AssignmentExpression assignment)
@@ -48,7 +52,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			// Also supports "x = (T)(x op y)" -> "x op= y", if x.GetType() == T
 			// and y is implicitly convertible to T.
 			Expression rhs = assignment.Right;
-			IType expectedType = null;
+			IType? expectedType = null;
 			if (assignment.Right is CastExpression { Type: var astType } cast)
 			{
 				rhs = cast.Expression;
@@ -57,22 +61,28 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			if (rhs is BinaryOperatorExpression binary && assignment.Operator == AssignmentOperatorType.Assign)
 			{
 				if (CanConvertToCompoundAssignment(assignment.Left) && assignment.Left.IsMatch(binary.Left)
-					&& IsImplicitlyConvertible(binary.Right, expectedType))
+					&& binary.Right != null && IsImplicitlyConvertible(binary.Right, expectedType))
 				{
-					assignment.Operator = GetAssignmentOperatorForBinaryOperator(binary.Operator);
-					if (assignment.Operator != AssignmentOperatorType.Assign)
+					var newOperator = GetAssignmentOperatorForBinaryOperator(binary.Operator);
+					if (newOperator != AssignmentOperatorType.Assign)
 					{
+						context.Step("Convert assignment to compound assignment", assignment);
+						assignment.Operator = newOperator;
 						// If we found a shorter operator, get rid of the BinaryOperatorExpression:
 						assignment.CopyAnnotationsFrom(binary);
 						assignment.Right = binary.Right;
 					}
 				}
 			}
-			if (context.Settings.IntroduceIncrementAndDecrement && assignment.Operator == AssignmentOperatorType.Add || assignment.Operator == AssignmentOperatorType.Subtract)
+			if (context.Settings.IntroduceIncrementAndDecrement && assignment.Operator is AssignmentOperatorType.Add or AssignmentOperatorType.Subtract)
 			{
-				// detect increment/decrement
+				// detect increment/decrement; ++/-- on float/double compiles to the same IL as
+				// adding/subtracting a constant 1 (which both types represent exactly), so a
+				// constant 1 right-hand side qualifies there just like for integers
 				var rr = assignment.Right.GetResolveResult();
-				if (rr.IsCompileTimeConstant && rr.Type.IsCSharpPrimitiveIntegerType() && CSharpPrimitiveCast.Cast(rr.Type.GetTypeCode(), 1, false).Equals(rr.ConstantValue))
+				if (rr.IsCompileTimeConstant
+					&& (rr.Type.IsCSharpPrimitiveIntegerType() || rr.Type.IsKnownType(KnownTypeCode.Single) || rr.Type.IsKnownType(KnownTypeCode.Double))
+					&& CSharpPrimitiveCast.Cast(rr.Type.GetTypeCode(), 1, false).Equals(rr.ConstantValue))
 				{
 					// only if it's not a custom operator
 					if (assignment.Annotation<IL.CallInstruction>() == null && assignment.Annotation<IL.UserDefinedCompoundAssign>() == null && assignment.Annotation<IL.DynamicCompoundAssign>() == null)
@@ -84,12 +94,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							type = (assignment.Operator == AssignmentOperatorType.Add) ? UnaryOperatorType.PostIncrement : UnaryOperatorType.PostDecrement;
 						else
 							type = (assignment.Operator == AssignmentOperatorType.Add) ? UnaryOperatorType.Increment : UnaryOperatorType.Decrement;
-						assignment.ReplaceWith(new UnaryOperatorExpression(type, assignment.Left.Detach()).CopyAnnotationsFrom(assignment));
+						context.Step(type is UnaryOperatorType.Increment or UnaryOperatorType.PostIncrement ? "Convert assignment to increment" : "Convert assignment to decrement", assignment);
+						var unaryOperator = new UnaryOperatorExpression(type, assignment.Left.Detach()).CopyAnnotationsFrom(assignment);
+						assignment.ReplaceWith(unaryOperator);
+						context.EndStep(unaryOperator);
 					}
 				}
 			}
 
-			bool IsImplicitlyConvertible(Expression rhs, IType expectedType)
+			bool IsImplicitlyConvertible(Expression rhs, IType? expectedType)
 			{
 				if (expectedType == null)
 					return true;
@@ -132,19 +145,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		static bool CanConvertToCompoundAssignment(Expression left)
 		{
-			MemberReferenceExpression mre = left as MemberReferenceExpression;
+			MemberReferenceExpression? mre = left as MemberReferenceExpression;
 			if (mre != null)
 				return IsWithoutSideEffects(mre.Target);
-			IndexerExpression ie = left as IndexerExpression;
+			IndexerExpression? ie = left as IndexerExpression;
 			if (ie != null)
 				return IsWithoutSideEffects(ie.Target) && ie.Arguments.All(IsWithoutSideEffects);
-			UnaryOperatorExpression uoe = left as UnaryOperatorExpression;
+			UnaryOperatorExpression? uoe = left as UnaryOperatorExpression;
 			if (uoe != null && uoe.Operator == UnaryOperatorType.Dereference)
 				return IsWithoutSideEffects(uoe.Expression);
 			return IsWithoutSideEffects(left);
 		}
 
-		static bool IsWithoutSideEffects(Expression left)
+		static bool IsWithoutSideEffects(Expression? left)
 		{
 			return left is ThisReferenceExpression || left is IdentifierExpression || left is TypeReferenceExpression || left is BaseReferenceExpression;
 		}

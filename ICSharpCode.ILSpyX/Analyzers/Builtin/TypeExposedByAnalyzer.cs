@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -31,7 +31,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 	[Shared]
 	class TypeExposedByAnalyzer : IAnalyzer
 	{
-		public bool Show(ISymbol entity) => entity is ITypeDefinition;
+		public bool Show(ISymbol? entity) => entity is ITypeDefinition;
 
 		public IEnumerable<ISymbol> Analyze(ISymbol analyzedSymbol, AnalyzerContext context)
 		{

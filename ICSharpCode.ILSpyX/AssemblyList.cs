@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -95,7 +95,10 @@ namespace ICSharpCode.ILSpyX
 		{
 			foreach (var asm in listElement.Elements("Assembly"))
 			{
-				OpenAssembly((string)asm);
+				var loaded = OpenAssembly((string)asm);
+				// Lazy detection has not run yet, so seeding the override here makes it effective
+				// for the first resolution without a reload. Absent attribute -> null (auto-detect).
+				loaded.TargetFrameworkIdOverride = (string?)asm.Attribute("TargetFramework");
 			}
 			this.dirty = false; // OpenAssembly() sets dirty, so reset it afterwards
 		}
@@ -158,6 +161,15 @@ namespace ICSharpCode.ILSpyX
 			return GetSnapshot().GetAllAssembliesAsync();
 		}
 
+		/// <summary>
+		/// Streaming variant of <see cref="GetAllAssemblies"/>, for consumers that can act on each
+		/// assembly as it loads instead of waiting for the whole list.
+		/// </summary>
+		public IAsyncEnumerable<LoadedAssembly> EnumerateAllAssemblies(CancellationToken cancellationToken = default)
+		{
+			return GetSnapshot().EnumerateAllAssembliesAsync(cancellationToken);
+		}
+
 		public int Count {
 			get {
 				lock (lockObj)
@@ -175,7 +187,10 @@ namespace ICSharpCode.ILSpyX
 			return new XElement(
 				"List",
 				new XAttribute("name", this.ListName),
-				assemblies.Where(asm => !asm.IsAutoLoaded).Select(asm => new XElement("Assembly", asm.FileName))
+				assemblies.Where(asm => !asm.IsAutoLoaded).Select(asm => new XElement("Assembly", asm.FileName,
+					asm.TargetFrameworkIdOverride != null
+						? new XAttribute("TargetFramework", asm.TargetFrameworkIdOverride)
+						: null))
 			);
 		}
 
@@ -340,6 +355,7 @@ namespace ICSharpCode.ILSpyX
 		{
 			VerifyAccess();
 			file = Path.GetFullPath(file);
+			LoadedAssembly newAsm;
 			lock (lockObj)
 			{
 				if (!byFilename.TryGetValue(file, out LoadedAssembly? target))
@@ -348,7 +364,7 @@ namespace ICSharpCode.ILSpyX
 				if (index < 0)
 					return null;
 
-				var newAsm = new LoadedAssembly(this, file, stream: Task.FromResult<Stream?>(stream),
+				newAsm = new LoadedAssembly(this, file, stream: Task.FromResult<Stream?>(stream),
 					fileLoaders: manager?.LoaderRegistry,
 					applyWinRTProjections: ApplyWinRTProjections, useDebugSymbols: UseDebugSymbols);
 				newAsm.IsAutoLoaded = target.IsAutoLoaded;
@@ -356,8 +372,12 @@ namespace ICSharpCode.ILSpyX
 				Debug.Assert(newAsm.FileName == file);
 				byFilename[file] = newAsm;
 				this.assemblies[index] = newAsm;
-				return newAsm;
 			}
+			// The replaced assembly is intentionally NOT disposed: its MetadataFile may still be
+			// referenced by open document tabs / tree nodes, and there is no safe point at which
+			// the list can know those references are gone. Dropping it lets the GC reclaim it
+			// once nothing holds it, rather than risk a use-after-dispose.
+			return newAsm;
 		}
 
 		public LoadedAssembly? ReloadAssembly(string file)
@@ -382,11 +402,16 @@ namespace ICSharpCode.ILSpyX
 				fileLoaders: manager?.LoaderRegistry,
 				applyWinRTProjections: ApplyWinRTProjections, useDebugSymbols: UseDebugSymbols);
 			newAsm.IsAutoLoaded = target.IsAutoLoaded;
+			// Carry the framework hint across the reload (set before any resolution on the fresh
+			// instance) so the references re-resolve against the overridden target framework.
+			newAsm.TargetFrameworkIdOverride = target.TargetFrameworkIdOverride;
 			lock (lockObj)
 			{
 				this.assemblies.Remove(target);
 				this.assemblies.Insert(index, newAsm);
 			}
+			// Not disposed on purpose -- see HotReplaceAssembly. The old MetadataFile may still be
+			// live in the UI; let the GC reclaim it instead of risking a use-after-dispose.
 			return newAsm;
 		}
 
@@ -398,6 +423,9 @@ namespace ICSharpCode.ILSpyX
 				assemblies.Remove(assembly);
 				byFilename.Remove(assembly.FileName);
 			}
+			// Removed from the list but NOT disposed: open tabs / tree nodes may still hold its
+			// MetadataFile and there's no safe point to know they don't. The GC reclaims it once
+			// the last reference is gone.
 		}
 
 		public void Clear()
@@ -408,6 +436,8 @@ namespace ICSharpCode.ILSpyX
 				assemblies.Clear();
 				byFilename.Clear();
 			}
+			// Cleared but not disposed -- see Unload. Lingering references in the UI must not see
+			// a disposed MetadataFile.
 		}
 		public void Sort(IComparer<LoadedAssembly> comparer)
 		{

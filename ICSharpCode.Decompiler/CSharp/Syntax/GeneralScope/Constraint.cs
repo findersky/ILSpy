@@ -1,4 +1,4 @@
-﻿// 
+// 
 // Constraint.cs
 //
 // Author:
@@ -24,60 +24,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// where TypeParameter : BaseTypes
+	/// new(), struct and class constraints are represented using a PrimitiveType "new", "struct" or "class".
+	/// <c>type_parameter_constraints_clause ::= 'where' type ':' type+</c> (C# grammar §15.2.5)
 	/// </summary>
-	/// <remarks>
-	/// new(), struct and class constraints are represented using a PrimitiveType "new", "struct" or "class"
-	/// </remarks>
-	public class Constraint : AstNode
+	[DecompilerAstNode]
+	public sealed partial class Constraint : AstNode
 	{
-		public override NodeType NodeType {
-			get { return NodeType.Unknown; }
-		}
+		[Slot("ConstraintTypeParameter")]
+		public partial SimpleType TypeParameter { get; set; }
 
-		public CSharpTokenNode WhereKeyword {
-			get { return GetChildByRole(Roles.WhereKeyword); }
-		}
-
-		public SimpleType TypeParameter {
-			get {
-				return GetChildByRole(Roles.ConstraintTypeParameter);
-			}
-			set {
-				SetChildByRole(Roles.ConstraintTypeParameter, value);
-			}
-		}
-
-		public AstNodeCollection<AstType> BaseTypes {
-			get {
-				return GetChildrenByRole(Roles.BaseType);
-			}
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitConstraint(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitConstraint(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitConstraint(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			Constraint o = other as Constraint;
-			return o != null && this.TypeParameter.DoMatch(o.TypeParameter, match) && this.BaseTypes.DoMatch(o.BaseTypes, match);
-		}
+		[Slot("BaseType")]
+		public partial AstNodeCollection<AstType> BaseTypes { get; }
 	}
 }
-

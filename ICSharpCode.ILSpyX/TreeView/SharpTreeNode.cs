@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -21,9 +21,9 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-
-#nullable disable
+using System.Threading;
 
 using ICSharpCode.ILSpyX.TreeView.PlatformAbstractions;
 
@@ -31,11 +31,12 @@ namespace ICSharpCode.ILSpyX.TreeView
 {
 	public partial class SharpTreeNode : INotifyPropertyChanged
 	{
+		[AllowNull]
 		protected static ITreeNodeImagesProvider ImagesProvider { get; private set; }
 		public static void SetImagesProvider(ITreeNodeImagesProvider provider) => ImagesProvider = provider;
 
-		SharpTreeNodeCollection modelChildren;
-		internal SharpTreeNode modelParent;
+		SharpTreeNodeCollection? modelChildren;
+		internal SharpTreeNode? modelParent;
 		bool isVisible = true;
 
 		void UpdateIsVisible(bool parentIsVisible, bool updateFlattener)
@@ -53,7 +54,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 					node = node.listParent;
 				}
 				// Remember the removed nodes:
-				List<SharpTreeNode> removedNodes = null;
+				List<SharpTreeNode>? removedNodes = null;
 				if (updateFlattener && !newIsVisible)
 				{
 					removedNodes = VisibleDescendantsAndSelf().ToList();
@@ -118,19 +119,31 @@ namespace ICSharpCode.ILSpyX.TreeView
 			}
 		}
 
-		public SharpTreeNode Parent {
+		public SharpTreeNode? Parent {
 			get { return modelParent; }
 		}
 
-		public virtual object Text {
+		public virtual object? Text {
 			get { return null; }
 		}
 
-		public virtual object Icon {
+		public virtual object? NavigationText {
+			get { return Text; }
+		}
+
+		public virtual object? Icon {
 			get { return null; }
 		}
 
-		public virtual object ToolTip {
+		public virtual object? ToolTip {
+			get { return null; }
+		}
+
+		public virtual object? Background {
+			get { return null; }
+		}
+
+		public virtual object? Foreground {
 			get { return null; }
 		}
 
@@ -149,6 +162,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 			set {
 				if (isHidden != value)
 				{
+					VerifyAccess(nameof(IsHidden));
 					isHidden = value;
 					if (modelParent != null)
 						UpdateIsVisible(modelParent.isVisible && modelParent.isExpanded, true);
@@ -199,7 +213,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 					while (removeEnd.modelChildren != null && removeEnd.modelChildren.Count > 0)
 						removeEnd = removeEnd.modelChildren.Last();
 
-					List<SharpTreeNode> removedNodes = null;
+					List<SharpTreeNode>? removedNodes = null;
 					int visibleIndexOfRemoval = 0;
 					if (node.isVisible)
 					{
@@ -221,11 +235,11 @@ namespace ICSharpCode.ILSpyX.TreeView
 			}
 			if (e.NewItems != null)
 			{
-				SharpTreeNode insertionPos;
+				SharpTreeNode? insertionPos;
 				if (e.NewStartingIndex == 0)
 					insertionPos = null;
 				else
-					insertionPos = modelChildren[e.NewStartingIndex - 1];
+					insertionPos = modelChildren?[e.NewStartingIndex - 1];
 
 				foreach (SharpTreeNode node in e.NewItems)
 				{
@@ -260,7 +274,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 
 		#region Expanding / LazyLoading
 
-		public virtual object ExpandedIcon {
+		public virtual object? ExpandedIcon {
 			get { return Icon; }
 		}
 
@@ -275,6 +289,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 			set {
 				if (isExpanded != value)
 				{
+					VerifyAccess(nameof(IsExpanded));
 					isExpanded = value;
 					if (isExpanded)
 					{
@@ -311,7 +326,24 @@ namespace ICSharpCode.ILSpyX.TreeView
 				}
 				RaisePropertyChanged(nameof(LazyLoading));
 				RaisePropertyChanged(nameof(ShowExpander));
+				RaisePropertyChanged(nameof(ViewChildren));
 			}
+		}
+
+		/// <summary>
+		/// Workaround for cross platform treeview bindings.
+		/// </summary>
+		public System.Collections.IEnumerable ViewChildren {
+			get {
+				if (LazyLoading && Children.Count == 0)
+					return new[] { new LoadingTreeNode() };
+				return Children;
+			}
+		}
+
+		class LoadingTreeNode : SharpTreeNode
+		{
+			public override object Text => "Loading...";
 		}
 
 		bool canExpandRecursively = true;
@@ -334,15 +366,60 @@ namespace ICSharpCode.ILSpyX.TreeView
 		}
 
 		/// <summary>
-		/// Ensures the children were initialized (loads children if lazy loading is enabled)
+		/// Ensures the children were initialized (loads children if lazy loading is enabled).
 		/// </summary>
+		/// <remarks>
+		/// Realizing children mutates a tree that a UI may be indexing concurrently, so on a tree
+		/// that has an owner with a way onto it (see <see cref="SetOwner(Thread, Action{Action})"/>)
+		/// this marshals itself there rather than relying on every caller to remember: the app
+		/// realizes children from background decompile tasks in several places, and a caller that
+		/// forgets corrupts the flat list.
+		///
+		/// A call that is already on the owning thread runs inline, which is what keeps a blocking
+		/// invoke from deadlocking on itself and keeps nesting cheap: once the outermost call has
+		/// marshalled, everything <see cref="LoadChildren"/> triggers below it is already on the
+		/// owner and hops no further.
+		///
+		/// A tree with no owner is not marshalled: building a subtree on a worker and publishing it
+		/// on the UI thread is a legitimate pattern, and nothing is displaying that subtree yet.
+		/// </remarks>
 		public void EnsureLazyChildren()
 		{
+			if (!LazyLoading)
+				return;
+			SharpTreeNode? ownerNode = OwnerNode;
+			if (ownerNode?.ownerInvoke is { } invoke && ownerNode.owner != Thread.CurrentThread)
+				invoke(LoadLazyChildren);
+			else
+				LoadLazyChildren();
+		}
+
+		void LoadLazyChildren()
+		{
+			// Re-checked after marshalling: the owning thread may have realized the children while
+			// the calling thread was queued behind it.
 			if (LazyLoading)
 			{
 				LazyLoading = false;
 				LoadChildren();
 			}
+		}
+
+		/// <summary>
+		/// Rebuilds the children of an already-loaded node in place: clears them, re-arms lazy
+		/// loading, and re-runs <see cref="LoadChildren"/>. A no-op for a node that is still lazy
+		/// (it will build fresh on first expand anyway). Use this when external state that
+		/// <see cref="LoadChildren"/> reads has changed and the materialized subtree must be
+		/// regenerated -- e.g. a display setting that alters the tree's shape. Like setting
+		/// <see cref="LazyLoading"/>, this collapses the node.
+		/// </summary>
+		public void ReloadChildren()
+		{
+			if (LazyLoading)
+				return;
+			Children.Clear();
+			LazyLoading = true;
+			EnsureLazyChildren();
 		}
 
 		#endregion
@@ -371,13 +448,13 @@ namespace ICSharpCode.ILSpyX.TreeView
 
 		public IEnumerable<SharpTreeNode> Ancestors()
 		{
-			for (SharpTreeNode n = this.Parent; n != null; n = n.Parent)
+			for (SharpTreeNode? n = this.Parent; n != null; n = n.Parent)
 				yield return n;
 		}
 
 		public IEnumerable<SharpTreeNode> AncestorsAndSelf()
 		{
-			for (SharpTreeNode n = this; n != null; n = n.Parent)
+			for (SharpTreeNode? n = this; n != null; n = n.Parent)
 				yield return n;
 		}
 
@@ -402,7 +479,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 			}
 		}
 
-		public virtual string LoadEditText()
+		public virtual string? LoadEditText()
 		{
 			return null;
 		}
@@ -699,7 +776,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 
 		#region INotifyPropertyChanged Members
 
-		public event PropertyChangedEventHandler PropertyChanged;
+		public event PropertyChangedEventHandler? PropertyChanged;
 
 		public void RaisePropertyChanged(string name)
 		{
@@ -725,10 +802,10 @@ namespace ICSharpCode.ILSpyX.TreeView
 		{
 		}
 
-		public override string ToString()
+		public override string? ToString()
 		{
 			// used for keyboard navigation
-			object text = this.Text;
+			object? text = this.Text;
 			return text != null ? text.ToString() : string.Empty;
 		}
 	}

@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -1282,7 +1282,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if ROSLYN || OPT
 		public static void SingleIf1(int i, bool a)
 		{
-			if (i == 1 || (i == 2 && a))
+			if (i == 1 || ((i == 2) & a))
 			{
 				Console.WriteLine(1);
 			}
@@ -1292,7 +1292,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void SingleIf2(int i, bool a, bool b)
 		{
-			if (i == 1 || (i == 2 && a) || (i == 3 && b))
+			if (i == 1 || ((i == 2) & a) || ((i == 3) & b))
 			{
 				Console.WriteLine(1);
 			}
@@ -1301,7 +1301,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void SingleIf3(int i, bool a, bool b)
 		{
-			if (a || i == 1 || (i == 2 && b))
+			if (a || i == 1 || ((i == 2) & b))
 			{
 				Console.WriteLine(1);
 			}
@@ -1310,7 +1310,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static void SingleIf4(int i, bool a)
 		{
-			if (i == 1 || i == 2 || (i != 3 && a) || i != 4)
+			if (i == 1 || i == 2 || ((i != 3) & a) || i != 4)
 			{
 				Console.WriteLine(1);
 			}
@@ -1624,7 +1624,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static bool DoNotRemoveAssignmentBeforeSwitch(string x, out ConsoleKey key)
 		{
-#if NET40 || !ROSLYN
+#if NET40 || !ROSLYN4
 			key = (ConsoleKey)0;
 #else
 			key = ConsoleKey.None;
@@ -1641,7 +1641,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 					key = ConsoleKey.C;
 					break;
 			}
-#if NET40 || !ROSLYN
+#if NET40 || !ROSLYN4
 			return key != (ConsoleKey)0;
 #else
 			return key != ConsoleKey.None;
@@ -1698,7 +1698,6 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
-
 #if CS110 && NET70
 		public static string SwitchOverReadOnlySpanChar1(ReadOnlySpan<char> text)
 		{
@@ -1744,6 +1743,23 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				default:
 					return "Default";
 			}
+		}
+#endif
+
+#if ROSLYN
+		public static int Issue3577(int what)
+		{
+			int result = 0;
+			switch ((long)what)
+			{
+				case 1L:
+					result = 1;
+					break;
+				case 2L:
+					result = 2;
+					break;
+			}
+			return result;
 		}
 #endif
 	}

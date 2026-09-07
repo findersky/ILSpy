@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -86,6 +86,28 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// C# 7 throw expression being converted to an arbitrary type.
 		/// </summary>
 		public static readonly Conversion ThrowExpressionConversion = new BuiltinConversion(true, 11);
+
+		/// <summary>
+		/// C# 12 inline array implicitly being converted to <see cref="System.Span{T}"/> or <see cref="System.ReadOnlySpan{T}"/>.
+		/// </summary>
+		public static readonly Conversion InlineArrayConversion = new BuiltinConversion(true, 12);
+
+		/// <summary>
+		/// C# 14 implicit span conversion from an array type to <see cref="System.Span{T}"/> or <see cref="System.ReadOnlySpan{T}"/>.
+		/// </summary>
+		public static readonly Conversion ImplicitSpanConversion = new BuiltinConversion(true, 13);
+
+		/// <summary>
+		/// C# 14 explicit span conversion: from an array type to <see cref="System.Span{T}"/> or
+		/// <see cref="System.ReadOnlySpan{T}"/> where the element types are related by an
+		/// explicit reference conversion.
+		/// </summary>
+		public static readonly Conversion ExplicitSpanConversion = new BuiltinConversion(false, 14);
+
+		/// <summary>
+		/// C# 7.1 default literal being converted to an arbitrary type.
+		/// </summary>
+		public static readonly Conversion DefaultLiteralConversion = new BuiltinConversion(true, 15);
 
 		public static Conversion UserDefinedConversion(IMethod operatorMethod, bool isImplicit, Conversion conversionBeforeUserDefinedOperator, Conversion conversionAfterUserDefinedOperator, bool isLifted = false, bool isAmbiguous = false)
 		{
@@ -245,6 +267,11 @@ namespace ICSharpCode.Decompiler.Semantics
 				get { return type == 11; }
 			}
 
+			public override bool IsInlineArrayConversion => type == 12;
+			public override bool IsImplicitSpanConversion => type == 13;
+			public override bool IsExplicitSpanConversion => type == 14;
+			public override bool IsDefaultLiteralConversion => type == 15;
+
 			public override string ToString()
 			{
 				string name = null;
@@ -279,6 +306,14 @@ namespace ICSharpCode.Decompiler.Semantics
 						return "interpolated string";
 					case 11:
 						return "throw-expression conversion";
+					case 12:
+						return "inline array conversion";
+					case 13:
+						return "implicit span conversion";
+					case 14:
+						return "explicit span conversion";
+					case 15:
+						return "default-literal conversion";
 				}
 				return (isImplicit ? "implicit " : "explicit ") + name + " conversion";
 			}
@@ -472,6 +507,10 @@ namespace ICSharpCode.Decompiler.Semantics
 			get { return false; }
 		}
 
+		public virtual bool IsDefaultLiteralConversion {
+			get { return false; }
+		}
+
 		public virtual bool IsIdentityConversion {
 			get { return false; }
 		}
@@ -615,6 +654,23 @@ namespace ICSharpCode.Decompiler.Semantics
 		/// Gets whether this is an interpolated string conversion to <see cref="IFormattable" /> or <see cref="FormattableString"/>.
 		/// </summary>
 		public virtual bool IsInterpolatedStringConversion => false;
+
+		/// <summary>
+		/// Gets whether this is an inline array conversion to <see cref="System.Span{T}"/> or <see cref="System.ReadOnlySpan{T}"/>.
+		/// </summary>
+		public virtual bool IsInlineArrayConversion => false;
+
+		/// <summary>
+		/// Gets whether this is an implicit span conversion from an array type to <see cref="System.Span{T}"/> or <see cref="System.ReadOnlySpan{T}"/>.
+		/// </summary>
+		public virtual bool IsImplicitSpanConversion => false;
+
+		/// <summary>
+		/// Gets whether this is an explicit span conversion from an array type to <see cref="System.Span{T}"/>
+		/// or <see cref="System.ReadOnlySpan{T}"/> whose element types are related by an explicit
+		/// reference conversion.
+		/// </summary>
+		public virtual bool IsExplicitSpanConversion => false;
 
 		/// <summary>
 		/// For a tuple conversion, gets the individual tuple element conversions.

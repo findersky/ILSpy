@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,52 +16,19 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// throw Expression
+	/// <c>throw_expression ::= 'throw' expression</c> (C# grammar §12.19)
 	/// </summary>
-	public class ThrowExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ThrowExpression : Expression
 	{
-		public static readonly TokenRole ThrowKeywordRole = ThrowStatement.ThrowKeywordRole;
+		public const string ThrowKeyword = ThrowStatement.ThrowKeyword;
 
-		public CSharpTokenNode ThrowToken {
-			get { return GetChildByRole(ThrowKeywordRole); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public ThrowExpression()
-		{
-		}
-
-		public ThrowExpression(Expression expression)
-		{
-			AddChild(expression, Roles.Expression);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitThrowExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitThrowExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitThrowExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ThrowExpression o = other as ThrowExpression;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

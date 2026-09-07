@@ -1,4 +1,4 @@
-﻿// Licensed to the .NET Foundation under one or more agreements.
+// Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
@@ -35,25 +35,40 @@ namespace ICSharpCode.Decompiler
 			}
 		}
 
+		/// <summary>
+		/// The 32-byte bundle signature: SHA-256 of ".net core bundle".
+		/// </summary>
+		internal static ReadOnlySpan<byte> BundleSignature => new byte[] {
+			0x8b, 0x12, 0x02, 0xb9, 0x6a, 0x61, 0x20, 0x38,
+			0x72, 0x7b, 0x93, 0x02, 0x14, 0xd7, 0xa0, 0x32,
+			0x13, 0xf5, 0xb9, 0xe6, 0xef, 0xae, 0x33, 0x18,
+			0xee, 0x3b, 0x2d, 0xce, 0x24, 0xb3, 0x6a, 0xae
+		};
+
 		public static unsafe bool IsBundle(byte* data, long size, out long bundleHeaderOffset)
 		{
-			ReadOnlySpan<byte> bundleSignature = new byte[] {
-				// 32 bytes represent the bundle signature: SHA-256 for ".net core bundle"
-				0x8b, 0x12, 0x02, 0xb9, 0x6a, 0x61, 0x20, 0x38,
-				0x72, 0x7b, 0x93, 0x02, 0x14, 0xd7, 0xa0, 0x32,
-				0x13, 0xf5, 0xb9, 0xe6, 0xef, 0xae, 0x33, 0x18,
-				0xee, 0x3b, 0x2d, 0xce, 0x24, 0xb3, 0x6a, 0xae
-			};
+			ReadOnlySpan<byte> bundleSignature = BundleSignature;
 
+			// 'end' is the last position at which a full signature still fits, so it is a valid
+			// candidate itself: a memory-mapped view reports the exact file length on Unix (Windows
+			// rounds it up to a page), and the signature may occupy the final bytes of the file.
 			byte* end = data + (size - bundleSignature.Length);
-			for (byte* ptr = data; ptr < end; ptr++)
+			for (byte* ptr = data; ptr <= end; ptr++)
 			{
 				if (*ptr == 0x8b && bundleSignature.SequenceEqual(new ReadOnlySpan<byte>(ptr, bundleSignature.Length)))
 				{
-					bundleHeaderOffset = Unsafe.ReadUnaligned<long>(ptr - sizeof(long));
-					if (bundleHeaderOffset > 0 && bundleHeaderOffset < size)
+					// A genuine bundle stores the 8-byte header offset immediately before the
+					// signature, so the signature never appears within the first sizeof(long)
+					// bytes of the file. Without this guard, a crafted file with the signature at
+					// offset 0..7 reads before the start of the (page-aligned, memory-mapped)
+					// buffer, faulting on the preceding unmapped page.
+					if (ptr - data >= sizeof(long))
 					{
-						return true;
+						bundleHeaderOffset = Unsafe.ReadUnaligned<long>(ptr - sizeof(long));
+						if (bundleHeaderOffset > 0 && bundleHeaderOffset < size)
+						{
+							return true;
+						}
 					}
 				}
 			}
@@ -130,6 +145,14 @@ namespace ICSharpCode.Decompiler
 				throw new InvalidDataException($"Unsupported manifest version: {header.MajorVersion}.{header.MinorVersion}");
 			}
 			header.FileCount = reader.ReadInt32();
+			// FileCount is used below to pre-size the entry array. Each entry occupies at least
+			// one byte in the stream, so a count larger than the bytes that remain cannot be
+			// honest; reject it instead of attempting a huge allocation for a crafted manifest.
+			long remainingBytes = stream.Length - stream.Position;
+			if (header.FileCount < 0 || header.FileCount > remainingBytes)
+			{
+				throw new InvalidDataException($"Invalid bundle manifest: FileCount {header.FileCount} exceeds available data.");
+			}
 			header.BundleID = reader.ReadString();
 			if (header.MajorVersion >= 2)
 			{

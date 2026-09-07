@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -104,7 +104,39 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public interface IB
 		{
 		}
+#if CS80 && !NET40
+		public interface IProtectedMembers
+		{
+			protected void ProtectedMethod();
+
+			protected internal void ProtectedInternalMethod()
+			{
+				ProtectedMethod();
+			}
+		}
+		public interface IStaticMembers
+		{
+			static int StaticProperty { get; set; }
+
+			static event EventHandler StaticEvent;
+		}
+		public interface IGenericWithDefaultImpl<T>
+		{
+			T Value { get; }
+
+			T DefaultGet<U>(U key) where U : T
+			{
+				return Value;
+			}
+		}
+#endif
+		// mcs 2.6.4 emits interface-impl rows depth-first and explicit implementations
+		// ahead of ordinary members.
+#if MCS2 && EXPECTED_OUTPUT
+		public class C : IA, IA2, IB
+#else
 		public class C : IA2, IA, IB
+#endif
 		{
 			int IA.Property1 {
 				get {
@@ -131,19 +163,176 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				remove {
 				}
 			}
-			public int Finalize()
-			{
-				return 0;
-			}
+#if MCS2 && EXPECTED_OUTPUT
 			void IA.Method()
 			{
 				throw new NotImplementedException();
 			}
+#endif
+			public int Finalize()
+			{
+				return 0;
+			}
+#if !(MCS2 && EXPECTED_OUTPUT)
+			void IA.Method()
+			{
+				throw new NotImplementedException();
+			}
+#endif
 		}
 
 		internal interface IInterfacesCannotDeclareDtors
 		{
 			int Finalize();
 		}
+
+		// Naming your own nested interface in the base list is a Roslyn-era relaxation
+		// shared by mcs 5.23; the legacy csc rejects it with CS0146, mcs 2.6.4 with CS0122.
+#if ROSLYN || MCS5
+		private class Issue3230_F : Issue3230_F.IFoo
+		{
+			protected interface IFoo
+			{
+				void Foo();
+			}
+
+			void IFoo.Foo()
+			{
+				Console.WriteLine("F");
+			}
+
+			public void Bar()
+			{
+				((IFoo)this).Foo();
+			}
+		}
+
+		private class Issue3230_SubF : Issue3230_F, Issue3230_SubF.ISubFoo
+		{
+			protected interface ISubFoo : IFoo
+			{
+			}
+
+			void IFoo.Foo()
+			{
+				Console.WriteLine("SubF");
+			}
+		}
+
+		private class Issue3230_Priv : Issue3230_Priv.IPriv
+		{
+			private interface IPriv
+			{
+			}
+		}
+
+		private class Issue3230_ProtInt : Issue3230_ProtInt.IFoo
+		{
+			protected internal interface IFoo
+			{
+			}
+		}
+
+		private class Issue3230_SubProtInt : Issue3230_ProtInt, Issue3230_ProtInt.IFoo
+		{
+		}
+
+#if CS72
+		private class Issue3230_PrivProt : Issue3230_PrivProt.IFoo
+		{
+			private protected interface IFoo
+			{
+			}
+		}
+
+		private class Issue3230_SubPrivProt : Issue3230_PrivProt, Issue3230_SubPrivProt.ISub
+		{
+			private protected interface ISub : IFoo
+			{
+			}
+		}
+#endif
+
+		private class Issue3230_Outer
+		{
+			protected interface IP
+			{
+			}
+
+			private class Inner : IP
+			{
+			}
+		}
+
+		private class Issue3230_Outer2 : Issue3230_Outer
+		{
+			private class Inner2 : IP
+			{
+			}
+		}
+
+		private class Issue3230_G<T> : Issue3230_G<T>.INested
+		{
+			protected interface INested
+			{
+			}
+		}
+
+		private class Issue3230_SubG : Issue3230_G<int>, Issue3230_SubG.ISub
+		{
+			protected interface ISub : INested
+			{
+			}
+		}
+
+		private interface IWrap3230<T>
+		{
+		}
+
+		private class Issue3230_TypeArg : Issue3230_TypeArg.IFoo, IWrap3230<Issue3230_TypeArg.IFoo>
+		{
+			protected interface IFoo
+			{
+			}
+		}
+
+		private class Issue3230_SubTypeArg : Issue3230_TypeArg, Issue3230_SubTypeArg.IS
+		{
+			protected interface IS : IWrap3230<IFoo>
+			{
+			}
+		}
+
+		private class Issue3230_DeclChain
+		{
+			protected class Nest
+			{
+				public interface I
+				{
+				}
+			}
+
+			internal class NestInt
+			{
+				public interface I
+				{
+				}
+			}
+		}
+
+		private class Issue3230_SubDeclChain : Issue3230_DeclChain, Issue3230_SubDeclChain.IMine
+		{
+			protected interface IMine : Nest.I
+			{
+			}
+		}
+
+		private class Issue3230_SubDeclChainKeep : Issue3230_DeclChain, Issue3230_SubDeclChainKeep.IMine, Issue3230_DeclChain.NestInt.I
+		{
+			protected interface IMine : NestInt.I
+			{
+			}
+		}
+#endif
 	}
 }

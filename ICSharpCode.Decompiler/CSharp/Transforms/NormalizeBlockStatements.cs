@@ -1,7 +1,29 @@
-﻿using System;
+// Copyright (c) 2017 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+
+using System.Diagnostics.CodeAnalysis;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
@@ -10,9 +32,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
 	class NormalizeBlockStatements : DepthFirstAstVisitor, IAstTransform
 	{
+		[AllowNull]
 		TransformContext context;
 		bool hasNamespace;
-		NamespaceDeclaration singleNamespaceDeclaration;
+		NamespaceDeclaration? singleNamespaceDeclaration;
 
 		public override void VisitSyntaxTree(SyntaxTree syntaxTree)
 		{
@@ -21,6 +44,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			base.VisitSyntaxTree(syntaxTree);
 			if (context.Settings.FileScopedNamespaces && singleNamespaceDeclaration != null)
 			{
+				context.Step("Use file-scoped namespace", singleNamespaceDeclaration);
 				singleNamespaceDeclaration.IsFileScoped = true;
 			}
 		}
@@ -86,9 +110,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			DoTransform(usingStatement.EmbeddedStatement, usingStatement);
 		}
 
-		void DoTransform(Statement statement, Statement parent)
+		void DoTransform(Statement? statement, Statement parent)
 		{
-			if (statement.IsNull)
+			if (statement is null)
 				return;
 			if (context.Settings.AlwaysUseBraces)
 			{
@@ -101,7 +125,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				if (statement is BlockStatement b && b.Statements.Count == 1 && IsAllowedAsEmbeddedStatement(b.Statements.First(), parent))
 				{
-					statement.ReplaceWith(b.Statements.First().Detach());
+					context.Step("Remove redundant block statement", statement);
+					var innerStatement = b.Statements.First().Detach();
+					statement.ReplaceWith(innerStatement);
+					context.EndStep(innerStatement);
 				}
 				else if (!IsAllowedAsEmbeddedStatement(statement, parent))
 				{
@@ -112,18 +139,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		bool IsElseIf(Statement statement, Statement parent)
 		{
-			return parent is IfElseStatement && statement.Role == IfElseStatement.FalseRole;
+			return parent is IfElseStatement && statement.Slot?.Kind == Slots.FalseStatement;
 		}
 
-		static void InsertBlock(Statement statement)
+		void InsertBlock(Statement statement)
 		{
-			if (statement.IsNull)
-				return;
 			if (!(statement is BlockStatement))
 			{
 				var b = new BlockStatement();
+				context.Step("Add block statement", statement);
 				statement.ReplaceWith(b);
-				if (statement is EmptyStatement && !statement.Children.Any())
+				if (statement is EmptyStatement && !statement.HasChildren)
 				{
 					b.CopyAnnotationsFrom(statement);
 				}
@@ -131,6 +157,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				{
 					b.Add(statement);
 				}
+				context.EndStep(b);
 			}
 		}
 
@@ -139,7 +166,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			switch (statement)
 			{
 				case IfElseStatement ies:
-					return parent is IfElseStatement && ies.Role == IfElseStatement.FalseRole;
+					return parent is IfElseStatement && ies.Slot?.Kind == Slots.FalseStatement;
 				case VariableDeclarationStatement vds:
 				case WhileStatement ws:
 				case DoWhileStatement dws:
@@ -196,7 +223,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			Attributes = { new Repeat(new AnyNode()) },
 			Modifiers = Modifiers.Any,
 			PrivateImplementationType = new AnyNodeOrNull(),
-			Parameters = { new Repeat(new AnyNode()) },
+			Parameters = { new Repeat(new AnyNode())! },
 			ReturnType = new AnyNode(),
 			Getter = new Accessor() {
 				Modifiers = Modifiers.Any,
@@ -214,12 +241,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var m = CalculatedGetterOnlyPropertyPattern.Match(propertyDeclaration);
 			if (!m.Success)
 				return;
-			if ((propertyDeclaration.Getter.Modifiers & ~movableModifiers) != 0)
+			if (propertyDeclaration.Getter is not { } getter)
 				return;
-			propertyDeclaration.Modifiers |= propertyDeclaration.Getter.Modifiers;
+			if ((getter.Modifiers & ~movableModifiers) != 0)
+				return;
+			context.Step("Use expression-bodied property", propertyDeclaration);
+			propertyDeclaration.Modifiers |= getter.Modifiers;
 			propertyDeclaration.ExpressionBody = m.Get<Expression>("expression").Single().Detach();
-			propertyDeclaration.CopyAnnotationsFrom(propertyDeclaration.Getter);
-			propertyDeclaration.Getter.Remove();
+			propertyDeclaration.CopyAnnotationsFrom(getter);
+			getter.Remove();
 		}
 
 		void SimplifyIndexerDeclaration(IndexerDeclaration indexerDeclaration)
@@ -227,12 +257,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			var m = CalculatedGetterOnlyIndexerPattern.Match(indexerDeclaration);
 			if (!m.Success)
 				return;
-			if ((indexerDeclaration.Getter.Modifiers & ~movableModifiers) != 0)
+			if (indexerDeclaration.Getter is not { } getter)
 				return;
-			indexerDeclaration.Modifiers |= indexerDeclaration.Getter.Modifiers;
+			if ((getter.Modifiers & ~movableModifiers) != 0)
+				return;
+			context.Step("Use expression-bodied indexer", indexerDeclaration);
+			indexerDeclaration.Modifiers |= getter.Modifiers;
 			indexerDeclaration.ExpressionBody = m.Get<Expression>("expression").Single().Detach();
-			indexerDeclaration.CopyAnnotationsFrom(indexerDeclaration.Getter);
-			indexerDeclaration.Getter.Remove();
+			indexerDeclaration.CopyAnnotationsFrom(getter);
+			getter.Remove();
 		}
 	}
 }

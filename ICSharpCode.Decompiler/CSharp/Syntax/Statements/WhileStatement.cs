@@ -1,4 +1,4 @@
-﻿// 
+// 
 // WhileStatement.cs
 //  
 // Author:
@@ -24,67 +24,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// "while (Condition) EmbeddedStatement"
+	/// <c>while_statement ::= 'while' '(' expression ')' statement</c> (C# grammar §13.9.2)
 	/// </summary>
-	public class WhileStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class WhileStatement : Statement
 	{
-		public static readonly TokenRole WhileKeywordRole = new TokenRole("while");
+		public const string WhileKeyword = "while";
 
-		public CSharpTokenNode WhileToken {
-			get { return GetChildByRole(WhileKeywordRole); }
-		}
+		[Slot("Condition")]
+		public partial Expression Condition { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public Expression Condition {
-			get { return GetChildByRole(Roles.Condition); }
-			set { SetChildByRole(Roles.Condition, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public Statement EmbeddedStatement {
-			get { return GetChildByRole(Roles.EmbeddedStatement); }
-			set { SetChildByRole(Roles.EmbeddedStatement, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitWhileStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitWhileStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitWhileStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			WhileStatement o = other as WhileStatement;
-			return o != null && this.Condition.DoMatch(o.Condition, match) && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match);
-		}
-
-		public WhileStatement()
-		{
-		}
-
-		public WhileStatement(Expression condition, Statement embeddedStatement)
-		{
-			this.Condition = condition;
-			this.EmbeddedStatement = embeddedStatement;
-		}
+		[Slot("EmbeddedStatement")]
+		public partial Statement EmbeddedStatement { get; set; }
 	}
 }

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ThrowStatement.cs
 //  
 // Author:
@@ -24,57 +24,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// throw Expression;
+	/// <c>throw_statement ::= 'throw' expression? ';'</c> (C# grammar §13.10.6)
 	/// </summary>
-	public class ThrowStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class ThrowStatement : Statement
 	{
-		public static readonly TokenRole ThrowKeywordRole = new TokenRole("throw");
+		public const string ThrowKeyword = "throw";
 
-		public CSharpTokenNode ThrowToken {
-			get { return GetChildByRole(ThrowKeywordRole); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public ThrowStatement()
-		{
-		}
-
-		public ThrowStatement(Expression expression)
-		{
-			AddChild(expression, Roles.Expression);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitThrowStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitThrowStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitThrowStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ThrowStatement o = other as ThrowStatement;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression? Expression { get; set; }
 	}
 }

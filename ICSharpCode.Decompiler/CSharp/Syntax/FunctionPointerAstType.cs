@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FullTypeName.cs
 //
 // Author:
@@ -24,59 +24,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using System;
-
-using ICSharpCode.Decompiler.CSharp.Resolver;
-using ICSharpCode.Decompiler.TypeSystem;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class FunctionPointerAstType : AstType
+	/// <summary>
+	/// <c>funcptr_type ::= 'delegate' '*' calling_convention_specifier? '&lt;' funcptr_parameter_list funcptr_return_type '&gt;'</c> (C# grammar §24.3.3)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class FunctionPointerAstType : AstType
 	{
-		public static readonly TokenRole PointerRole = new TokenRole("*");
-		public static readonly Role<AstType> CallingConventionRole = new Role<AstType>("CallConv", AstType.Null);
+		public const string PointerToken = "*";
 
 		public bool HasUnmanagedCallingConvention { get; set; }
 
-		public AstNodeCollection<AstType> CallingConventions {
-			get { return GetChildrenByRole(CallingConventionRole); }
-		}
+		[Slot("CallingConvention")]
+		public partial AstNodeCollection<AstType> CallingConventions { get; }
 
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		public AstType ReturnType {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitFunctionPointerType(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitFunctionPointerType(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitFunctionPointerType(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			return other is FunctionPointerAstType o
-				&& this.CallingConventions.DoMatch(o.CallingConventions, match)
-				&& this.Parameters.DoMatch(o.Parameters, match)
-				&& this.ReturnType.DoMatch(o.ReturnType, match);
-		}
-
-		public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider = null)
-		{
-			throw new NotImplementedException();
-		}
+		[Slot("Type")]
+		public partial AstType ReturnType { get; set; }
 	}
 }

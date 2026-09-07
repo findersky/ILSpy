@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2017 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -115,6 +115,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			newInst.AddILRange(inst);
 			newInst.Arguments.ReplaceList(inst.Arguments);
 			inst.ReplaceWith(newInst);
+			context.EndStep(newInst);
 		}
 
 		static bool IsDefinedInCurrentOrOuterClass(IMethod method, ITypeDefinition declaringTypeDefinition)

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // IndexerDeclaration.cs
 //
 // Author:
@@ -24,6 +24,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.ComponentModel;
 
@@ -31,25 +33,35 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class IndexerDeclaration : EntityDeclaration
+	/// <summary>
+	/// <code>
+	/// indexer_declaration ::=
+	///       attribute_section* modifier* type ( type '.' )? 'this' '[' parameter* ']' '{' accessor* '}'
+	///     | attribute_section* modifier* type ( type '.' )? 'this' '[' parameter* ']' '=&gt;' expression ';'
+	/// </code>
+	/// (C# grammar §15.9.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class IndexerDeclaration : EntityDeclaration
 	{
-		public static readonly TokenRole ThisKeywordRole = new TokenRole("this");
-		public static readonly Role<Accessor> GetterRole = PropertyDeclaration.GetterRole;
-		public static readonly Role<Accessor> SetterRole = PropertyDeclaration.SetterRole;
-		public static readonly Role<Expression> ExpressionBodyRole = new Role<Expression>("ExpressionBody", Expression.Null);
+		public const string ThisKeyword = "this";
 
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Indexer; }
 		}
 
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
+
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
+
 		/// <summary>
 		/// Gets/Sets the type reference of the interface that is explicitly implemented.
-		/// Null node if this member is not an explicit interface implementation.
+		/// Null if this member is not an explicit interface implementation.
 		/// </summary>
-		public AstType PrivateImplementationType {
-			get { return GetChildByRole(PrivateImplementationTypeRole); }
-			set { SetChildByRole(PrivateImplementationTypeRole, value); }
-		}
+		[Slot("PrivateImplementationType")]
+		public partial AstType? PrivateImplementationType { get; set; }
 
 		public override string Name {
 			get { return "Item"; }
@@ -58,73 +70,20 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override Identifier NameToken {
-			get { return Identifier.Null; }
+			get { return null!; }
 			set { throw new NotSupportedException(); }
 		}
 
-		public CSharpTokenNode LBracketToken {
-			get { return GetChildByRole(Roles.LBracket); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		public CSharpTokenNode ThisToken {
-			get { return GetChildByRole(ThisKeywordRole); }
-		}
+		[Slot("Getter")]
+		public partial Accessor? Getter { get; set; }
 
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("Setter")]
+		public partial Accessor? Setter { get; set; }
 
-		public CSharpTokenNode RBracketToken {
-			get { return GetChildByRole(Roles.RBracket); }
-		}
-
-		public CSharpTokenNode LBraceToken {
-			get { return GetChildByRole(Roles.LBrace); }
-		}
-
-		public Accessor Getter {
-			get { return GetChildByRole(GetterRole); }
-			set { SetChildByRole(GetterRole, value); }
-		}
-
-		public Accessor Setter {
-			get { return GetChildByRole(SetterRole); }
-			set { SetChildByRole(SetterRole, value); }
-		}
-
-		public CSharpTokenNode RBraceToken {
-			get { return GetChildByRole(Roles.RBrace); }
-		}
-
-		public Expression ExpressionBody {
-			get { return GetChildByRole(ExpressionBodyRole); }
-			set { SetChildByRole(ExpressionBodyRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitIndexerDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitIndexerDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitIndexerDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			IndexerDeclaration o = other as IndexerDeclaration;
-			return o != null
-				&& this.MatchAttributesAndModifiers(o, match) && this.ReturnType.DoMatch(o.ReturnType, match)
-				&& this.PrivateImplementationType.DoMatch(o.PrivateImplementationType, match)
-				&& this.Parameters.DoMatch(o.Parameters, match)
-				&& this.Getter.DoMatch(o.Getter, match) && this.Setter.DoMatch(o.Setter, match)
-				&& this.ExpressionBody.DoMatch(o.ExpressionBody, match);
-		}
+		[Slot("ExpressionBody")]
+		public partial Expression? ExpressionBody { get; set; }
 	}
 }

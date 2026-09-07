@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FixedFieldDeclaration.cs
 //
 // Author:
@@ -23,47 +23,31 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class FixedFieldDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>fixed_size_buffer_declaration ::= attribute_section* modifier* 'fixed' type variable_initializer* ';'</c> (C# grammar §24.8.2)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class FixedFieldDeclaration : EntityDeclaration
 	{
-		public static readonly TokenRole FixedKeywordRole = new TokenRole("fixed");
-		public static readonly Role<FixedVariableInitializer> VariableRole = new Role<FixedVariableInitializer>("FixedVariable", null);
+		public const string FixedKeyword = "fixed";
 
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Field; }
 		}
 
-		public CSharpTokenNode FixedToken {
-			get { return GetChildByRole(FixedKeywordRole); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public AstNodeCollection<FixedVariableInitializer> Variables {
-			get { return GetChildrenByRole(VariableRole); }
-		}
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitFixedFieldDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitFixedFieldDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitFixedFieldDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as FixedFieldDeclaration;
-			return o != null && this.MatchAttributesAndModifiers(o, match)
-				&& this.ReturnType.DoMatch(o.ReturnType, match) && this.Variables.DoMatch(o.Variables, match);
-		}
+		[Slot("FixedVariable")]
+		public partial AstNodeCollection<FixedVariableInitializer> Variables { get; }
 	}
 }

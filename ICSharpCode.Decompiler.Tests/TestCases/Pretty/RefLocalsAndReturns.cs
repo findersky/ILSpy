@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
@@ -45,6 +45,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
+		public class Issue3827Node
+		{
+			public Issue3827Node next;
+
+			public int value;
+		}
 
 		public delegate ref T RefFunc<T>();
 		public delegate ref readonly T ReadOnlyRefFunc<T>();
@@ -160,6 +166,28 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private static int DefaultInt = 0;
 
+		public static Issue3827Node RefLocalUsedAfterForLoop(Issue3827Node[] buckets, int hash, Issue3827Node newNode)
+		{
+			// The ref local is used after the loop, so its declaration is hoisted in front of the loop.
+			// The loop is kept as a while-loop (rather than converted to a headless for-loop) so the
+			// ref-assignment stays on the declaration -- a ref local cannot be declared without an initializer.
+			ref Issue3827Node reference = ref buckets[hash & 3];
+			while (reference != null)
+			{
+				if (reference.value == hash)
+				{
+					reference = newNode;
+					break;
+				}
+				reference = ref reference.next;
+			}
+			if (reference == null)
+			{
+				reference = newNode;
+			}
+			return reference;
+		}
+
 		public static ref T GetRef<T>()
 		{
 			throw new NotImplementedException();
@@ -254,6 +282,19 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			return ref DefaultInt;
 		}
 
+		public static ref int SwitchRefReturn(int index)
+		{
+			switch (index)
+			{
+				case 0:
+					return ref numbers[0];
+				case 1:
+					return ref numbers[1];
+				default:
+					throw new InvalidOperationException();
+			}
+		}
+
 		public static ref int LastOrDefault()
 		{
 			if (numbers.Length != 0)
@@ -302,6 +343,13 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			RefReassignment(ref reference.GetHashCode() == 4 ? ref reference : ref s);
 		}
 
+		public static void ConditionalRefAssignment(bool c, ref int a, ref int b)
+		{
+			(c ? ref a : ref b) = 3;
+			(c ? ref a : ref b) += 10;
+			(c ? ref b : ref a)++;
+		}
+
 		public static void Main(string[] args)
 		{
 			DoubleNumber(ref args.Length == 1 ? ref numbers[0] : ref DefaultInt);
@@ -319,6 +367,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			Console.WriteLine(LastOrDefault());
 			LastOrDefault() = 10000;
 			Console.WriteLine(ElementAtOrDefault(-5));
+		}
+
+		public void CallWithTemplatedInParameterOnSelf()
+		{
+			M2<RefLocalsAndReturns>(this);
 		}
 
 #if CS120

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,8 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 {
@@ -44,29 +46,25 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 			this.MaxCount = int.MaxValue;
 		}
 
-		public override bool DoMatchCollection(Role role, INode pos, Match match, BacktrackingInfo backtrackingInfo)
+		public override bool DoMatchCollection(IReadOnlyList<INode> other, int pos, Match match, BacktrackingInfo backtrackingInfo)
 		{
 			var backtrackingStack = backtrackingInfo.backtrackingStack;
-			Debug.Assert(pos == null || pos.Role == role);
 			int matchCount = 0;
 			if (this.MinCount <= 0)
 				backtrackingStack.Push(new PossibleMatch(pos, match.CheckPoint()));
-			while (matchCount < this.MaxCount && pos != null && childNode.DoMatch(pos, match))
+			while (matchCount < this.MaxCount && pos < other.Count && childNode.DoMatch(other[pos], match))
 			{
 				matchCount++;
-				do
-				{
-					pos = pos.NextSibling;
-				} while (pos != null && pos.Role != role);
+				pos++;
 				if (matchCount >= this.MinCount)
 					backtrackingStack.Push(new PossibleMatch(pos, match.CheckPoint()));
 			}
 			return false; // never do a normal (single-element) match; always make the caller look at the results on the back-tracking stack.
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
-			if (other == null || other.IsNull)
+			if (other == null)
 				return this.MinCount <= 0;
 			else
 				return this.MaxCount >= 1 && childNode.DoMatch(other, match);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -33,17 +33,45 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 	{
 		public static Maybe<TResult> Select<T, TResult>(this Maybe<T> a, Func<T, TResult> fn)
 		{
+#if CS71
+			return default;
+#else
 			return default(Maybe<TResult>);
+#endif
 		}
 
 		public static Maybe<T> Where<T>(this Maybe<T> a, Func<T, bool> predicate)
 		{
+#if CS71
+			return default;
+#else
 			return default(Maybe<T>);
+#endif
 		}
 	}
 
 	public class QueryExpressions
 	{
+		public class MaybeHolder
+		{
+			public Maybe<int> Value;
+
+#if CS71
+			public Maybe<int> this[int index] => default;
+#elif CS60
+			public Maybe<int> this[int index] => default(Maybe<int>);
+#endif
+
+			public Func<Maybe<int>> Factory()
+			{
+#if CS71
+				return () => default;
+#else
+				return () => default(Maybe<int>);
+#endif
+			}
+		}
+
 		public class HbmParam
 		{
 			public string Name { get; set; }
@@ -204,30 +232,44 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				   select (x);
 		}
 
+		public object SelectIntoContinuation()
+		{
+			return from c in customers
+				   select c.Name into n
+				   where n.Length > 3
+				   select n.ToUpper();
+		}
+
 #if CS60
 		private List<string> Issue2545(List<string> arglist)
 		{
 			return arglist?.OrderByDescending((string f) => f.Length).ThenBy((string f) => f.ToLower()).ToList();
 		}
+
+		public Maybe<string>? NullConditionalValueTypeQuery(MaybeHolder holder)
+		{
+			return holder?.Value.Where((int value) => value > 0).Select((int value) => value.ToString());
+		}
+
+		public Maybe<string>? NullConditionalNestedInvocationQuery(MaybeHolder holder)
+		{
+			return holder?.Factory()().Where((int value) => value > 0).Select((int value) => value.ToString());
+		}
+
+		public Maybe<string>? NullConditionalIndexerQuery(MaybeHolder holder)
+		{
+			return holder?[0].Where((int value) => value > 0).Select((int value) => value.ToString());
+		}
 #endif
 
 		public static IEnumerable<char> Issue1310a(bool test)
 		{
-#if ROSLYN && OPT
-			IEnumerable<char> obj = (test ? (from c in Enumerable.Range(0, 255)
-											 where char.IsLetter((char)c)
-											 select (char)c) : (from c in Enumerable.Range(0, 255)
-																where char.IsDigit((char)c)
-																select (char)c));
-			return obj.Concat(obj);
-#else
 			IEnumerable<char> enumerable = (test ? (from c in Enumerable.Range(0, 255)
 													where char.IsLetter((char)c)
 													select (char)c) : (from c in Enumerable.Range(0, 255)
 																	   where char.IsDigit((char)c)
 																	   select (char)c));
 			return enumerable.Concat(enumerable);
-#endif
 		}
 
 		public static Maybe<TB> Cast<TA, TB>(Maybe<TA> a) where TB : class
@@ -237,5 +279,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				   where t != null
 				   select t;
 		}
+
+#if CS70
+		public IEnumerable<string> Issue3352()
+		{
+			// We don't have backward type inference, so LINQ syntax cannot be used with named tuple types.
+			return new (string, int)[4] {
+				("A", 10),
+				("B", 20),
+				("C", 30),
+				("D", 40)
+			}.Where(((string Name, int Age) t) => t.Age >= 18).Select(((string Name, int Age) t) => t.Name);
+		}
+#endif
 	}
 }

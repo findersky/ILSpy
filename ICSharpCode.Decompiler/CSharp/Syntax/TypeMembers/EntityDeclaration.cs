@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Linq;
 
@@ -25,97 +27,36 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	public abstract class EntityDeclaration : AstNode
 	{
-		public static readonly Role<AttributeSection> AttributeRole = new Role<AttributeSection>("Attribute", null);
-		public static readonly Role<CSharpModifierToken> ModifierRole = new Role<CSharpModifierToken>("Modifier", null);
-		public static readonly Role<AstType> PrivateImplementationTypeRole = new Role<AstType>("PrivateImplementationType", AstType.Null);
-
-		public override NodeType NodeType {
-			get { return NodeType.Member; }
-		}
-
 		public abstract SymbolKind SymbolKind { get; }
 
-		public AstNodeCollection<AttributeSection> Attributes {
-			get { return base.GetChildrenByRole(AttributeRole); }
+		public virtual AstNodeCollection<AttributeSection> Attributes {
+			get { return base.GetChildren(Slots.AttributeSection); }
 		}
 
-		public Modifiers Modifiers {
-			get { return GetModifiers(this); }
-			set { SetModifiers(this, value); }
-		}
+		public Modifiers Modifiers { get; set; }
 
 		public bool HasModifier(Modifiers mod)
 		{
 			return (Modifiers & mod) == mod;
 		}
 
-		public IEnumerable<CSharpModifierToken> ModifierTokens {
-			get { return GetChildrenByRole(ModifierRole); }
-		}
-
 		public virtual string Name {
 			get {
-				return GetChildByRole(Roles.Identifier).Name;
+				return GetChild(Slots.Identifier)?.Name ?? string.Empty;
 			}
 			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value, TextLocation.Empty));
+				SetChild(Slots.Identifier, Identifier.Create(value, TextLocation.Empty));
 			}
 		}
 
 		public virtual Identifier NameToken {
-			get { return GetChildByRole(Roles.Identifier); }
-			set { SetChildByRole(Roles.Identifier, value); }
+			get { return GetChild(Slots.Identifier)!; }
+			set { SetChild(Slots.Identifier, value); }
 		}
 
 		public virtual AstType ReturnType {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		internal static Modifiers GetModifiers(AstNode node)
-		{
-			Modifiers m = 0;
-			foreach (CSharpModifierToken t in node.GetChildrenByRole(ModifierRole))
-			{
-				m |= t.Modifier;
-			}
-			return m;
-		}
-
-		internal static void SetModifiers(AstNode node, Modifiers newValue)
-		{
-			Modifiers oldValue = GetModifiers(node);
-			AstNode insertionPos = node.GetChildrenByRole(AttributeRole).LastOrDefault();
-			foreach (Modifiers m in CSharpModifierToken.AllModifiers)
-			{
-				if ((m & newValue) != 0)
-				{
-					if ((m & oldValue) == 0)
-					{
-						// Modifier was added
-						var newToken = new CSharpModifierToken(TextLocation.Empty, m);
-						node.InsertChildAfter(insertionPos, newToken, ModifierRole);
-						insertionPos = newToken;
-					}
-					else
-					{
-						// Modifier already exists
-						insertionPos = node.GetChildrenByRole(ModifierRole).First(t => t.Modifier == m);
-					}
-				}
-				else
-				{
-					if ((m & oldValue) != 0)
-					{
-						// Modifier was removed
-						node.GetChildrenByRole(ModifierRole).First(t => t.Modifier == m).Remove();
-					}
-				}
-			}
+			get { return GetChild(Slots.Type)!; }
+			set { SetChild(Slots.Type, value); }
 		}
 
 		protected bool MatchAttributesAndModifiers(EntityDeclaration o, PatternMatching.Match match)

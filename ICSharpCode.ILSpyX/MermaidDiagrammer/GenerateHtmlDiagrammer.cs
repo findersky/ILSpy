@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2024 Holger Schmidt
+// Copyright (c) 2024 Holger Schmidt
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -32,7 +32,7 @@ namespace ICSharpCode.ILSpyX.MermaidDiagrammer
 		public string? Include { get; set; }
 		public string? Exclude { get; set; }
 		public bool JsonOnly { get; set; }
-		public bool ReportExludedTypes { get; set; }
+		public bool ReportExcludedTypes { get; set; }
 		public string? XmlDocs { get; set; }
 
 		/// <summary>Namespaces to strip from <see cref="XmlDocs"/>.

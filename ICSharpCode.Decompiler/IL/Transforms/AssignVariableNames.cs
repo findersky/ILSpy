@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Siegfried Pammer
+// Copyright (c) 2017 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -28,6 +28,7 @@ using Humanizer.Inflections;
 
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
+using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
@@ -105,12 +106,34 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					var currentLowerCaseTypeOrMemberNames = new HashSet<string>(StringComparer.Ordinal);
 					foreach (var name in CollectAllLowerCaseMemberNames(function.Method.DeclaringTypeDefinition))
 						currentLowerCaseTypeOrMemberNames.Add(name);
+					foreach (IField item in function.Method.DeclaringTypeDefinition.Fields)
+					{
+						if (TransformFieldAndConstructorInitializers.IsGeneratedPrimaryConstructorBackingField(item))
+						{
+							string name = item.Name.Substring(1, item.Name.Length - 3);
+							currentLowerCaseTypeOrMemberNames.Add(name);
+							AddExistingName(reservedVariableNames, name);
+						}
+					}
 					foreach (var name in CollectAllLowerCaseTypeNames(function.Method.DeclaringTypeDefinition))
 					{
 						currentLowerCaseTypeOrMemberNames.Add(name);
 						AddExistingName(reservedVariableNames, name);
 					}
+					foreach (var name in CollectAllLowerCaseTypeNames(context.UsingScope))
+					{
+						currentLowerCaseTypeOrMemberNames.Add(name);
+						AddExistingName(reservedVariableNames, name);
+					}
 					this.currentLowerCaseTypeOrMemberNames = currentLowerCaseTypeOrMemberNames.ToImmutableHashSet();
+
+					if (context.Settings.FieldKeyword
+						&& function.Method?.AccessorOwner is IProperty { Parameters.Count: 0 })
+					{
+						// "field" is a keyword in C# 14 property accessors; a local of that name
+						// would shadow the backing field.
+						AddExistingName(reservedVariableNames, "field");
+					}
 
 					// handle implicit parameters of set or event accessors
 					if (function.Method != null && IsSetOrEventAccessor(function.Method) && function.Parameters.Count > 0)
@@ -217,6 +240,14 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 							AddExistingName(reservedVariableNames, name);
 							if (variables.TryGetValue(i, out var v))
 								variableMapping[v] = name;
+						}
+						else if (!IsValidName(name))
+						{
+							// Compiler-generated parameter names (e.g. "<p0>" on an anonymous method
+							// declared without a parameter list) are not valid C# identifiers. Skipping
+							// the reservation and the mapping leaves the parameter to AssignName, which
+							// generates a fresh name from the type for any name that fails IsValidName.
+							continue;
 						}
 						string nameWithoutNumber = SplitName(name, out int newIndex);
 						if (!parentScope.IsReservedVariableName(nameWithoutNumber, out _))
@@ -452,53 +483,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				var (currentFunction, parentContext) = this.workList.Dequeue();
 
-				if (currentFunction.Kind == ILFunctionKind.LocalFunction)
-				{
-					// assign names to local functions
-					if (!LocalFunctionDecompiler.ParseLocalFunctionName(currentFunction.Name, out _, out var newName) || !IsValidName(newName))
-						newName = null;
-					string nameWithoutNumber;
-					int number;
-					if (!string.IsNullOrEmpty(newName))
-					{
-						nameWithoutNumber = SplitName(newName, out number);
-					}
-					else
-					{
-						nameWithoutNumber = "f";
-						number = 1;
-					}
-					int count;
-					if (!parentContext.IsReservedVariableName(nameWithoutNumber, out int currentIndex))
-					{
-						count = 1;
-					}
-					else
-					{
-						if (currentIndex < number)
-							count = number;
-						else
-							count = Math.Max(number, currentIndex) + 1;
-					}
-					parentContext.ReserveVariableName(nameWithoutNumber, count);
-					if (count > 1)
-					{
-						newName = nameWithoutNumber + count.ToString();
-					}
-					else
-					{
-						newName = nameWithoutNumber;
-					}
-					currentFunction.Name = newName;
-					currentFunction.ReducedMethod.Name = newName;
-					parentContext.Add((MethodDefinitionHandle)currentFunction.ReducedMethod.MetadataToken, newName);
-				}
-
 				var nestedContext = new VariableScope(currentFunction, this.context, parentContext);
-				currentFunction.Body.AcceptVisitor(this, nestedContext);
 
 				foreach (var localFunction in currentFunction.LocalFunctions)
+				{
+					AssignNameToLocalFunction(localFunction, nestedContext);
 					workList.Enqueue((localFunction, nestedContext));
+				}
+
+				currentFunction.Body.AcceptVisitor(this, nestedContext);
 
 				if (currentFunction.Kind != ILFunctionKind.TopLevelFunction)
 				{
@@ -508,6 +501,55 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					}
 				}
 			}
+		}
+
+		private static void AssignNameToLocalFunction(ILFunction function, VariableScope parentContext)
+		{
+			string nameWithoutNumber;
+			int number;
+			string newName;
+			if (LocalFunctionDecompiler.ParseLocalFunctionName(function.Name, out _, out newName) && IsValidName(newName))
+			{
+				nameWithoutNumber = SplitName(newName, out number);
+			}
+			else if (IsValidName(function.Name))
+			{
+				// An obfuscated assembly carries an arbitrary name instead of
+				// "<caller>g__name|x_y". Take it verbatim: it has no synthetic suffix to
+				// split off, so its trailing digits belong to the name itself
+				// ("smethod_1", not "smethod_" numbered 1).
+				nameWithoutNumber = function.Name;
+				number = 1;
+			}
+			else
+			{
+				nameWithoutNumber = "f";
+				number = 1;
+			}
+			int count;
+			if (!parentContext.IsReservedVariableName(nameWithoutNumber, out int currentIndex))
+			{
+				count = 1;
+			}
+			else
+			{
+				if (currentIndex < number)
+					count = number;
+				else
+					count = Math.Max(number, currentIndex) + 1;
+			}
+			parentContext.ReserveVariableName(nameWithoutNumber, count);
+			if (count > 1)
+			{
+				newName = nameWithoutNumber + count.ToString();
+			}
+			else
+			{
+				newName = nameWithoutNumber;
+			}
+			function.Name = newName;
+			function.ReducedMethod.Name = newName;
+			parentContext.Add((MethodDefinitionHandle)function.ReducedMethod.MetadataToken, newName);
 		}
 
 		Unit VisitChildren(ILInstruction inst, VariableScope context)
@@ -615,6 +657,21 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (IsLowerCase(item.Name))
 					yield return item.Name;
 			}
+			var current = type;
+			while (current != null)
+			{
+				foreach (var nested in current.NestedTypes)
+				{
+					if (IsLowerCase(nested.Name))
+						yield return nested.Name;
+				}
+				current = current.DeclaringTypeDefinition;
+			}
+		}
+
+		static IEnumerable<string> CollectAllLowerCaseTypeNames(UsingScope usingScope)
+		{
+			return usingScope?.Usings.SelectMany(n => n.Types).Select(t => t.Name).Where(IsLowerCase) ?? [];
 		}
 
 		static bool IsLowerCase(string name)
@@ -848,6 +905,12 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			if (name.Length == 0)
 				return "obj";
+			if (!IsValidName(name))
+			{
+				// A name taken from metadata may be legal there but not in C#; VB, for one,
+				// separates the parts of its generated names with '$'.
+				return null;
+			}
 			string lowerCaseName = char.ToLower(name[0]) + name.Substring(1);
 			if (CSharp.OutputVisitor.CSharpOutputVisitor.IsKeyword(lowerCaseName))
 				return null;
@@ -867,7 +930,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 		}
 
 		static Dictionary<string, int> CollectReservedVariableNames(ILFunction function,
-			ILVariable existingVariable, bool mustResolveConflicts)
+			ILVariable existingVariable, bool mustResolveConflicts, UsingScope usingScope)
 		{
 			var reservedVariableNames = new Dictionary<string, int>();
 			var rootFunction = function.Ancestors.OfType<ILFunction>().Single(f => f.Parent == null);
@@ -886,14 +949,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (mustResolveConflicts)
 			{
 				var memberNames = CollectAllLowerCaseMemberNames(function.Method.DeclaringTypeDefinition)
-					.Concat(CollectAllLowerCaseTypeNames(function.Method.DeclaringTypeDefinition));
+					.Concat(CollectAllLowerCaseTypeNames(function.Method.DeclaringTypeDefinition))
+					.Concat(CollectAllLowerCaseTypeNames(usingScope));
 				foreach (var name in memberNames)
 					AddExistingName(reservedVariableNames, name);
 			}
 			return reservedVariableNames;
 		}
 
-		internal static string GenerateForeachVariableName(ILFunction function, ILInstruction valueContext,
+		internal static string GenerateForeachVariableName(ILFunction function, ILInstruction valueContext, UsingScope usingScope,
 			ILVariable existingVariable = null, bool mustResolveConflicts = false)
 		{
 			if (function == null)
@@ -902,7 +966,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				return existingVariable.Name;
 			}
-			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts);
+			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts, usingScope);
 
 			string baseName = GetNameFromInstruction(valueContext);
 			if (string.IsNullOrEmpty(baseName))
@@ -952,13 +1016,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 		}
 
-		internal static string GenerateVariableName(ILFunction function, IType type,
+		internal static string GenerateVariableName(ILFunction function, IType type, UsingScope usingScope,
 			ILInstruction valueContext = null, ILVariable existingVariable = null,
 			bool mustResolveConflicts = false)
 		{
 			if (function == null)
 				throw new ArgumentNullException(nameof(function));
-			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts);
+			var reservedVariableNames = CollectReservedVariableNames(function, existingVariable, mustResolveConflicts, usingScope);
 
 			string baseName = valueContext != null ? GetNameFromInstruction(valueContext) ?? GetNameByType(type) : GetNameByType(type);
 			string proposedName = "obj";

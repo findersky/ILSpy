@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 Siegfried Pammer
+// Copyright (c) 2022 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -15,6 +15,8 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+
+#nullable enable
 
 using System;
 using System.Collections.Generic;
@@ -42,6 +44,13 @@ namespace ICSharpCode.Decompiler
 		}
 
 		public TypeDefinitionHandle DeclaringTypeDefinitionHandle { get; }
+
+		/// <summary>
+		/// The document this type is the code-behind of, as a project-relative path
+		/// ("Views/MainWindow.xaml"), where there is one. The project decompiler names the type's
+		/// C# file after it, so that the two sit next to each other the way the tooling expects.
+		/// </summary>
+		public string? CompanionFileName { get; set; }
 
 		public void AddDeclaredMember(IMember member)
 		{

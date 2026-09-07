@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ForeachStatement.cs
 //
 // Author:
@@ -24,83 +24,32 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// foreach (Type VariableName in InExpression) EmbeddedStatement
+	/// <c>foreach_statement ::= 'await'? 'foreach' '(' type variable_designation 'in' expression ')' statement</c> (C# grammar §13.9.5.1)
 	/// </summary>
-	public class ForeachStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class ForeachStatement : Statement
 	{
-		public static readonly TokenRole AwaitRole = UnaryOperatorExpression.AwaitRole;
-		public static readonly TokenRole ForeachKeywordRole = new TokenRole("foreach");
-		public static readonly TokenRole InKeywordRole = new TokenRole("in");
+		public const string AwaitKeyword = UnaryOperatorExpression.AwaitKeyword;
+		public const string ForeachKeyword = "foreach";
+		public const string InKeyword = "in";
 
-		public CSharpTokenNode AwaitToken {
-			get { return GetChildByRole(AwaitRole); }
-		}
+		public bool IsAsync { get; set; }
 
-		public bool IsAsync {
-			get { return !GetChildByRole(AwaitRole).IsNull; }
-			set { SetChildByRole(AwaitRole, value ? new CSharpTokenNode(TextLocation.Empty, null) : null); }
-		}
+		[Slot("Type")]
+		public partial AstType VariableType { get; set; }
 
-		public CSharpTokenNode ForeachToken {
-			get { return GetChildByRole(ForeachKeywordRole); }
-		}
+		[Slot("VariableDesignation")]
+		public partial VariableDesignation VariableDesignation { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
+		[Slot("Expression")]
+		public partial Expression InExpression { get; set; }
 
-		public AstType VariableType {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public VariableDesignation VariableDesignation {
-			get { return GetChildByRole(Roles.VariableDesignationRole); }
-			set { SetChildByRole(Roles.VariableDesignationRole, value); }
-		}
-
-		public CSharpTokenNode InToken {
-			get { return GetChildByRole(InKeywordRole); }
-		}
-
-		public Expression InExpression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public Statement EmbeddedStatement {
-			get { return GetChildByRole(Roles.EmbeddedStatement); }
-			set { SetChildByRole(Roles.EmbeddedStatement, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitForeachStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitForeachStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitForeachStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ForeachStatement o = other as ForeachStatement;
-			return o != null && this.VariableType.DoMatch(o.VariableType, match) && this.VariableDesignation.DoMatch(o.VariableDesignation, match)
-				&& this.InExpression.DoMatch(o.InExpression, match) && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match);
-		}
+		[Slot("EmbeddedStatement")]
+		public partial Statement EmbeddedStatement { get; set; }
 	}
 }

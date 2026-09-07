@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -21,6 +21,7 @@ using System.Linq;
 #if CS90
 using System.Runtime.InteropServices;
 #endif
+using System.Threading.Tasks;
 
 namespace LocalFunctions
 {
@@ -37,7 +38,7 @@ namespace LocalFunctions
 			public int MixedLocalFunction<T2>() where T2 : ICloneable, IConvertible
 			{
 #pragma warning disable CS0219
-				T2 t2 = default(T2);
+				T2 t2 = default;
 				object z = this;
 				for (int i = 0; i < 10; i++)
 				{
@@ -51,7 +52,7 @@ namespace LocalFunctions
 					int NonStaticMethod<T3>(int unused)
 #endif
 					{
-						t2 = default(T2);
+						t2 = default;
 						int l = 0;
 						return NonStaticMethod3<T1>() + NonStaticMethod3<T2>() + z.GetHashCode();
 						int NonStaticMethod3<T4>()
@@ -117,7 +118,7 @@ namespace LocalFunctions
 
 			public int MixedLocalFunction2Delegate<T2>() where T2 : ICloneable, IConvertible
 			{
-				T2 t2 = default(T2);
+				T2 t2 = default;
 				object z = this;
 				for (int i = 0; i < 10; i++)
 				{
@@ -125,7 +126,7 @@ namespace LocalFunctions
 					i2 += StaticInvokeAsFunc(NonStaticMethod<object>);
 					int NonStaticMethod<T3>()
 					{
-						t2 = default(T2);
+						t2 = default;
 						int l = 0;
 						return StaticInvokeAsFunc(NonStaticMethod3<T1>) + StaticInvokeAsFunc(NonStaticMethod3<T2>) + z.GetHashCode();
 						int NonStaticMethod3<T4>()
@@ -154,7 +155,7 @@ namespace LocalFunctions
 				int StaticInvokeAsFunc2<T>(Func<T, int> func)
 #endif
 				{
-					return func(default(T));
+					return func(default);
 				}
 #if CS80
 				static int StaticMethod<T3>() where T3 : struct
@@ -208,19 +209,19 @@ namespace LocalFunctions
 			public static void Test_CaptureT<T2>()
 			{
 #pragma warning disable CS0219
-				T2 t2 = default(T2);
+				T2 t2 = default;
 				Method<int>();
 				void Method<T3>()
 				{
-					t2 = default(T2);
+					t2 = default;
 					T2 t2x = t2;
-					T3 t3 = default(T3);
+					T3 t3 = default;
 					Method2();
 					void Method2()
 					{
-						t2 = default(T2);
+						t2 = default;
 						t2x = t2;
-						t3 = default(T3);
+						t3 = default;
 					}
 				}
 #pragma warning restore CS0219
@@ -328,7 +329,7 @@ namespace LocalFunctions
 
 		private int field;
 
-		private Lazy<object> nonCapturinglocalFunctionInLambda = new Lazy<object>(delegate {
+		private Lazy<object> nonCapturinglocalFunctionInLambda = new Lazy<object>(() => {
 			return CreateValue();
 
 #if CS80
@@ -341,7 +342,7 @@ namespace LocalFunctions
 			}
 		});
 
-		private Lazy<object> capturinglocalFunctionInLambda = new Lazy<object>(delegate {
+		private Lazy<object> capturinglocalFunctionInLambda = new Lazy<object>(() => {
 			int x = 42;
 			return Do();
 
@@ -647,7 +648,7 @@ namespace LocalFunctions
 
 		public static int LocalFunctionInLambda(IEnumerable<int> xs)
 		{
-			return xs.First(delegate (int x) {
+			return xs.First((int x) => {
 				return Do();
 
 				bool Do()
@@ -667,6 +668,32 @@ namespace LocalFunctions
 				{
 					yield return i;
 				}
+			}
+		}
+
+		public static async Task<int> AsyncLocalFunction()
+		{
+			return await GetValueAsync() + await GetValueAsync();
+
+#if CS80
+			static async Task<int> GetValueAsync()
+#else
+			async Task<int> GetValueAsync()
+#endif
+			{
+				await Task.Yield();
+				return 1;
+			}
+		}
+
+		public static async Task<int> AsyncLocalFunctionWithCapture(int n)
+		{
+			return await AddAsync();
+
+			async Task<int> AddAsync()
+			{
+				await Task.Yield();
+				return n + 1;
 			}
 		}
 
@@ -770,20 +797,20 @@ namespace LocalFunctions
 				{
 					t0 = 0;
 					int t2 = t0;
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 						t0 = 0;
 						t2 = 0;
 						return ZZZ2();
-					})();
+					}))();
 				}
 				int ZZZ2()
 				{
 					t0 = 0;
 					int t3 = t0;
 #if !OPT
-					Func<int> func = delegate {
+					Func<int> func = () => {
 #else
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 #endif
 						t0 = 0;
 						t3 = 0;
@@ -792,7 +819,7 @@ namespace LocalFunctions
 					};
 					return func();
 #else
-					})();
+					}))();
 #endif
 				}
 			}
@@ -813,20 +840,20 @@ namespace LocalFunctions
 				{
 					t0 = 0;
 					int t2 = t0;
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 						t0 = 0;
 						t2 = 0;
 						return ZZZ2();
-					})();
+					}))();
 				}
 				int ZZZ2()
 				{
 					t0 = 0;
 					int t3 = t0;
 #if !OPT
-					Func<int> func = delegate {
+					Func<int> func = () => {
 #else
-					return ((Func<int>)delegate {
+					return ((Func<int>)(() => {
 #endif
 						t0 = 0;
 						t3 = 0;
@@ -835,7 +862,7 @@ namespace LocalFunctions
 					};
 					return func();
 #else
-					})();
+					}))();
 #endif
 				}
 			}
@@ -850,5 +877,54 @@ namespace LocalFunctions
 			static extern int EnumWindows(long hWnd, long lParam);
 		}
 #endif
+
+		public int Issue3714_LocalFunctionInsideLambda()
+		{
+			int outer = 1;
+#if !OPT
+			Action action = () => {
+#else
+			((Action)(() => {
+#endif
+				int inner = 2;
+				Local(3);
+				Console.WriteLine(inner);
+				void Local(int d)
+				{
+					inner += d;
+					outer += d;
+				}
+#if !OPT
+			};
+			action();
+#else
+			}))();
+#endif
+			return outer;
+		}
+
+		public void Issue3008_DisplayClassForwardedThroughLocalFunction(int start)
+		{
+			Run();
+			void Run()
+			{
+				int captured = start;
+				A();
+				Console.WriteLine(captured);
+				void A()
+				{
+					captured++;
+					if (captured < 10)
+					{
+						B();
+					}
+				}
+				void B()
+				{
+					captured += 2;
+					A();
+				}
+			}
+		}
 	}
 }

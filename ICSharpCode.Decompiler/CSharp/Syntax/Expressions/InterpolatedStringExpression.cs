@@ -1,184 +1,93 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+// Copyright (c) 2017 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
+
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class InterpolatedStringExpression : Expression
+	/// <summary>
+	/// <c>interpolated_string_expression ::= interpolated_string_content*</c> (C# grammar §12.8.3)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class InterpolatedStringExpression : Expression
 	{
-		public static readonly TokenRole OpenQuote = new TokenRole("$\"");
-		public static readonly TokenRole CloseQuote = new TokenRole("\"");
+		public const string OpenQuote = "$\"";
+		public const string CloseQuote = "\"";
 
-		public AstNodeCollection<InterpolatedStringContent> Content {
-			get { return GetChildrenByRole(InterpolatedStringContent.Role); }
-		}
-
-		public InterpolatedStringExpression()
-		{
-
-		}
+		[Slot("Content")]
+		public partial AstNodeCollection<InterpolatedStringContent> Content { get; }
 
 		public InterpolatedStringExpression(IList<InterpolatedStringContent> content)
 		{
 			Content.AddRange(content);
 		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitInterpolatedStringExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitInterpolatedStringExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitInterpolatedStringExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			InterpolatedStringExpression o = other as InterpolatedStringExpression;
-			return o != null && !o.IsNull && this.Content.DoMatch(o.Content, match);
-		}
-	}
-
-	public abstract class InterpolatedStringContent : AstNode
-	{
-		#region Null
-		public new static readonly InterpolatedStringContent Null = new NullInterpolatedStringContent();
-
-		sealed class NullInterpolatedStringContent : InterpolatedStringContent
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-		#endregion
-
-		public new static readonly Role<InterpolatedStringContent> Role = new Role<InterpolatedStringContent>("InterpolatedStringContent", Syntax.InterpolatedStringContent.Null);
-
-		public override NodeType NodeType => NodeType.Unknown;
 	}
 
 	/// <summary>
-	/// { Expression , Alignment : Suffix }
+	/// <code>
+	/// interpolated_string_content ::=
+	///       interpolation
+	///     | interpolated_string_text
+	/// </code>
+	/// (C# grammar §12.8.3)
 	/// </summary>
-	public class Interpolation : InterpolatedStringContent
+	[DecompilerAstNode]
+	public abstract partial class InterpolatedStringContent : AstNode
 	{
-		public static readonly TokenRole LBrace = new TokenRole("{");
-		public static readonly TokenRole RBrace = new TokenRole("}");
+	}
 
-		public CSharpTokenNode LBraceToken {
-			get { return GetChildByRole(LBrace); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
+	/// <summary>
+	/// <c>interpolation ::= '{' expression ( ',' alignment )? ( ':' format )? '}'</c> (C# grammar §12.8.3)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class Interpolation : InterpolatedStringContent
+	{
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
 		public int Alignment { get; }
 
-		public string Suffix { get; }
-
-		public CSharpTokenNode RBraceToken {
-			get { return GetChildByRole(RBrace); }
-		}
-
-		public Interpolation()
-		{
-
-		}
-
-		public Interpolation(Expression expression, int alignment = 0, string suffix = null)
+		public string? Suffix { get; }
+		public Interpolation(Expression expression, int alignment = 0, string? suffix = null)
 		{
 			Expression = expression;
 			Alignment = alignment;
 			Suffix = suffix;
 		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitInterpolation(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitInterpolation(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitInterpolation(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			Interpolation o = other as Interpolation;
-			return o != null && this.Expression.DoMatch(o.Expression, match);
-		}
 	}
 
-	public class InterpolatedStringText : InterpolatedStringContent
+	/// <summary>
+	/// <c>interpolated_string_text ::= text_character+</c> (C# lexical grammar §12.8.3)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class InterpolatedStringText : InterpolatedStringContent
 	{
-		public string Text { get; set; }
+		public string Text { get; set; } = string.Empty;
 
 		public InterpolatedStringText()
 		{
-
 		}
 
 		public InterpolatedStringText(string text)
 		{
 			Text = text;
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitInterpolatedStringText(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitInterpolatedStringText(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitInterpolatedStringText(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			InterpolatedStringText o = other as InterpolatedStringText;
-			return o != null && o.Text == this.Text;
 		}
 	}
 }

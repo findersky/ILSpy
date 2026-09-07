@@ -1,0 +1,82 @@
+using System;
+
+namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
+{
+	public class CustomEventImplementations
+	{
+		private Action CustomEvent;
+		public event Action Custom {
+			add {
+				CustomEvent = (Action)Delegate.Combine(CustomEvent, value);
+				Console.WriteLine("add");
+			}
+			remove {
+				CustomEvent = (Action)Delegate.Remove(CustomEvent, value);
+			}
+		}
+	}
+	public class EventNameCollision
+	{
+		private event Action ChangedEvent;
+		public event Action Changed {
+			add {
+#if MCS2
+				ChangedEvent = (Action)Delegate.Combine(ChangedEvent, value);
+#else
+				ChangedEvent += value;
+#endif
+			}
+			remove {
+#if MCS2
+				ChangedEvent = (Action)Delegate.Remove(ChangedEvent, value);
+#else
+				ChangedEvent -= value;
+#endif
+			}
+		}
+		public void RaiseChanged()
+		{
+			if (ChangedEvent != null)
+			{
+				ChangedEvent();
+			}
+		}
+	}
+	public class GenericAutomaticEvents<T> where T : EventArgs
+	{
+		public event EventHandler<T> GenericEvent;
+	}
+	public class InstanceAutomaticEvents
+	{
+		public event Action InstanceEvent;
+		public event EventHandler<EventArgs> InstanceEventWithArgs;
+	}
+	public static class StaticAutomaticEvents
+	{
+		public static event Action StaticEvent;
+		public static event EventHandler StaticEventWithHandler;
+		public static void RaiseStaticEvent()
+		{
+			StaticEvent();
+		}
+	}
+	public class UnrecognizedCustomEvents
+	{
+		private Action UnusedEvent;
+		public event Action Unused {
+			add {
+				Console.WriteLine("add");
+			}
+			remove {
+				Console.WriteLine("remove");
+			}
+		}
+		public void RaiseUnused()
+		{
+			if (UnusedEvent != null)
+			{
+				UnusedEvent();
+			}
+		}
+	}
+}

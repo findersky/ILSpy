@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -18,182 +18,284 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Windows;
 using System.Xml.Linq;
 
-using ICSharpCode.ILSpy.Docking;
-using ICSharpCode.ILSpy.Themes;
-using ICSharpCode.ILSpyX.Search;
+using Avalonia;
+using Avalonia.Controls;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+
+using ICSharpCode.ILSpyX.Settings;
 
 namespace ICSharpCode.ILSpy
 {
 	/// <summary>
-	/// Per-session setting:
-	/// Loaded at startup; saved at exit.
+	/// Per-session UI state (active assembly list, main window bounds and state).
+	/// Persisted to ILSpy.xml under &lt;SessionSettings&gt;.
 	/// </summary>
-	public sealed class SessionSettings : ISettingsSection
+	public sealed partial class SessionSettings : ObservableObject, ISettingsSection
 	{
+		public static readonly PixelPoint DefaultWindowPosition = new(100, 100);
+		public static readonly Size DefaultWindowSize = new(900, 600);
+
 		public XName SectionName => "SessionSettings";
+
+		public LanguageSettings LanguageSettings { get; private set; } = null!;
+
+		[ObservableProperty]
+		private string? activeAssemblyList;
+
+		[ObservableProperty]
+		private string? activeLanguageName;
+
+		[ObservableProperty]
+		private string? theme;
+
+		[ObservableProperty]
+		private string? currentCulture;
+
+		/// <summary>
+		/// When true the document tab strip flows its tabs onto multiple rows; when false (the
+		/// default) it stays a single scrolling row with an overflow dropdown. Toggled by the mouse
+		/// wheel over the strip and persisted so the choice survives across sessions.
+		/// </summary>
+		[ObservableProperty]
+		private bool multiLineDocumentTabs;
+
+		/// <summary>
+		/// When true (the default) the mouse wheel over the document tab strip toggles
+		/// <see cref="MultiLineDocumentTabs"/> (wheel up flows to multiple rows, wheel down collapses
+		/// to one). When false the wheel gesture is ignored. Persisted across sessions.
+		/// </summary>
+		[ObservableProperty]
+		private bool mouseWheelTogglesTabStripRows = true;
+
+		/// <summary>
+		/// Path to the previously-selected tree node (one ToString() per ancestor, root-first).
+		/// Used to restore the selection on the next launch.
+		/// </summary>
+		public string[]? ActiveTreeViewPath { get; set; }
+
+		/// <summary>
+		/// File path of the auto-loaded (dependency-resolved) assembly the user last
+		/// selected into. The Avalonia host re-opens this file on startup before the
+		/// <see cref="ActiveTreeViewPath"/> walk so the saved path can still resolve;
+		/// otherwise the selection sits inside an assembly that isn't part of any
+		/// persisted list and the restore silently fails.
+		/// </summary>
+		[ObservableProperty]
+		private string? activeAutoLoadedAssembly;
+
+		/// <summary>
+		/// Last-used entry in the search pane's mode picker, persisted as the
+		/// <see cref="ICSharpCode.ILSpyX.Search.SearchMode"/> name. <see cref="Search.SearchPaneModel"/>
+		/// reads it on construction and writes back on every change.
+		/// </summary>
+		[ObservableProperty]
+		private string? selectedSearchMode;
+
+		public WindowState WindowState { get; set; } = WindowState.Normal;
+
+		public PixelPoint WindowPosition { get; set; } = DefaultWindowPosition;
+
+		public Size WindowSize { get; set; } = DefaultWindowSize;
+
+		/// <summary>
+		/// Per-(page-key, column-name) cache of serialised <c>FilterState</c>s, so the
+		/// schema-driven flag-filter dropdowns remember the user's selections across
+		/// sessions. Page key = entry-type full name (one filter set per metadata table,
+		/// shared across all loaded assemblies). Mutated by
+		/// <see cref="Metadata.Filters.FilterStatePersistence"/>; round-tripped to XML below.
+		/// </summary>
+		public Dictionary<(string PageKey, string ColumnName), XElement> FilterStates { get; }
+			= new();
+
+		// Set of child element names LoadFromXml interprets. Children outside this set
+		// (legacy AvalonDock layout, a future ILSpy version's new field, …) are stashed
+		// in <see cref="unknownChildren"/> and re-emitted unchanged by SaveToXml so we
+		// don't strip data we don't understand.
+		static readonly HashSet<string> KnownChildren = new(StringComparer.Ordinal) {
+			"FilterSettings",
+			"ActiveAssemblyList",
+			"ActiveLanguageName",
+			"ActiveTreeViewPath",
+			"ActiveAutoLoadedAssembly",
+			"SelectedSearchMode",
+			"WindowState",
+			nameof(Theme),
+			nameof(CurrentCulture),
+			nameof(MultiLineDocumentTabs),
+			nameof(MouseWheelTogglesTabStripRows),
+			"WindowBounds",
+			"FilterStates",
+		};
+
+		List<XElement> unknownChildren = new();
 
 		public void LoadFromXml(XElement section)
 		{
 			XElement filterSettings = section.Element("FilterSettings") ?? new XElement("FilterSettings");
+			LanguageSettings = new LanguageSettings(filterSettings, this);
+			LanguageSettings.PropertyChanged += (s, e) => OnPropertyChanged(nameof(LanguageSettings));
 
-			LanguageSettings = new(filterSettings, this);
-			LanguageSettings.PropertyChanged += (sender, e) => PropertyChanged?.Invoke(sender, e);
-
-			ActiveAssemblyList = (string)section.Element("ActiveAssemblyList");
-			ActiveTreeViewPath = section.Element("ActiveTreeViewPath")?.Elements().Select(e => Unescape((string)e)).ToArray();
-			ActiveAutoLoadedAssembly = (string)section.Element("ActiveAutoLoadedAssembly");
-			WindowState = FromString((string)section.Element("WindowState"), WindowState.Normal);
-			WindowBounds = FromString((string)section.Element("WindowBounds"), DefaultWindowBounds);
-			SelectedSearchMode = FromString((string)section.Element("SelectedSearchMode"), SearchMode.TypeAndMember);
-			Theme = FromString((string)section.Element(nameof(Theme)), ThemeManager.Current.DefaultTheme);
-			var culture = (string)section.Element(nameof(CurrentCulture));
+			ActiveAssemblyList = (string?)section.Element("ActiveAssemblyList");
+			ActiveLanguageName = (string?)section.Element("ActiveLanguageName");
+			ActiveTreeViewPath = section.Element("ActiveTreeViewPath")?.Elements().Select(e => UnescapeNode((string)e)).ToArray();
+			ActiveAutoLoadedAssembly = (string?)section.Element("ActiveAutoLoadedAssembly");
+			SelectedSearchMode = (string?)section.Element("SelectedSearchMode");
+			WindowState = ParseEnum(section.Element("WindowState")?.Value, WindowState.Normal);
+			Theme = (string?)section.Element(nameof(Theme));
+			var culture = (string?)section.Element(nameof(CurrentCulture));
 			CurrentCulture = string.IsNullOrEmpty(culture) ? null : culture;
-			DockLayout = new(section.Element("DockLayout"));
-		}
+			MultiLineDocumentTabs = (bool?)section.Element(nameof(MultiLineDocumentTabs)) ?? false;
+			MouseWheelTogglesTabStripRows = (bool?)section.Element(nameof(MouseWheelTogglesTabStripRows)) ?? true;
 
-		public LanguageSettings LanguageSettings { get; set; }
-
-		public SearchMode SelectedSearchMode { get; set; }
-
-		private string theme;
-		public string Theme {
-			get => theme;
-			set => SetProperty(ref theme, value);
-		}
-
-		public string[] ActiveTreeViewPath;
-		public string ActiveAutoLoadedAssembly;
-
-		string currentCulture;
-
-		public string CurrentCulture {
-			get { return currentCulture; }
-			set {
-				if (currentCulture != value)
+			var bounds = section.Element("WindowBounds");
+			if (bounds != null)
+			{
+				// Legacy WPF host wrote bounds as a CSV body "Left,Top,Width,Height" (Rect
+				// TypeConverter format). Honour that shape for users upgrading from ILSpy 10.x
+				// so a saved window position survives the move to the Avalonia attribute form.
+				if (bounds.HasAttributes)
 				{
-					currentCulture = value;
-					OnPropertyChanged();
+					int left = ParseInt(bounds.Attribute("Left")?.Value, DefaultWindowPosition.X);
+					int top = ParseInt(bounds.Attribute("Top")?.Value, DefaultWindowPosition.Y);
+					double width = ParseDouble(bounds.Attribute("Width")?.Value, DefaultWindowSize.Width);
+					double height = ParseDouble(bounds.Attribute("Height")?.Value, DefaultWindowSize.Height);
+					WindowPosition = new PixelPoint(left, top);
+					WindowSize = new Size(width, height);
+				}
+				else
+				{
+					var parts = bounds.Value.Split(',');
+					if (parts.Length == 4)
+					{
+						double left = ParseDouble(parts[0], DefaultWindowPosition.X);
+						double top = ParseDouble(parts[1], DefaultWindowPosition.Y);
+						double width = ParseDouble(parts[2], DefaultWindowSize.Width);
+						double height = ParseDouble(parts[3], DefaultWindowSize.Height);
+						WindowPosition = new PixelPoint((int)left, (int)top);
+						WindowSize = new Size(width, height);
+					}
 				}
 			}
-		}
 
-		public string ActiveAssemblyList {
-			get => activeAssemblyList;
-			set {
-				if (value != null && value != activeAssemblyList)
+			FilterStates.Clear();
+			foreach (var page in section.Elements("FilterStates").Elements("Page"))
+			{
+				var pageKey = (string?)page.Attribute("key");
+				if (string.IsNullOrEmpty(pageKey))
+					continue;
+				foreach (var column in page.Elements("Column"))
 				{
-					activeAssemblyList = value;
-					OnPropertyChanged();
+					var columnName = (string?)column.Attribute("name");
+					var stateXml = column.Element("FilterState");
+					if (string.IsNullOrEmpty(columnName) || stateXml is null)
+						continue;
+					FilterStates[(pageKey, columnName)] = new XElement(stateXml);
 				}
 			}
+
+			unknownChildren = section.Elements()
+				.Where(e => !KnownChildren.Contains(e.Name.LocalName))
+				.Select(e => new XElement(e))
+				.ToList();
 		}
-
-		public WindowState WindowState;
-		public Rect WindowBounds;
-		internal static Rect DefaultWindowBounds = new(10, 10, 750, 550);
-
-		public DockLayoutSettings DockLayout { get; set; }
 
 		public XElement SaveToXml()
 		{
 			var section = new XElement(SectionName);
+			if (LanguageSettings != null)
+				section.Add(LanguageSettings.SaveAsXml());
+			if (!string.IsNullOrEmpty(ActiveAssemblyList))
+				section.Add(new XElement("ActiveAssemblyList", ActiveAssemblyList));
+			if (!string.IsNullOrEmpty(ActiveLanguageName))
+				section.Add(new XElement("ActiveLanguageName", ActiveLanguageName));
+			if (ActiveTreeViewPath is { Length: > 0 } path)
+				section.Add(new XElement("ActiveTreeViewPath", path.Select(p => new XElement("Node", EscapeNode(p)))));
+			if (!string.IsNullOrEmpty(ActiveAutoLoadedAssembly))
+				section.Add(new XElement("ActiveAutoLoadedAssembly", ActiveAutoLoadedAssembly));
+			if (!string.IsNullOrEmpty(SelectedSearchMode))
+				section.Add(new XElement("SelectedSearchMode", SelectedSearchMode));
+			section.Add(new XElement("WindowState", WindowState.ToString()));
+			// Bounds as a CSV body ("L,T,W,H", the Rect TypeConverter format the WPF host used).
+			// Keeping the legacy shape on write means a file written by this Avalonia build
+			// can still be read by an older ILSpy 10.x install, and the file diff stays small
+			// during the WPF -> Avalonia transition.
+			section.Add(new XElement("WindowBounds", string.Format(
+				CultureInfo.InvariantCulture, "{0},{1},{2},{3}",
+				WindowPosition.X, WindowPosition.Y, WindowSize.Width, WindowSize.Height)));
+			if (!string.IsNullOrEmpty(Theme))
+				section.Add(new XElement(nameof(Theme), Theme));
+			if (!string.IsNullOrEmpty(CurrentCulture))
+				section.Add(new XElement(nameof(CurrentCulture), CurrentCulture));
+			section.Add(new XElement(nameof(MultiLineDocumentTabs), MultiLineDocumentTabs));
+			section.Add(new XElement(nameof(MouseWheelTogglesTabStripRows), MouseWheelTogglesTabStripRows));
 
-			section.Add(this.LanguageSettings.SaveAsXml());
-			if (this.ActiveAssemblyList != null)
+			if (FilterStates.Count > 0)
 			{
-				section.Add(new XElement("ActiveAssemblyList", this.ActiveAssemblyList));
+				var filterStates = new XElement("FilterStates");
+				foreach (var byPage in FilterStates.GroupBy(kv => kv.Key.PageKey).OrderBy(g => g.Key, StringComparer.Ordinal))
+				{
+					var page = new XElement("Page", new XAttribute("key", byPage.Key));
+					foreach (var kv in byPage.OrderBy(kv => kv.Key.ColumnName, StringComparer.Ordinal))
+					{
+						page.Add(new XElement("Column",
+							new XAttribute("name", kv.Key.ColumnName),
+							new XElement(kv.Value)));
+					}
+					filterStates.Add(page);
+				}
+				section.Add(filterStates);
 			}
-			if (this.ActiveTreeViewPath != null)
-			{
-				section.Add(new XElement("ActiveTreeViewPath", ActiveTreeViewPath.Select(p => new XElement("Node", Escape(p)))));
-			}
-			if (this.ActiveAutoLoadedAssembly != null)
-			{
-				section.Add(new XElement("ActiveAutoLoadedAssembly", this.ActiveAutoLoadedAssembly));
-			}
-			section.Add(new XElement("WindowState", ToString(this.WindowState)));
-			section.Add(new XElement("WindowBounds", ToString(this.WindowBounds)));
-			section.Add(new XElement("SelectedSearchMode", ToString(this.SelectedSearchMode)));
-			section.Add(new XElement(nameof(Theme), ToString(this.Theme)));
-			if (this.CurrentCulture != null)
-			{
-				section.Add(new XElement(nameof(CurrentCulture), this.CurrentCulture));
-			}
-			var dockLayoutElement = new XElement("DockLayout");
-			if (DockLayout.Valid)
-			{
-				dockLayoutElement.Add(DockLayout.SaveAsXml());
-			}
-			section.Add(dockLayoutElement);
+
+			// Re-emit children we didn't interpret so unknown / future / retired-but-still-on-disk
+			// elements (e.g. the AvalonDock <DockLayout> blob) survive a load+save cycle untouched.
+			foreach (var unknown in unknownChildren)
+				section.Add(new XElement(unknown));
 
 			return section;
 		}
 
-		static Regex regex = new("\\\\x(?<num>[0-9A-f]{4})");
-		private string activeAssemblyList;
+		static T ParseEnum<T>(string? value, T defaultValue) where T : struct
+			=> Enum.TryParse(value, out T result) ? result : defaultValue;
 
-		static string Escape(string p)
+		static int ParseInt(string? value, int defaultValue)
+			=> int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : defaultValue;
+
+		static double ParseDouble(string? value, double defaultValue)
+			=> double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : defaultValue;
+
+		// Legacy WPF host hex-escaped every non-letter-or-digit char in tree-view path nodes
+		// (TomsToolbox.Wpf -> TomsToolbox\x002EWpf). Both directions of the conversion stay
+		// here so a file written by this build keeps the legacy on-disk shape — an older
+		// ILSpy 10.x install can still read it, and the diff against a pre-existing
+		// ILSpy.xml stays small.
+		static readonly Regex EscapedCharPattern = new(@"\\x(?<num>[0-9A-Fa-f]{4})", RegexOptions.Compiled);
+
+		static string UnescapeNode(string value)
 		{
-			StringBuilder sb = new();
-			foreach (char ch in p)
+			if (string.IsNullOrEmpty(value) || value.IndexOf(@"\x", StringComparison.Ordinal) < 0)
+				return value;
+			return EscapedCharPattern.Replace(value, m => ((char)int.Parse(m.Groups["num"].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture)).ToString());
+		}
+
+		static string EscapeNode(string value)
+		{
+			if (string.IsNullOrEmpty(value))
+				return value;
+			var sb = new System.Text.StringBuilder(value.Length);
+			foreach (var ch in value)
 			{
 				if (char.IsLetterOrDigit(ch))
 					sb.Append(ch);
 				else
-					sb.AppendFormat("\\x{0:X4}", (int)ch);
+					sb.AppendFormat(CultureInfo.InvariantCulture, @"\x{0:X4}", (int)ch);
 			}
 			return sb.ToString();
-		}
-
-		static string Unescape(string p)
-		{
-			return regex.Replace(p, m => ((char)int.Parse(m.Groups["num"].Value, NumberStyles.HexNumber)).ToString());
-		}
-
-		static T FromString<T>(string s, T defaultValue)
-		{
-			if (s == null)
-				return defaultValue;
-			try
-			{
-				TypeConverter c = TypeDescriptor.GetConverter(typeof(T));
-				return (T)c.ConvertFromInvariantString(s);
-			}
-			catch (FormatException)
-			{
-				return defaultValue;
-			}
-		}
-
-		static string ToString<T>(T obj)
-		{
-			TypeConverter c = TypeDescriptor.GetConverter(typeof(T));
-			return c.ConvertToInvariantString(obj);
-		}
-
-		public event PropertyChangedEventHandler PropertyChanged;
-
-		private void OnPropertyChanged([CallerMemberName] string propertyName = null)
-		{
-			PropertyChanged?.Invoke(this, new(propertyName));
-		}
-
-		private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
-		{
-			if (EqualityComparer<T>.Default.Equals(field, value))
-				return false;
-			field = value;
-			OnPropertyChanged(propertyName);
-			return true;
 		}
 	}
 }

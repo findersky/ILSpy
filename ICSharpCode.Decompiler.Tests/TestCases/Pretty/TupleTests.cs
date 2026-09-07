@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Daniel Grunwald
+// Copyright (c) 2018 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -25,6 +25,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 {
 	public class TupleTests
 	{
+		private interface I1<T>
+		{
+			void Test();
+		}
+
+		private class ExplicitInterfaceImpl : I1<(int V1, int V2)>
+		{
+			void I1<(int V1, int V2)>.Test()
+			{
+			}
+		}
+
 		private abstract class OverloadResolution
 		{
 			public abstract void M1((long, long) a);
@@ -88,14 +100,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public (int, int) AccessRest => (1, 2, 3, 4, 5, 6, 7, 8, 9).Rest;
 
-		public (string, object, Action) TargetTyping => (null, 1, delegate {
+		public (string, object, Action) TargetTyping => (null, 1, () => {
 #pragma warning disable format
 		});
 #pragma warning restore format
 
-		public object NotTargetTyping => ((string)null, (object)1, (Action)delegate {
+		public object NotTargetTyping => ((string)null, (object)1, (Action)(() => {
 #pragma warning disable format
-		});
+		}));
 #pragma warning restore format
 
 		public void UnnamedTupleOut(out (int, string, Action, dynamic) tuple)

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Siegfried Pammer
+// Copyright (c) 2021 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -74,6 +74,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			insertionPoint.ReplaceWith(replacement);
 			replacement.FinalInstruction = callToStringAndClear;
 			block.Instructions.RemoveRange(interpolationStart, interpolationEnd - interpolationStart);
+			context.EndStep(replacement);
 		}
 
 		private bool IsKnownCall(Block block, int pos, ILVariable v)

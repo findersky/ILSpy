@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,6 +16,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 {
@@ -25,21 +26,21 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 	/// <remarks>Does not match null nodes.</remarks>
 	public class AnyNode : Pattern
 	{
-		readonly string groupName;
+		readonly string? groupName;
 
-		public string GroupName {
+		public string? GroupName {
 			get { return groupName; }
 		}
 
-		public AnyNode(string groupName = null)
+		public AnyNode(string? groupName = null)
 		{
 			this.groupName = groupName;
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
 			match.Add(this.groupName, other);
-			return other != null && !other.IsNull;
+			return other != null;
 		}
 	}
 

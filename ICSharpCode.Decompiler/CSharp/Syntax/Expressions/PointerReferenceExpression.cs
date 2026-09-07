@@ -1,4 +1,4 @@
-﻿// 
+// 
 // PointerReferenceExpression.cs
 //  
 // Author:
@@ -24,66 +24,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Target->MemberName
+	/// <c>pointer_member_access ::= expression '-&gt;' identifier ( '&lt;' type ( ',' type )* '&gt;' )?</c> (C# grammar §24.6.3)
 	/// </summary>
-	public class PointerReferenceExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class PointerReferenceExpression : Expression
 	{
-		public readonly static TokenRole ArrowRole = new TokenRole("->");
+		public const string ArrowToken = "->";
 
-		public Expression Target {
-			get { return GetChildByRole(Roles.TargetExpression); }
-			set { SetChildByRole(Roles.TargetExpression, value); }
-		}
+		[Slot("TargetExpression")]
+		public partial Expression Target { get; set; }
 
-		public CSharpTokenNode ArrowToken {
-			get { return GetChildByRole(ArrowRole); }
-		}
+		[Slot("Identifier")]
+		public partial string MemberName { get; set; }
 
-		public string MemberName {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier MemberNameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public AstNodeCollection<AstType> TypeArguments {
-			get { return GetChildrenByRole(Roles.TypeArgument); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitPointerReferenceExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitPointerReferenceExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitPointerReferenceExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			PointerReferenceExpression o = other as PointerReferenceExpression;
-			return o != null && MatchString(this.MemberName, o.MemberName) && this.TypeArguments.DoMatch(o.TypeArguments, match);
-		}
+		[Slot("TypeArgument")]
+		public partial AstNodeCollection<AstType> TypeArguments { get; }
 	}
 }

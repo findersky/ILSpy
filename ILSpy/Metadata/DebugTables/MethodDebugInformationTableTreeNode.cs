@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -25,68 +25,43 @@ using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.Disassembler;
 using ICSharpCode.Decompiler.Metadata;
 
-namespace ICSharpCode.ILSpy.Metadata
+namespace ICSharpCode.ILSpy.Metadata.DebugTables
 {
-	internal class MethodDebugInformationTableTreeNode : DebugMetadataTableTreeNode
+	/// <summary>
+	/// View of the MethodDebugInformation table — sequence-point and local-signature data
+	/// per method body. Each row links a MethodDef token to the document containing its
+	/// source and the blob holding its sequence-points list.
+	/// </summary>
+	public sealed class MethodDebugInformationTableTreeNode : MetadataTableTreeNode<MethodDebugInformationTableTreeNode.MethodDebugInformationEntry>
 	{
 		public MethodDebugInformationTableTreeNode(MetadataFile metadataFile)
 			: base(TableIndex.MethodDebugInformation, metadataFile)
 		{
 		}
 
-		public override bool View(ViewModels.TabPageModel tabPage)
+		protected override IReadOnlyList<MethodDebugInformationEntry> LoadTable()
 		{
-			tabPage.Title = Text.ToString();
-			tabPage.SupportsLanguageSwitching = false;
-
-			var view = Helpers.PrepareDataGrid(tabPage, this);
 			var list = new List<MethodDebugInformationEntry>();
-			MethodDebugInformationEntry scrollTargetEntry = default;
-
 			foreach (var row in metadataFile.Metadata.MethodDebugInformation)
-			{
-				MethodDebugInformationEntry entry = new MethodDebugInformationEntry(metadataFile, row);
-				if (entry.RID == scrollTarget)
-				{
-					scrollTargetEntry = entry;
-				}
-				list.Add(entry);
-			}
-
-			view.ItemsSource = list;
-
-			tabPage.Content = view;
-
-			if (scrollTargetEntry.RID > 0)
-			{
-				ScrollItemIntoView(view, scrollTargetEntry);
-			}
-
-			return true;
+				list.Add(new MethodDebugInformationEntry(metadataFile, row));
+			return list;
 		}
 
-		struct MethodDebugInformationEntry
+		public sealed class MethodDebugInformationEntry
 		{
-			readonly int? offset;
 			readonly MetadataFile metadataFile;
 			readonly MethodDebugInformationHandle handle;
 			readonly MethodDebugInformation debugInfo;
 
 			public int RID => MetadataTokens.GetRowNumber(handle);
 
+			[ColumnInfo("X8")]
 			public int Token => MetadataTokens.GetToken(handle);
-
-			public object Offset => offset == null ? "n/a" : (object)offset;
 
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
 			public int Document => MetadataTokens.GetToken(debugInfo.Document);
 
-			public void OnDocumentClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, debugInfo.Document, protocol: "metadata")));
-			}
-
-			public string DocumentTooltip {
+			public string? DocumentTooltip {
 				get {
 					if (debugInfo.Document.IsNil)
 						return null;
@@ -98,7 +73,7 @@ namespace ICSharpCode.ILSpy.Metadata
 			[ColumnInfo("X8", Kind = ColumnKind.HeapOffset)]
 			public int SequencePoints => MetadataTokens.GetHeapOffset(debugInfo.SequencePointsBlob);
 
-			public string SequencePointsTooltip {
+			public string? SequencePointsTooltip {
 				get {
 					if (debugInfo.SequencePointsBlob.IsNil)
 						return null;
@@ -114,12 +89,7 @@ namespace ICSharpCode.ILSpy.Metadata
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
 			public int LocalSignature => MetadataTokens.GetToken(debugInfo.LocalSignature);
 
-			public void OnLocalSignatureClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, debugInfo.LocalSignature, protocol: "metadata")));
-			}
-
-			public string LocalSignatureTooltip {
+			public string? LocalSignatureTooltip {
 				get {
 					if (debugInfo.LocalSignature.IsNil)
 						return null;
@@ -143,10 +113,8 @@ namespace ICSharpCode.ILSpy.Metadata
 			public MethodDebugInformationEntry(MetadataFile metadataFile, MethodDebugInformationHandle handle)
 			{
 				this.metadataFile = metadataFile;
-				this.offset = metadataFile.IsEmbedded ? null : (int?)metadataFile.Metadata.GetTableMetadataOffset(TableIndex.MethodDebugInformation)
-					+ metadataFile.Metadata.GetTableRowSize(TableIndex.MethodDebugInformation) * (MetadataTokens.GetRowNumber(handle) - 1);
 				this.handle = handle;
-				this.debugInfo = metadataFile.Metadata.GetMethodDebugInformation(handle);
+				debugInfo = metadataFile.Metadata.GetMethodDebugInformation(handle);
 			}
 		}
 	}

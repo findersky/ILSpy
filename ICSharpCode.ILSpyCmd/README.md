@@ -2,15 +2,15 @@
 
 To install:
 
-```
+``` bash
 dotnet tool install --global ilspycmd
 ```
 
 Help output (`ilspycmd --help`):
 
-```
-ilspycmd: 9.0.0.7847
-ICSharpCode.Decompiler: 9.0.0.7847
+``` text
+ilspycmd: 11.0.0.9283
+ICSharpCode.Decompiler: 11.0.0.9283
 
 dotnet tool for decompiling .NET assemblies and generating portable PDBs
 
@@ -26,25 +26,47 @@ Options:
   -p|--project                            Decompile assembly as compilable project. This requires the output directory
                                           option.
   -t|--type <type-name>                   The fully qualified name of the type to decompile.
+  -m|--member <doc-id-or-token>           The single member to decompile: an XML documentation id string (e.g.
+                                          "M:System.String.Concat(System.String,System.String)", as also accepted by the
+                                          UI's --navigateto option) or a metadata token (e.g. 0x06000005).
   -il|--ilcode                            Show IL code.
   --il-sequence-points                    Show IL with sequence points. Implies -il.
   -genpdb|--generate-pdb                  Generate PDB.
   -usepdb|--use-varnames-from-pdb         Use variable names from PDB.
   -l|--list <entity-type(s)>              Lists all entities of the specified type(s). Valid types: c(lass),
                                           i(nterface), s(truct), d(elegate), e(num)
+  --list-resources                        Lists all embedded resources in the assembly. Entries inside .resources
+                                          containers are listed individually as '<container>/<entry>'.
+  --resource <name>                       Extract a single resource by name (as printed by --list-resources). Resources
+                                          whose name ends with '.baml' are decompiled to XAML.
+  --decompile-baml                        Deprecated: -p decompiles BAML resources to XAML files (Page items) on its
+                                          own. Accepted so that existing scripts keep working.
+  --dump-table <table>                    Dump a metadata table: prints RID, token, names, heap offsets and coded
+                                          indexes of every row. <table> is the ECMA-335 table name (e.g. TypeDef,
+                                          Property, MethodSemantics; case-insensitive) or table number (decimal or
+                                          0x-prefixed hex, e.g. 0x17).
+  --json                                  Output as JSON. Currently only supported together with --dump-table.
   -lv|--languageversion <version>         C# Language version: CSharp1, CSharp2, CSharp3, CSharp4, CSharp5, CSharp6,
                                           CSharp7, CSharp7_1, CSharp7_2, CSharp7_3, CSharp8_0, CSharp9_0, CSharp10_0,
-                                          Preview or Latest
+                                          CSharp11_0, CSharp12_0, CSharp13_0, Preview or Latest
                                           Allowed values are: CSharp1, CSharp2, CSharp3, CSharp4, CSharp5, CSharp6,
                                           CSharp7, CSharp7_1, CSharp7_2, CSharp7_3, CSharp8_0, CSharp9_0, CSharp10_0,
-                                          CSharp11_0, Preview, CSharp12_0, Latest.
+                                          CSharp11_0, CSharp12_0, CSharp13_0, CSharp14_0, CSharp15_0, Preview, Latest.
                                           Default value is: Latest.
+  --ilspy-settingsfile <path>             Path to an ILSpy settings file.
+  -ds|--decompiler-setting <value>        Set a decompiler setting. Use multiple times to set multiple settings.
   -r|--referencepath <path>               Path to a directory containing dependencies of the assembly that is being
                                           decompiled.
+  --ignore-decompilation-errors           Exit with success even when parts of the assembly could not be decompiled. The
+                                          affected code carries the error text in the output and the failures are listed
+                                          on stderr either way; only the exit status changes.
   --no-dead-code                          Remove dead code.
   --no-dead-stores                        Remove dead stores.
   -d|--dump-package                       Dump package assemblies into a folder. This requires the output directory
                                           option.
+  --bundle-entry <name>                   The assembly inside a single-file bundle (or other package) to work on, as
+                                          printed when such a file is passed without this option. Ignored for input
+                                          files that are not packages.
   --nested-directories                    Use nested directories for namespaces.
   --disable-updatecheck                   If using ilspycmd in a tight loop or fully automated scenario, you might want
                                           to disable the automatic update check.
@@ -62,8 +84,8 @@ Options:
                                           your regular expressions.
   --generate-diagrammer-docs              The path or file:// URI of the XML file containing the target assembly's
                                           documentation comments. You only need to set this if a) you want your diagrams
-                                          annotated with them and b) the file name differs from that of the assmbly. To
-                                          enable XML documentation output for your assmbly, see
+                                          annotated with them and b) the file name differs from that of the assembly. To
+                                          enable XML documentation output for your assembly, see
                                           https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/xmldoc/#create-xml-documentation-output
   --generate-diagrammer-strip-namespaces  Optional space-separated namespace names that are removed for brevity from XML
                                           documentation comments. Note that the order matters: e.g. replace
@@ -92,6 +114,15 @@ Examples:
     Generate a HTML diagrammer containing filtered type info into a custom output folder
     (including types in the LightJson namespace while excluding types in nested LightJson.Serialization namespace)
         ilspycmd sample.dll --generate-diagrammer -o c:\diagrammer --generate-diagrammer-include LightJson\\..+ --generate-diagrammer-exclude LightJson\\.Serialization\\..+
+
+    List all embedded resources in a WPF assembly (including BAML entries inside .g.resources containers).
+        ilspycmd sample.dll --list-resources
+
+    Extract a single resource. If the name ends with .baml, the output is decompiled XAML; otherwise raw bytes.
+        ilspycmd sample.dll --resource sample.g.resources/mainwindow.baml -o c:\decompiled
+
+    Decompile assembly as a compilable project. BAML resources become XAML Page items.
+        ilspycmd sample.dll -p -o c:\decompiled
 ```
 
 ## Generate HTML diagrammers

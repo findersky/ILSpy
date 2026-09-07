@@ -1,4 +1,4 @@
-﻿// 
+// 
 // DestructorDeclaration.cs
 //
 // Author:
@@ -24,53 +24,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class DestructorDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>finalizer_declaration ::= attribute_section* modifier* '~' identifier '(' ')' ( block | ';' )</c> (C# grammar §15.13)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class DestructorDeclaration : EntityDeclaration
 	{
-		public static readonly TokenRole TildeRole = new TokenRole("~");
-
-		public CSharpTokenNode TildeToken {
-			get { return GetChildByRole(TildeRole); }
-		}
+		public const string TildeToken = "~";
 
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Destructor; }
 		}
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
+		// The name is just the declaring type name; exclude it from matching (and the inherited Name match).
+		[ExcludeFromMatch]
+		[Slot("Identifier")]
+		public override partial Identifier NameToken { get; set; }
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDestructorDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDestructorDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDestructorDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			DestructorDeclaration o = other as DestructorDeclaration;
-			return o != null && this.MatchAttributesAndModifiers(o, match) && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("Body")]
+		public partial BlockStatement? Body { get; set; }
 	}
 }

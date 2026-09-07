@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -15,6 +15,8 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+
+#nullable enable
 
 using System;
 using System.IO;
@@ -45,8 +47,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!(entityDecl.GetSymbol() is IEntity entity))
 						continue;
 					string doc = provider.GetDocumentation(entity);
+					if (doc == null && entity is IMethod { AccessorOwner: IProperty owner } accessor
+						&& owner.IsParameterizedProperty() && accessor.Equals(owner.Getter ?? owner.Setter))
+					{
+						// A parameterized property is decompiled to its accessor methods; show the
+						// property's documentation on the first accessor.
+						doc = provider.GetDocumentation(owner);
+					}
 					if (doc != null)
 					{
+						context.Step("Add XML documentation", entityDecl);
 						InsertXmlDocumentation(entityDecl, new StringReader(doc));
 					}
 				}
@@ -54,16 +64,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			catch (XmlException ex)
 			{
 				string[] msg = (" Exception while reading XmlDoc: " + ex).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-				var insertionPoint = rootNode.FirstChild;
 				for (int i = 0; i < msg.Length; i++)
-					rootNode.InsertChildBefore(insertionPoint, new Comment(msg[i], CommentType.Documentation), Roles.Comment);
+					rootNode.AddLeadingTrivia(new Comment(msg[i], CommentType.Documentation));
 			}
 		}
 
 		static void InsertXmlDocumentation(AstNode node, StringReader r)
 		{
 			// Find the first non-empty line:
-			string firstLine;
+			string? firstLine;
 			do
 			{
 				firstLine = r.ReadLine();
@@ -71,7 +80,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					return;
 			} while (string.IsNullOrWhiteSpace(firstLine));
 			string indentation = firstLine.Substring(0, firstLine.Length - firstLine.TrimStart().Length);
-			string line = firstLine;
+			string? line = firstLine;
 			int skippedWhitespaceLines = 0;
 			// Copy all lines from input to output, except for empty lines at the end.
 			while (line != null)
@@ -86,14 +95,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						Comment emptyLine = new Comment(string.Empty, CommentType.Documentation);
 						emptyLine.AddAnnotation(node.GetResolveResult());
-						node.Parent.InsertChildBefore(node, emptyLine, Roles.Comment);
+						node.AddLeadingTrivia(emptyLine);
 						skippedWhitespaceLines--;
 					}
 					if (line.StartsWith(indentation, StringComparison.Ordinal))
 						line = line.Substring(indentation.Length);
 					Comment comment = new Comment(" " + line, CommentType.Documentation);
 					comment.AddAnnotation(node.GetResolveResult());
-					node.Parent.InsertChildBefore(node, comment, Roles.Comment);
+					node.AddLeadingTrivia(comment);
 				}
 				line = r.ReadLine();
 			}

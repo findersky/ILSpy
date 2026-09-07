@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 Daniel Grunwald
+// Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -96,7 +96,7 @@ namespace ICSharpCode.Decompiler.IL
 				ILInstruction filter;
 				if (eh.Kind == System.Reflection.Metadata.ExceptionRegionKind.Filter)
 				{
-					var filterBlock = new BlockContainer(expectedResultType: StackType.I4);
+					var filterBlock = new BlockContainer(expectedResultType: compilation.FindType(KnownTypeCode.Int32));
 					filterBlock.AddILRange(new Interval(eh.FilterOffset, eh.HandlerOffset));
 					handlerContainers.Add(filterBlock.StartILOffset, filterBlock);
 					filter = filterBlock;
@@ -191,7 +191,9 @@ namespace ICSharpCode.Decompiler.IL
 					{
 						// assign the finally/filter container
 						leave.TargetContainer = containerStack.Peek();
-						leave.Value = ILReader.Cast(leave.Value, leave.TargetContainer.ExpectedResultType, null, leave.StartILOffset);
+						leave.Value = ILReader.Cast(leave.Value,
+							leave.TargetContainer.ResultType,
+							null, leave.StartILOffset);
 					}
 					break;
 				case BlockContainer container:

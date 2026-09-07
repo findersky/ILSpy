@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -22,52 +22,30 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.TreeNodes;
 
-namespace ICSharpCode.ILSpy.Metadata
+namespace ICSharpCode.ILSpy.Metadata.CorTables
 {
-	internal class EventTableTreeNode : MetadataTableTreeNode
+	/// <summary>
+	/// View of the Event table — every CLR event the module's types declare. Each row
+	/// references the event's delegate type as a TypeDefOrRef coded token; add/remove/raise
+	/// accessor bindings live in MethodSemantics.
+	/// </summary>
+	public sealed class EventTableTreeNode : MetadataTableTreeNode<EventTableTreeNode.EventDefEntry>
 	{
 		public EventTableTreeNode(MetadataFile metadataFile)
 			: base(TableIndex.Event, metadataFile)
 		{
 		}
 
-		public override bool View(ViewModels.TabPageModel tabPage)
+		protected override IReadOnlyList<EventDefEntry> LoadTable()
 		{
-			tabPage.Title = Text.ToString();
-			tabPage.SupportsLanguageSwitching = false;
-
-			var view = Helpers.PrepareDataGrid(tabPage, this);
-			var metadata = metadataFile.Metadata;
-
 			var list = new List<EventDefEntry>();
-			EventDefEntry scrollTargetEntry = default;
-
-			foreach (var row in metadata.EventDefinitions)
-			{
-				EventDefEntry entry = new EventDefEntry(metadataFile, row);
-				if (entry.RID == this.scrollTarget)
-				{
-					scrollTargetEntry = entry;
-				}
-				list.Add(entry);
-			}
-
-			view.ItemsSource = list;
-
-			tabPage.Content = view;
-
-			if (scrollTargetEntry.RID > 0)
-			{
-				ScrollItemIntoView(view, scrollTargetEntry);
-			}
-
-			return true;
+			foreach (var row in metadataFile.Metadata.EventDefinitions)
+				list.Add(new EventDefEntry(metadataFile, row));
+			return list;
 		}
 
-		struct EventDefEntry : IMemberTreeNode
+		public sealed class EventDefEntry
 		{
 			readonly MetadataFile metadataFile;
 			readonly EventDefinitionHandle handle;
@@ -75,46 +53,34 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			public int RID => MetadataTokens.GetRowNumber(handle);
 
+			[ColumnInfo("X8")]
 			public int Token => MetadataTokens.GetToken(handle);
 
-			public int Offset => metadataFile.MetadataOffset
-				+ metadataFile.Metadata.GetTableMetadataOffset(TableIndex.Event)
-				+ metadataFile.Metadata.GetTableRowSize(TableIndex.Event) * (RID - 1);
+			[ColumnInfo("X8")]
+			public int Offset => GetRowOffset(metadataFile, TableIndex.Event, RID);
 
-			[ColumnInfo("X8", Kind = ColumnKind.Other)]
+			[ColumnInfo("X8")]
 			public EventAttributes Attributes => eventDef.Attributes;
 
 			public object AttributesTooltip => new FlagsTooltip {
 				FlagGroup.CreateMultipleChoiceGroup(typeof(EventAttributes), selectedValue: (int)eventDef.Attributes, includeAll: false),
 			};
 
-			public string NameTooltip => $"{MetadataTokens.GetHeapOffset(eventDef.Name):X} \"{Name}\"";
-
 			public string Name => metadataFile.Metadata.GetString(eventDef.Name);
 
-			IEntity IMemberTreeNode.Member {
-				get {
-					return ((MetadataModule)metadataFile.GetTypeSystemWithCurrentOptionsOrNull(SettingsService, AssemblyTreeModel.CurrentLanguageVersion)?.MainModule)?.GetDefinition(handle);
-				}
-			}
+			public string NameTooltip => $"{MetadataTokens.GetHeapOffset(eventDef.Name):X} \"{Name}\"";
 
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
 			public int Type => MetadataTokens.GetToken(eventDef.Type);
 
-			public void OnTypeClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, eventDef.Type, protocol: "metadata")));
-			}
-
-			string typeTooltip;
-			public string TypeTooltip => GenerateTooltip(ref typeTooltip, metadataFile, eventDef.Type);
+			string? typeTooltip;
+			public string? TypeTooltip => GenerateTooltip(ref typeTooltip, metadataFile, eventDef.Type);
 
 			public EventDefEntry(MetadataFile metadataFile, EventDefinitionHandle handle)
 			{
 				this.metadataFile = metadataFile;
 				this.handle = handle;
-				this.eventDef = metadataFile.Metadata.GetEventDefinition(handle);
-				this.typeTooltip = null;
+				eventDef = metadataFile.Metadata.GetEventDefinition(handle);
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -37,7 +37,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			public void TestB(S x, ref S y)
 			{
 				b[5, 3] = new S[10];
+#if CS71
+				b[5, 3][0] = default;
+#else
 				b[5, 3][0] = default(S);
+#endif
 				b[5, 3][1] = x;
 				b[5, 3][2] = y;
 			}
@@ -51,6 +55,16 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		public int[][,] MakeArray()
 		{
 			return new int[10][,];
+		}
+
+		// The dimensions multiply to more than int.MaxValue; the initializer transform
+		// must cope with that instead of overflowing while sizing its element list.
+		public int[,] DimensionsExceedingIntRange()
+		{
+			int[,] array = new int[65536, 65536];
+			array[0, 0] = 1;
+			array[0, 1] = 2;
+			return array;
 		}
 	}
 }

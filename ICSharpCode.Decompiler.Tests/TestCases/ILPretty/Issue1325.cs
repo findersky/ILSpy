@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
@@ -35,13 +35,15 @@ namespace Issue1325
 
 	internal class Test
 	{
-		public string Parameterized {
-			get {
-				throw new NotImplementedException();
-			}
-			set {
-				throw new NotImplementedException();
-			}
+		// C# has no syntax for parameterized property 'Parameterized'.
+		public string get_Parameterized(int i)
+		{
+			throw new NotImplementedException();
+		}
+
+		public void set_Parameterized(int i, string value)
+		{
+			throw new NotImplementedException();
 		}
 		public string Unparameterized { get; set; }
 	}

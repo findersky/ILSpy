@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FixedFieldDeclaration.cs
 //
 // Author:
@@ -24,81 +24,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Name [ CountExpression ]
+	/// <c>fixed_size_buffer_declarator ::= identifier '[' expression ']'</c> (C# grammar §24.8.2)
 	/// </summary>
-	public class FixedVariableInitializer : AstNode
+	[DecompilerAstNode]
+	public sealed partial class FixedVariableInitializer : AstNode
 	{
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
+		[Slot("Identifier")]
+		public partial string Name { get; set; }
 
-		public FixedVariableInitializer()
-		{
-		}
-
-		public FixedVariableInitializer(string name, Expression initializer = null)
-		{
-			this.Name = name;
-			this.CountExpression = initializer;
-		}
-
-		public string Name {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier NameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public CSharpTokenNode LBracketToken {
-			get { return GetChildByRole(Roles.LBracket); }
-		}
-
-		public Expression CountExpression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode RBracketToken {
-			get { return GetChildByRole(Roles.RBracket); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitFixedVariableInitializer(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitFixedVariableInitializer(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitFixedVariableInitializer(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			var o = other as FixedVariableInitializer;
-			return o != null && MatchString(this.Name, o.Name) && this.CountExpression.DoMatch(o.CountExpression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression CountExpression { get; set; }
 	}
 }
-

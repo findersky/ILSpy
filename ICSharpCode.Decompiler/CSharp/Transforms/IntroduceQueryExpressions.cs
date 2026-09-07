@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,11 +16,16 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.IL;
+using ICSharpCode.Decompiler.Semantics;
 
 namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
@@ -30,6 +35,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	public class IntroduceQueryExpressions : IAstTransform
 	{
+		[AllowNull]
 		TransformContext context;
 
 		public void Run(AstNode rootNode, TransformContext context)
@@ -46,45 +52,56 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				if (IsDegenerateQuery(query))
 				{
 					// introduce select for degenerate query
+					context.Step("Add degenerate query select clause", query);
 					query.Clauses.Add(new QuerySelectClause { Expression = new IdentifierExpression(fromClause.Identifier).CopyAnnotationsFrom(fromClause) });
 				}
 				// See if the data source of this query is a degenerate query,
 				// and combine the queries if possible.
-				QueryExpression innerQuery = fromClause.Expression as QueryExpression;
-				while (IsDegenerateQuery(innerQuery))
+				QueryExpression? innerQuery = fromClause.Expression as QueryExpression;
+				while (innerQuery != null && IsDegenerateQuery(innerQuery))
 				{
 					QueryFromClause innerFromClause = (QueryFromClause)innerQuery.Clauses.First();
-					ILVariable innerVariable = innerFromClause.Annotation<ILVariableResolveResult>()?.Variable;
-					ILVariable rangeVariable = fromClause.Annotation<ILVariableResolveResult>()?.Variable;
+					ILVariable? innerVariable = innerFromClause.Annotation<ILVariableResolveResult>()?.Variable;
+					ILVariable? rangeVariable = fromClause.Annotation<ILVariableResolveResult>()?.Variable;
+					context.Step("Combine nested query clauses", fromClause);
 					// Replace the fromClause with all clauses from the inner query
 					fromClause.Remove();
-					QueryClause insertionPos = null;
+					QueryClause? insertionPos = null;
 					foreach (var clause in innerQuery.Clauses)
 					{
 						CombineRangeVariables(clause, innerVariable, rangeVariable);
 						query.Clauses.InsertAfter(insertionPos, insertionPos = clause.Detach());
 					}
+					context.EndStep(innerFromClause);
 					fromClause = innerFromClause;
 					innerQuery = fromClause.Expression as QueryExpression;
 				}
 			}
 		}
 
-		private void CombineRangeVariables(QueryClause clause, ILVariable oldVariable, ILVariable newVariable)
+		private void CombineRangeVariables(QueryClause clause, ILVariable? oldVariable, ILVariable? newVariable)
 		{
+			if (oldVariable == null || newVariable == null)
+				return;
 			foreach (var identifier in clause.DescendantNodes().OfType<Identifier>())
 			{
-				var variable = identifier.Parent.Annotation<ILVariableResolveResult>()?.Variable;
+				var parent = identifier.Parent;
+				if (parent == null)
+					continue;
+				var variable = parent.Annotation<ILVariableResolveResult>()?.Variable;
 				if (variable == oldVariable)
 				{
-					identifier.Parent.RemoveAnnotations<ILVariableResolveResult>();
-					identifier.Parent.AddAnnotation(new ILVariableResolveResult(newVariable));
-					identifier.ReplaceWith(Identifier.Create(newVariable.Name));
+					context.Step("Combine query range variables", identifier);
+					parent.RemoveAnnotations<ILVariableResolveResult>();
+					parent.AddAnnotation(new ILVariableResolveResult(newVariable));
+					var newIdentifier = Identifier.Create(newVariable.Name!);
+					identifier.ReplaceWith(newIdentifier);
+					context.EndStep(newIdentifier);
 				}
 			}
 		}
 
-		bool IsDegenerateQuery(QueryExpression query)
+		bool IsDegenerateQuery(QueryExpression? query)
 		{
 			if (query == null)
 				return false;
@@ -94,16 +111,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		void DecompileQueries(AstNode node)
 		{
-			Expression query = DecompileQuery(node as InvocationExpression);
+			Expression? query = DecompileQuery(node as InvocationExpression);
 			if (query != null)
 			{
 				if (node.Parent is ExpressionStatement && CanUseDiscardAssignment())
 					query = new AssignmentExpression(new IdentifierExpression("_"), query);
 				node.ReplaceWith(query);
+				context.EndStep(query);
 			}
 
-			AstNode next;
-			for (AstNode child = (query ?? node).FirstChild; child != null; child = next)
+			AstNode? next;
+			for (AstNode? child = (query ?? node).FirstChild; child != null; child = next)
 			{
 				// store reference to next child before transformation
 				next = child.NextSibling;
@@ -117,12 +135,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return context.Settings.Discards;
 		}
 
-		QueryExpression DecompileQuery(InvocationExpression invocation)
+		QueryExpression? DecompileQuery(InvocationExpression? invocation)
 		{
 			if (invocation == null)
 				return null;
-			MemberReferenceExpression mre = invocation.Target as MemberReferenceExpression;
+			MemberReferenceExpression? mre = invocation.Target as MemberReferenceExpression;
 			if (mre == null || IsNullConditional(mre.Target))
+				return null;
+			if (mre.TypeArguments.Count > 0)
 				return null;
 			switch (mre.MemberName)
 			{
@@ -133,11 +153,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!IsComplexQuery(mre))
 						return null;
 					Expression expr = invocation.Arguments.Single();
-					if (MatchSimpleLambda(expr, out ParameterDeclaration parameter, out Expression body))
+					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
+						context.Step("Build select query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
-						query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(body.Detach(), parameter.Name) }.CopyAnnotationsFrom(expr));
+						query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(body.Detach(), parameter.Name!) }.CopyAnnotationsFrom(expr));
 						return query;
 					}
 					return null;
@@ -148,17 +169,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					{
 						Expression keyLambda = invocation.Arguments.ElementAt(0);
 						Expression projectionLambda = invocation.Arguments.ElementAt(1);
-						if (MatchSimpleLambda(keyLambda, out ParameterDeclaration parameter1, out Expression keySelector)
-							&& MatchSimpleLambda(projectionLambda, out ParameterDeclaration parameter2, out Expression elementSelector)
+						if (MatchSimpleLambda(keyLambda, out var parameter1, out var keySelector)
+							&& MatchSimpleLambda(projectionLambda, out var parameter2, out var elementSelector)
 							&& parameter1.Name == parameter2.Name)
 						{
+							context.Step("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter1, mre.Target.Detach()));
 							var queryGroupClause = new QueryGroupClause {
 								Projection = elementSelector.Detach(),
 								Key = keySelector.Detach()
 							};
-							queryGroupClause.AddAnnotation(new QueryGroupClauseAnnotation(keyLambda.Annotation<IL.ILFunction>(), projectionLambda.Annotation<IL.ILFunction>()));
+							// The matched group-by lambdas always carry their ILFunction annotation.
+							queryGroupClause.AddAnnotation(new QueryGroupClauseAnnotation(keyLambda.Annotation<IL.ILFunction>()!, projectionLambda.Annotation<IL.ILFunction>()!));
 							query.Clauses.Add(queryGroupClause);
 							return query;
 						}
@@ -166,11 +189,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					else if (invocation.Arguments.Count == 1)
 					{
 						Expression lambda = invocation.Arguments.Single();
-						if (MatchSimpleLambda(lambda, out ParameterDeclaration parameter, out Expression keySelector))
+						if (MatchSimpleLambda(lambda, out var parameter, out var keySelector))
 						{
+							context.Step("Build group query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
-							query.Clauses.Add(new QueryGroupClause { Projection = new IdentifierExpression(parameter.Name).CopyAnnotationsFrom(parameter), Key = keySelector.Detach() });
+							query.Clauses.Add(new QueryGroupClause { Projection = new IdentifierExpression(parameter.Name!).CopyAnnotationsFrom(parameter), Key = keySelector.Detach() });
 							return query;
 						}
 					}
@@ -181,21 +205,22 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (invocation.Arguments.Count != 2)
 						return null;
 					var fromExpressionLambda = invocation.Arguments.ElementAt(0);
-					if (!MatchSimpleLambda(fromExpressionLambda, out ParameterDeclaration parameter, out Expression collectionSelector))
+					if (!MatchSimpleLambda(fromExpressionLambda, out var parameter, out var collectionSelector))
 						return null;
 					if (IsNullConditional(collectionSelector))
 						return null;
-					LambdaExpression lambda = invocation.Arguments.ElementAt(1) as LambdaExpression;
+					LambdaExpression? lambda = invocation.Arguments.ElementAt(1) as LambdaExpression;
 					if (lambda != null && lambda.Parameters.Count == 2 && lambda.Body is Expression)
 					{
 						ParameterDeclaration p1 = lambda.Parameters.ElementAt(0);
 						ParameterDeclaration p2 = lambda.Parameters.ElementAt(1);
 						if (p1.Name == parameter.Name)
 						{
+							context.Step("Build select-many query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(p1, mre.Target.Detach()));
 							query.Clauses.Add(MakeFromClause(p2, collectionSelector.Detach()).CopyAnnotationsFrom(fromExpressionLambda));
-							query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(((Expression)lambda.Body).Detach(), parameter.Name) });
+							query.Clauses.Add(new QuerySelectClause { Expression = WrapExpressionInParenthesesIfNecessary(((Expression)lambda.Body).Detach(), parameter.Name!) });
 							return query;
 						}
 					}
@@ -208,8 +233,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!IsComplexQuery(mre))
 						return null;
 					Expression expr = invocation.Arguments.Single();
-					if (MatchSimpleLambda(expr, out ParameterDeclaration parameter, out Expression body))
+					if (MatchSimpleLambda(expr, out var parameter, out var body))
 					{
+						context.Step("Build where query", invocation);
 						QueryExpression query = new QueryExpression();
 						query.Clauses.Add(MakeFromClause(parameter, mre.Target.Detach()));
 						query.Clauses.Add(new QueryWhereClause { Condition = body.Detach() }.CopyAnnotationsFrom(expr));
@@ -227,10 +253,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (!IsComplexQuery(mre))
 						return null;
 					var lambda = invocation.Arguments.Single();
-					if (MatchSimpleLambda(lambda, out ParameterDeclaration parameter, out Expression orderExpression))
+					if (MatchSimpleLambda(lambda, out var parameter, out var orderExpression))
 					{
-						if (ValidateThenByChain(invocation, parameter.Name))
+						if (ValidateThenByChain(invocation, parameter.Name!))
 						{
+							context.Step("Build order query", invocation);
 							QueryOrderClause orderClause = new QueryOrderClause();
 							while (mre.MemberName == "ThenBy" || mre.MemberName == "ThenByDescending")
 							{
@@ -244,8 +271,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 								InvocationExpression tmp = (InvocationExpression)mre.Target;
 								mre = (MemberReferenceExpression)tmp.Target;
 								lambda = tmp.Arguments.Single();
-								MatchSimpleLambda(lambda, out parameter, out orderExpression);
+								// ValidateThenByChain already confirmed every clause in the chain is a simple
+								// lambda, so this match always succeeds.
+								bool matched = MatchSimpleLambda(lambda, out parameter, out orderExpression);
+								Debug.Assert(matched);
+								Debug.Assert(orderExpression != null);
 							}
+							// The chain was validated and every iteration re-matched a simple lambda,
+							// so the final range-variable parameter is set.
+							Debug.Assert(parameter != null);
 							// insert new ordering at beginning
 							orderClause.Orderings.InsertAfter(
 								null, new QueryOrdering {
@@ -271,12 +305,12 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					if (IsNullConditional(source2))
 						return null;
 					Expression outerLambda = invocation.Arguments.ElementAt(1);
-					if (!MatchSimpleLambda(outerLambda, out ParameterDeclaration element1, out Expression key1))
+					if (!MatchSimpleLambda(outerLambda, out var element1, out var key1))
 						return null;
 					Expression innerLambda = invocation.Arguments.ElementAt(2);
-					if (!MatchSimpleLambda(innerLambda, out ParameterDeclaration element2, out Expression key2))
+					if (!MatchSimpleLambda(innerLambda, out var element2, out var key2))
 						return null;
-					LambdaExpression lambda = invocation.Arguments.ElementAt(3) as LambdaExpression;
+					LambdaExpression? lambda = invocation.Arguments.ElementAt(3) as LambdaExpression;
 					if (lambda != null && lambda.Parameters.Count == 2 && lambda.Body is Expression)
 					{
 						ParameterDeclaration p1 = lambda.Parameters.ElementAt(0);
@@ -284,10 +318,11 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 						if (ValidateParameter(p1) && ValidateParameter(p2)
 							&& p1.Name == element1.Name && (p2.Name == element2.Name || mre.MemberName == "GroupJoin"))
 						{
+							context.Step(mre.MemberName == "GroupJoin" ? "Build group join query" : "Build join query", invocation);
 							QueryExpression query = new QueryExpression();
 							query.Clauses.Add(MakeFromClause(element1, source1.Detach()));
 							QueryJoinClause joinClause = new QueryJoinClause();
-							joinClause.JoinIdentifier = element2.Name;    // join elementName2
+							joinClause.JoinIdentifier = element2.Name!;    // join elementName2
 							joinClause.JoinIdentifierToken.CopyAnnotationsFrom(element2);
 							joinClause.InExpression = source2.Detach();  // in source2
 							joinClause.OnExpression = key1.Detach();     // on key1
@@ -295,9 +330,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 							if (mre.MemberName == "GroupJoin")
 							{
 								joinClause.IntoIdentifier = p2.Name; // into p2.Name
-								joinClause.IntoIdentifierToken.CopyAnnotationsFrom(p2);
+								joinClause.IntoIdentifierToken!.CopyAnnotationsFrom(p2);
 							}
-							joinClause.AddAnnotation(new QueryJoinClauseAnnotation(outerLambda.Annotation<IL.ILFunction>(), innerLambda.Annotation<IL.ILFunction>()));
+							// The matched join key-selector lambdas always carry their ILFunction annotation.
+							joinClause.AddAnnotation(new QueryJoinClauseAnnotation(outerLambda.Annotation<IL.ILFunction>()!, innerLambda.Annotation<IL.ILFunction>()!));
 							query.Clauses.Add(joinClause);
 							query.Clauses.Add(new QuerySelectClause { Expression = ((Expression)lambda.Body).Detach() }.CopyAnnotationsFrom(lambda));
 							return query;
@@ -312,13 +348,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 
 		static bool IsComplexQuery(MemberReferenceExpression mre)
 		{
-			return ((mre.Target is InvocationExpression && mre.Parent is InvocationExpression) || mre.Parent?.Parent is QueryClause);
+			return (mre.Target is InvocationExpression && mre.Parent is InvocationExpression) || mre.Parent?.Parent is QueryClause;
 		}
 
 		QueryFromClause MakeFromClause(ParameterDeclaration parameter, Expression body)
 		{
 			QueryFromClause fromClause = new QueryFromClause {
-				Identifier = parameter.Name,
+				Identifier = parameter.Name!,
 				Expression = body
 			};
 			fromClause.CopyAnnotationsFrom(parameter);
@@ -344,10 +380,13 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 		}
 
-		bool IsNullConditional(Expression target)
-		{
-			return target is UnaryOperatorExpression uoe && uoe.Operator == UnaryOperatorType.NullConditional;
-		}
+		bool IsNullConditional(Expression target) => target switch {
+			UnaryOperatorExpression { Operator: UnaryOperatorType.NullConditional } => true,
+			MemberReferenceExpression member => IsNullConditional(member.Target),
+			InvocationExpression invocation => IsNullConditional(invocation.Target),
+			IndexerExpression { Target: { } indexerTarget } => IsNullConditional(indexerTarget),
+			_ => false
+		};
 
 		/// <summary>
 		/// This fixes #437: Decompilation of query expression loses material parentheses
@@ -365,15 +404,17 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		/// <summary>
 		/// Ensure that all ThenBy's are correct, and that the list of ThenBy's is terminated by an 'OrderBy' invocation.
 		/// </summary>
-		bool ValidateThenByChain(InvocationExpression invocation, string expectedParameterName)
+		bool ValidateThenByChain(InvocationExpression? invocation, string expectedParameterName)
 		{
 			if (invocation == null || invocation.Arguments.Count != 1)
 				return false;
 			if (!(invocation.Target is MemberReferenceExpression mre))
 				return false;
-			if (!MatchSimpleLambda(invocation.Arguments.Single(), out ParameterDeclaration parameter, out _))
+			if (!MatchSimpleLambda(invocation.Arguments.Single(), out var parameter, out _))
 				return false;
 			if (parameter.Name != expectedParameterName)
+				return false;
+			if (mre.TypeArguments.Count > 0)
 				return false;
 
 			if (mre.MemberName == "OrderBy" || mre.MemberName == "OrderByDescending")
@@ -385,10 +426,16 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		/// <summary>Matches simple lambdas of the form "a => b"</summary>
-		bool MatchSimpleLambda(Expression expr, out ParameterDeclaration parameter, out Expression body)
+		bool MatchSimpleLambda(Expression expr, [NotNullWhen(true)] out ParameterDeclaration? parameter, [NotNullWhen(true)] out Expression? body)
 		{
 			if (expr is LambdaExpression lambda && lambda.Parameters.Count == 1 && lambda.Body is Expression)
 			{
+				if (lambda.GetResolveResult() is DecompiledLambdaResolveResult { AttemptedConversionWithTypeMismatch: true })
+				{
+					parameter = null;
+					body = null;
+					return false;
+				}
 				ParameterDeclaration p = lambda.Parameters.Single();
 				if (ValidateParameter(p))
 				{

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -66,7 +66,7 @@ namespace ICSharpCode.ILSpyX.Analyzers.Builtin
 			}
 		}
 
-		public bool Show(ISymbol symbol)
+		public bool Show(ISymbol? symbol)
 		{
 			return symbol is IEvent entity && entity.IsOverridable && entity.DeclaringType.Kind != TypeKind.Interface;
 		}

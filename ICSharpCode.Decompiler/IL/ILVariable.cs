@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -153,6 +153,16 @@ namespace ICSharpCode.Decompiler.IL
 		/// This variable is either a C# 7 'in' parameter or must be declared as 'ref readonly'.
 		/// </summary>
 		public bool IsRefReadOnly { get; internal set; }
+
+		/// <summary>
+		/// This variable must be declared with the C# <c>scoped</c> modifier.
+		/// </summary>
+		public bool IsScoped { get; internal set; }
+
+		/// <summary>
+		/// This variable must be declared with <c>scoped</c> when its declaration has no initializer.
+		/// </summary>
+		internal bool IsScopedWithoutInitializer { get; set; }
 
 		/// <summary>
 		/// The index of the local variable or parameter (depending on Kind)
@@ -477,6 +487,10 @@ namespace ICSharpCode.Decompiler.IL
 
 		internal void WriteDefinitionTo(ITextOutput output)
 		{
+			if (IsScoped)
+			{
+				output.Write("scoped ");
+			}
 			if (IsRefReadOnly)
 			{
 				output.Write("readonly ");

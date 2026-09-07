@@ -1,18 +1,36 @@
-﻿using System;
+// Copyright (c) 2019 Siegfried Pammer
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this
+// software and associated documentation files (the "Software"), to deal in the Software
+// without restriction, including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+// to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or
+// substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+// FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Xml.Linq;
+using System.Threading.Tasks;
 
 using ICSharpCode.Decompiler.CSharp;
+using ICSharpCode.Decompiler.CSharp.OutputVisitor;
+using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.DebugInfo;
 using ICSharpCode.Decompiler.Metadata;
 using ICSharpCode.Decompiler.Tests.Helpers;
-
-using Microsoft.DiaSymReader.Tools;
 
 using NUnit.Framework;
 
@@ -23,31 +41,195 @@ namespace ICSharpCode.Decompiler.Tests
 	{
 		static readonly string TestCasePath = Tester.TestCasePath + "/PdbGen";
 
+		/// <summary>
+		/// How strictly a reconstructed breakpoint must match the original compiler's.
+		/// </summary>
+		enum Tolerance
+		{
+			/// <summary>Visible breakpoints must match on source line and column.</summary>
+			LinesAndColumns,
+			/// <summary>Only the source line span must match; column placement may differ.</summary>
+			Lines
+		}
+
 		[Test]
 		public void HelloWorld()
 		{
-			TestGeneratePdb();
+			TestSequencePoints();
 		}
 
 		[Test]
-		[Ignore("Missing nested local scopes for loops, differences in IL ranges")]
 		public void ForLoopTests()
 		{
-			TestGeneratePdb();
+			// The compiler hides the unconditional branch from the loop setup to the condition test;
+			// the decompiler folds that IL into the loop body's point instead. The residual pins it.
+			TestSequencePoints(knownResidual: true);
 		}
 
 		[Test]
-		[Ignore("Differences in IL ranges")]
 		public void LambdaCapturing()
 		{
-			TestGeneratePdb();
+			// The decompiler emits one extra visible breakpoint that the C# compiler keeps hidden;
+			// the recorded residual pins that known, deliberate difference.
+			TestSequencePoints(knownResidual: true);
 		}
 
 		[Test]
-		[Ignore("Duplicate sequence points for local function")]
 		public void Members()
 		{
-			TestGeneratePdb();
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializers()
+		{
+			(string peFileName, _) = CompileTestCase(nameof(MemberInitializers));
+
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false,
+				module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+
+			using var generatedPdb = new MemoryStream();
+			new PortablePdbWriter { NoLogo = true }
+				.WritePdb(module, decompiler, new DecompilerSettings(), generatedPdb);
+
+			var methodNames = PdbSequencePoints.ReadMethodNames(peFileName);
+			var actual = PdbSequencePoints.Read(generatedPdb);
+			var constructorRows = methodNames
+				.Where(pair => pair.Value == "MemberInitializers..ctor")
+				.Select(pair => pair.Key)
+				.ToArray();
+
+			Assert.That(constructorRows, Has.Length.EqualTo(2),
+				"the fixture must keep both overloaded constructors");
+			foreach (int row in constructorRows)
+			{
+				Assert.That(actual, Does.ContainKey(row),
+					$"constructor method row 0x{0x06000000 | row:x8} has no generated sequence points");
+				var visibleStartLines = actual[row]
+					.Where(point => !point.IsHidden)
+					.Select(point => point.StartLine)
+					.ToArray();
+
+				Assert.That(visibleStartLines, Does.Contain(5),
+					"the instance field initializer must be mapped in every constructor");
+				Assert.That(visibleStartLines, Does.Contain(7),
+					"the auto-property initializer must be mapped in every constructor");
+			}
+		}
+
+		[Test]
+		public void TryCatchFinally()
+		{
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void SwitchStatement()
+		{
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void AsyncAwait()
+		{
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void YieldReturn()
+		{
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void ForeachUsing()
+		{
+			// The using statement and foreach are lowered to try/finally; the decompiler places the
+			// disposal and the closing braces differently from the compiler.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void WhileLoops()
+		{
+			// The compiler keeps the while-condition back-branch hidden, while the decompiler
+			// projects the loop condition and body points onto the decompiled source layout.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void LockStatement()
+		{
+			// The compiler breakpoints the lock's closing brace and the static-field initializer in
+			// the .cctor; the decompiler reconstructs the lock exit and the cctor differently.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void LinqQuery()
+		{
+			// The query is lowered to lambdas; the decompiler emits an extra hidden point inside each
+			// lambda and places the enclosing foreach's point differently from the compiler.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void SwitchExpression()
+		{
+			// The compiler breakpoints each switch-expression arm; the decompiler breakpoints the
+			// method's opening brace and keeps the arm bodies hidden.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void LocalFunctions()
+		{
+			TestSequencePoints();
+		}
+
+		[Test]
+		public void GotoLabels()
+		{
+			TestSequencePoints();
+		}
+
+		[Test]
+		public void CheckedUnchecked()
+		{
+			TestSequencePoints();
+		}
+
+		[Test]
+		public void NestedLoops()
+		{
+			// Same residual as ForLoopTests, once per loop: the compiler keeps the back-branch from
+			// the increment to the condition test hidden, while the decompiler folds that IL into the
+			// loop body's point.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void ConditionalOperators()
+		{
+			// The decompiler emits an extra hidden point after each statement that the compiler
+			// does not, where the ?? / ?: result is consumed.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void PatternMatching()
+		{
+			TestSequencePoints();
+		}
+
+		[Test]
+		public void UsingDeclaration()
+		{
+			// The using declaration is lowered to a try/finally whose disposal point the decompiler
+			// reconstructs at a different location than the compiler.
+			TestSequencePoints(knownResidual: true);
 		}
 
 		[Test]
@@ -61,10 +243,10 @@ namespace ICSharpCode.Decompiler.Tests
 			var decompiler = new CSharpDecompiler(moduleDefinition, resolver, new DecompilerSettings());
 			var expectedPdbId = new BlobContentId(Guid.NewGuid(), (uint)Random.Shared.Next());
 
-			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, nameof(CustomPdbId) + ".pdb"), FileMode.OpenOrCreate, FileAccess.ReadWrite))
+			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, nameof(CustomPdbId) + ".pdb"), FileMode.Create, FileAccess.ReadWrite))
 			{
-				pdbStream.SetLength(0);
-				PortablePdbWriter.WritePdb(moduleDefinition, decompiler, new DecompilerSettings(), pdbStream, noLogo: true, pdbId: expectedPdbId);
+				new PortablePdbWriter { NoLogo = true, PdbId = expectedPdbId }
+					.WritePdb(moduleDefinition, decompiler, new DecompilerSettings(), pdbStream);
 
 				pdbStream.Position = 0;
 				var metadataReader = MetadataReaderProvider.FromPortablePdbStream(pdbStream).GetMetadataReader();
@@ -73,6 +255,66 @@ namespace ICSharpCode.Decompiler.Tests
 				Assert.That(generatedPdbId.Guid, Is.EqualTo(expectedPdbId.Guid));
 				Assert.That(generatedPdbId.Stamp, Is.EqualTo(expectedPdbId.Stamp));
 			}
+		}
+
+		[Test]
+		public void EmbedSourceFiles_False_Omits_Embedded_Source()
+		{
+			// Generating a PDB alongside a project export (where the .cs are already on disk) should be
+			// able to skip embedding the source again. EmbedSourceFiles = false must drop the
+			// EmbeddedSource custom debug info (smaller PDB, no embeddedSourceLength) while keeping the
+			// document checksum/hash intact.
+
+			// Compile HelloWorld's source into a uniquely-named assembly so this test never collides
+			// with the HelloWorld fixture's .expected files under the fixture's parallel scope.
+			string sourceFile = Path.Combine(TestCasePath, nameof(HelloWorld) + ".cs");
+			string outputBase = Path.Combine(TestCasePath, nameof(EmbedSourceFiles_False_Omits_Embedded_Source) + ".expected");
+			CompileCSharpWithPdb(outputBase, sourceFile);
+			string peFileName = outputBase + ".dll";
+
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false,
+				module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+
+			byte[] WritePdbBytes(bool embedSources)
+			{
+				var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+				using var ms = new MemoryStream();
+				new PortablePdbWriter { NoLogo = true, EmbedSourceFiles = embedSources }
+					.WritePdb(module, decompiler, new DecompilerSettings(), ms);
+				return ms.ToArray();
+			}
+
+			// Inspect the portable PDB metadata directly (environment-independent): count the
+			// EmbeddedSource custom-debug-information rows and the source documents.
+			(int EmbeddedSources, int Documents) Inspect(byte[] pdb)
+			{
+				using var ms = new MemoryStream(pdb);
+				var reader = MetadataReaderProvider.FromPortablePdbStream(ms).GetMetadataReader();
+				int embedded = 0;
+				foreach (var handle in reader.CustomDebugInformation)
+				{
+					var cdi = reader.GetCustomDebugInformation(handle);
+					if (reader.GetGuid(cdi.Kind) == KnownGuids.EmbeddedSource)
+						embedded++;
+				}
+				return (embedded, reader.Documents.Count);
+			}
+
+			var withEmbed = WritePdbBytes(embedSources: true);
+			var withoutEmbed = WritePdbBytes(embedSources: false);
+
+			var embedInfo = Inspect(withEmbed);
+			var noEmbedInfo = Inspect(withoutEmbed);
+
+			Assert.That(embedInfo.EmbeddedSources, Is.GreaterThan(0),
+				"the default (embed = true) keeps the embedded-source blobs");
+			Assert.That(noEmbedInfo.EmbeddedSources, Is.EqualTo(0),
+				"embed = false must omit every embedded-source blob");
+			Assert.That(noEmbedInfo.Documents, Is.EqualTo(embedInfo.Documents).And.GreaterThan(0),
+				"the source documents (with their checksum/hash) must remain even without embedded source");
+			Assert.That(withoutEmbed.Length, Is.LessThan(withEmbed.Length),
+				"omitting embedded source must produce a strictly smaller PDB");
 		}
 
 		[Test]
@@ -101,10 +343,10 @@ namespace ICSharpCode.Decompiler.Tests
 				lastFilesWritten = progress.UnitsCompleted;
 			};
 
-			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, nameof(ProgressReporting) + ".pdb"), FileMode.OpenOrCreate, FileAccess.ReadWrite))
+			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, nameof(ProgressReporting) + ".pdb"), FileMode.Create, FileAccess.ReadWrite))
 			{
-				pdbStream.SetLength(0);
-				PortablePdbWriter.WritePdb(moduleDefinition, decompiler, new DecompilerSettings(), pdbStream, noLogo: true, progress: new TestProgressReporter(reportFunc));
+				new PortablePdbWriter { NoLogo = true, Progress = new TestProgressReporter(reportFunc) }
+					.WritePdb(moduleDefinition, decompiler, new DecompilerSettings(), pdbStream);
 
 				pdbStream.Position = 0;
 				var metadataReader = MetadataReaderProvider.FromPortablePdbStream(pdbStream).GetMetadataReader();
@@ -112,6 +354,100 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 
 			Assert.That(lastFilesWritten, Is.EqualTo(totalFiles));
+		}
+
+		[Test]
+		public async Task PinnedRegionWarning()
+		{
+			// Decompiling this fixture makes DetectPinnedRegions duplicate a block shared by a pinned
+			// region and record a warning. The warning is emitted as an EmptyStatement that carries
+			// only a comment, so it prints no semicolon. Such a statement must still be assigned a text
+			// location, otherwise SequencePointBuilder crashes on the empty location while generating
+			// sequence points for the PDB.
+			string ilFile = Path.Combine(TestCasePath, nameof(PinnedRegionWarning) + ".il");
+			string peFileName = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false,
+				module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+			var settings = new DecompilerSettings();
+			var decompiler = new CSharpDecompiler(module, resolver, settings);
+
+			var syntaxTree = decompiler.DecompileType(new Decompiler.TypeSystem.FullTypeName("C"));
+
+			// Locations are recorded while printing, so the tree has to be run through the output
+			// visitor first - exactly as PortablePdbWriter does before calling CreateSequencePoints.
+			var output = new StringWriter();
+			TokenWriter tokenWriter = new TextWriterTokenWriter(output);
+			tokenWriter = TokenWriter.WrapInWriterThatSetsLocationsInAST(tokenWriter);
+			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(tokenWriter, settings.CSharpFormattingOptions));
+
+			var warningStatement = syntaxTree.Descendants.OfType<EmptyStatement>().SingleOrDefault();
+			Assert.That(warningStatement, Is.Not.Null,
+				"the fixture must produce the warning-carrying EmptyStatement it is testing");
+			var comment = warningStatement.LeadingTrivia.Concat(warningStatement.TrailingTrivia).FirstOrDefault();
+			Assert.That(comment, Is.Not.Null, "the warning statement must carry a comment");
+			Assert.That(comment.StartLocation.IsEmpty, Is.False, "the carried comment must have been printed");
+			Assert.That(warningStatement.StartLocation, Is.EqualTo(comment.StartLocation),
+				"a comment-only EmptyStatement should take the location of the comment it carries");
+			Assert.DoesNotThrow(() => decompiler.CreateSequencePoints(syntaxTree));
+		}
+
+		[Test]
+		public async Task PinnedLocalSlot()
+		{
+			// The decompiler models a pinned-region local as a pointer (int*), which never matches the
+			// metadata local signature type (int& pinned). The slot index is still faithful to the IL,
+			// and the type is never written to the PDB, so generating debug info must not assert on the
+			// type difference.
+			string ilFile = Path.Combine(TestCasePath, nameof(PinnedLocalSlot) + ".il");
+			string peFileName = await Tester.AssembleIL(ilFile, AssemblerOptions.Library);
+
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false,
+				module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+
+			var syntaxTree = decompiler.DecompileType(new Decompiler.TypeSystem.FullTypeName("C"));
+
+			Assert.DoesNotThrow(() => {
+				var debugInfo = new Decompiler.DebugInfo.DebugInfoGenerator(decompiler.TypeSystem);
+				syntaxTree.AcceptVisitor(debugInfo);
+			});
+		}
+
+		[Test]
+		public void RuntimeAsync()
+		{
+			// A .NET 11 runtime-async method (MethodImplAsync bit, no MoveNext state machine) is
+			// IsAsync from its signature but never gets AsyncDebugInfo populated. The writer must omit
+			// MethodSteppingInformation for it - the C# compiler emits none either - rather than build
+			// a stepping blob from the default (uninitialized) AsyncDebugInfo and throw an NRE (#3754).
+			string sourceFile = Path.Combine(TestCasePath, nameof(RuntimeAsync) + ".cs");
+			string outputBase = Path.Combine(TestCasePath, nameof(RuntimeAsync) + ".expected");
+			Tester.CompileCSharpWithPdb(outputBase, new Dictionary<string, string> {
+				{ Path.GetFileName(sourceFile), File.ReadAllText(sourceFile) }
+			}, CompilerOptions.EnableRuntimeAsync);
+			string peFileName = outputBase + ".dll";
+
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false,
+				module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+
+			using var generatedPdb = new MemoryStream();
+			Assert.DoesNotThrow(() => new PortablePdbWriter { NoLogo = true }
+				.WritePdb(module, decompiler, new DecompilerSettings(), generatedPdb));
+
+			// The runtime-async method must carry no MethodSteppingInformation, matching the compiler.
+			generatedPdb.Position = 0;
+			var reader = MetadataReaderProvider.FromPortablePdbStream(generatedPdb).GetMetadataReader();
+			foreach (var handle in reader.CustomDebugInformation)
+			{
+				var cdi = reader.GetCustomDebugInformation(handle);
+				Assert.That(reader.GetGuid(cdi.Kind), Is.Not.EqualTo(KnownGuids.MethodSteppingInformation),
+					"runtime-async methods have no yield/resume offsets; no stepping information should be emitted");
+			}
 		}
 
 		private class TestProgressReporter : IProgress<DecompilationProgress>
@@ -129,83 +465,142 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		private void TestGeneratePdb([CallerMemberName] string testName = null)
+		/// <summary>
+		/// Compiles the fixture with the C# compiler (producing a real PDB used as the oracle),
+		/// decompiles it and reconstructs a PDB with <see cref="PortablePdbWriter"/>, then compares
+		/// the two PDBs' breakpoint maps. The decompiler reconstructs IL ranges and local scopes
+		/// differently from the compiler, so the comparison asserts on source locations and hidden
+		/// point placement without depending on exact IL offsets.
+		/// </summary>
+		/// <param name="tolerance">
+		/// Whether visible breakpoints must match on column as well as line.
+		/// </param>
+		/// <param name="knownResidual">
+		/// When false, the breakpoint map must match the compiler exactly (after the projection
+		/// above). When true, the residual difference must match the committed
+		/// <c>&lt;testName&gt;.residual.txt</c> snapshot - this pins the known imperfections the
+		/// decompiler cannot yet reproduce, so an improvement or a regression both flip the test and
+		/// prompt a deliberate snapshot update (the same accept-the-diff workflow as the pretty tests).
+		/// </param>
+		private void TestSequencePoints(Tolerance tolerance = Tolerance.LinesAndColumns, bool knownResidual = false,
+			[CallerMemberName] string testName = null)
 		{
-			const PdbToXmlOptions options = PdbToXmlOptions.IncludeEmbeddedSources | PdbToXmlOptions.ThrowOnError | PdbToXmlOptions.IncludeTokens | PdbToXmlOptions.ResolveTokens | PdbToXmlOptions.IncludeMethodSpans;
-
-			string xmlFile = Path.Combine(TestCasePath, testName + ".xml");
 			(string peFileName, string pdbFileName) = CompileTestCase(testName);
 
-			var moduleDefinition = new PEFile(peFileName);
-			var resolver = new UniversalAssemblyResolver(peFileName, false, moduleDefinition.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
-			var decompiler = new CSharpDecompiler(moduleDefinition, resolver, new DecompilerSettings());
-			using (FileStream pdbStream = File.Open(Path.Combine(TestCasePath, testName + ".pdb"), FileMode.OpenOrCreate, FileAccess.ReadWrite))
+			var module = new PEFile(peFileName);
+			var resolver = new UniversalAssemblyResolver(peFileName, false, module.Metadata.DetectTargetFrameworkId(), null, PEStreamOptions.PrefetchEntireImage);
+			var decompiler = new CSharpDecompiler(module, resolver, new DecompilerSettings());
+
+			using var generatedPdb = new MemoryStream();
+			new PortablePdbWriter { NoLogo = true }
+				.WritePdb(module, decompiler, new DecompilerSettings(), generatedPdb);
+
+			var methodNames = PdbSequencePoints.ReadMethodNames(peFileName);
+			var actual = PdbSequencePoints.Read(generatedPdb);
+			Dictionary<int, List<PdbSequencePoints.RawSequencePoint>> expected;
+			using (var compilerPdb = File.OpenRead(pdbFileName))
+				expected = PdbSequencePoints.Read(compilerPdb);
+
+			// Oracle-free structural check on the decompiler's own PDB.
+			string wellFormed = PdbSequencePoints.CheckWellFormed(actual, methodNames);
+			Assert.That(wellFormed, Is.Empty, "the reconstructed PDB is not well-formed:\n" + wellFormed);
+
+			string residual = PdbSequencePoints.CompareBreakpointMaps(
+				expected, actual, methodNames,
+				includeColumns: tolerance == Tolerance.LinesAndColumns, includeHidden: true);
+
+			if (knownResidual)
 			{
-				pdbStream.SetLength(0);
-				PortablePdbWriter.WritePdb(moduleDefinition, decompiler, new DecompilerSettings(), pdbStream, noLogo: true);
-				pdbStream.Position = 0;
-				using (Stream peStream = File.OpenRead(peFileName))
-				using (Stream expectedPdbStream = File.OpenRead(pdbFileName))
+				string snapshotFile = Path.Combine(TestCasePath, testName + ".residual.txt");
+				string expectedResidual = File.Exists(snapshotFile)
+					? File.ReadAllText(snapshotFile).Replace("\r\n", "\n")
+					: "";
+				if (residual != expectedResidual)
 				{
-					using (StreamWriter writer = new StreamWriter(Path.ChangeExtension(pdbFileName, ".xml"), false, Encoding.UTF8))
+					// Setting ILSPY_ACCEPT_PDB_RESIDUAL=1 accepts the new residual in place, so a
+					// deliberate change is committed by re-running the test with the variable set
+					// rather than by hand-copying files.
+					if (Environment.GetEnvironmentVariable("ILSPY_ACCEPT_PDB_RESIDUAL") == "1")
 					{
-						PdbToXmlConverter.ToXml(writer, expectedPdbStream, peStream, options);
+						File.WriteAllText(snapshotFile, residual);
 					}
-					peStream.Position = 0;
-					using (StreamWriter writer = new StreamWriter(Path.ChangeExtension(xmlFile, ".generated.xml"), false, Encoding.UTF8))
+					else
 					{
-						PdbToXmlConverter.ToXml(writer, pdbStream, peStream, options);
+						File.WriteAllText(snapshotFile + ".generated", residual);
+						Assert.Fail($"the breakpoint-map residual changed; review the difference and, if intended, "
+							+ $"accept it by re-running this test with ILSPY_ACCEPT_PDB_RESIDUAL=1 set (or copy "
+							+ $"'{testName}.residual.txt.generated' over '{testName}.residual.txt')."
+							+ $"\n\nExpected:\n{expectedResidual}\nActual:\n{residual}");
 					}
 				}
 			}
-			string expectedFileName = Path.ChangeExtension(xmlFile, ".expected.xml");
-			ProcessXmlFile(expectedFileName);
-			string generatedFileName = Path.ChangeExtension(xmlFile, ".generated.xml");
-			ProcessXmlFile(generatedFileName);
-			CodeAssert.AreEqual(Normalize(expectedFileName), Normalize(generatedFileName));
+			else
+			{
+				Assert.That(residual, Is.Empty, "the reconstructed breakpoint map differs from the compiler's:\n" + residual);
+			}
+		}
+
+		[Test]
+		public void MemberInitializerSingleCtor()
+		{
+			// The lifted field and auto-property initializers must be breakpointable in the single
+			// explicit constructor.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializerChainedCtors()
+		{
+			// The non-chained constructor breakpoints the initializers; the this()-chained constructor
+			// does not run them and must not.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializerImplicitCtor()
+		{
+			// The compiler-generated default constructor runs the initializers and must breakpoint them.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializerStaticCtor()
+		{
+			// Static initializers run in the implicit static constructor and must be breakpointable there.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializerPrimaryCtor()
+		{
+			// The field initializer runs in the primary constructor (whose body is never printed) and
+			// must be breakpointable there.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		[Test]
+		public void MemberInitializerEvents()
+		{
+			// A field-like event initializer runs in every instance constructor, like a field.
+			TestSequencePoints(knownResidual: true);
+		}
+
+		private static void CompileCSharpWithPdb(string outputBase, string sourceFile)
+		{
+			Tester.CompileCSharpWithPdb(outputBase, new Dictionary<string, string> {
+				{ Path.GetFileName(sourceFile), File.ReadAllText(sourceFile) }
+			});
 		}
 
 		private (string peFileName, string pdbFileName) CompileTestCase(string testName)
 		{
-			string xmlFile = Path.Combine(TestCasePath, testName + ".xml");
-			string xmlContent = File.ReadAllText(xmlFile);
-			XDocument document = XDocument.Parse(xmlContent);
-			var files = document.Descendants("file").ToDictionary(f => f.Attribute("name").Value, f => f.Value);
-			Tester.CompileCSharpWithPdb(Path.Combine(TestCasePath, testName + ".expected"), files);
+			string sourceFile = Path.Combine(TestCasePath, testName + ".cs");
+			CompileCSharpWithPdb(Path.Combine(TestCasePath, testName + ".expected"), sourceFile);
 
 			string peFileName = Path.Combine(TestCasePath, testName + ".expected.dll");
 			string pdbFileName = Path.Combine(TestCasePath, testName + ".expected.pdb");
 
 			return (peFileName, pdbFileName);
 		}
-
-		private void ProcessXmlFile(string fileName)
-		{
-			var document = XDocument.Load(fileName);
-			foreach (var file in document.Descendants("file"))
-			{
-				file.Attribute("checksum").Remove();
-				file.Attribute("embeddedSourceLength")?.Remove();
-				file.ReplaceNodes(new XCData(file.Value.Replace("\uFEFF", "")));
-			}
-			document.Save(fileName, SaveOptions.None);
-		}
-
-		private string Normalize(string inputFileName)
-		{
-			return File.ReadAllText(inputFileName).Replace("\r\n", "\n").Replace("\r", "\n");
-		}
-	}
-
-	class StringWriterWithEncoding : StringWriter
-	{
-		readonly Encoding encoding;
-
-		public StringWriterWithEncoding(Encoding encoding)
-		{
-			this.encoding = encoding ?? throw new ArgumentNullException("encoding");
-		}
-
-		public override Encoding Encoding => encoding;
 	}
 }

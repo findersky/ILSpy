@@ -1,4 +1,4 @@
-﻿<?xml version="1.0"?>
+<?xml version="1.0"?>
 <SyntaxDefinition name="C#" extensions=".cs" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
 	<!-- This is a variant of the AvalonEdit C# highlighting that has several constructs disabled.
 	     The disabled constructs (e.g. contextual keywords) are highlighted using the CSharpLanguage.HighlightingTokenWriter instead.
@@ -117,7 +117,10 @@
 		</Span>
 		
 		<Span color="Char">
-			<Begin>'</Begin>
+			<!-- Not preceded by an identifier character: names compiled from F# and
+			     obfuscated assemblies may contain apostrophes (e.g. x'), which must not
+			     start a char literal (issue #3652). -->
+			<Begin>(?&lt;![\w'])'</Begin>
 			<End>'</End>
 			<RuleSet>
 				<!-- span for escape sequences -->

@@ -16,113 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
+#nullable enable
+
 using System.Collections.Generic;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
-using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
 	/// A type reference in the C# AST.
 	/// </summary>
-	public abstract class AstType : AstNode
+	[DecompilerAstNode(hasPatternPlaceholder: true)]
+	public abstract partial class AstType : AstNode
 	{
-		#region Null
-		public new static readonly AstType Null = new NullAstType();
-
-		sealed class NullAstType : AstType
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-
-			public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider)
-			{
-				return SpecialType.UnknownType;
-			}
-		}
-		#endregion
-
-		#region PatternPlaceholder
-		public static implicit operator AstType(PatternMatching.Pattern pattern)
-		{
-			return pattern != null ? new PatternPlaceholder(pattern) : null;
-		}
-
-		sealed class PatternPlaceholder : AstType, INode
-		{
-			readonly PatternMatching.Pattern child;
-
-			public PatternPlaceholder(PatternMatching.Pattern child)
-			{
-				this.child = child;
-			}
-
-			public override NodeType NodeType {
-				get { return NodeType.Pattern; }
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitPatternPlaceholder(this, child);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitPatternPlaceholder(this, child, data);
-			}
-
-			public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider)
-			{
-				throw new NotSupportedException();
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return child.DoMatch(other, match);
-			}
-
-			bool PatternMatching.INode.DoMatchCollection(Role role, PatternMatching.INode pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
-			{
-				return child.DoMatchCollection(role, pos, match, backtrackingInfo);
-			}
-		}
-		#endregion
-
-		public override NodeType NodeType {
-			get { return NodeType.TypeReference; }
-		}
-
 		public new AstType Clone()
 		{
 			return (AstType)base.Clone();
@@ -133,37 +41,9 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		/// </summary>
 		public bool IsVar()
 		{
-			SimpleType st = this as SimpleType;
+			SimpleType? st = this as SimpleType;
 			return st != null && st.Identifier == "var" && st.TypeArguments.Count == 0;
 		}
-
-		/// <summary>
-		/// Create an ITypeReference for this AstType.
-		/// Uses the context (ancestors of this node) to determine the correct <see cref="NameLookupMode"/>.
-		/// </summary>
-		/// <remarks>
-		/// The resulting type reference will read the context information from the
-		/// <see cref="ITypeResolveContext"/>:
-		/// For resolving type parameters, the CurrentTypeDefinition/CurrentMember is used.
-		/// For resolving simple names, the current namespace and usings from the CurrentUsingScope
-		/// (on CSharpTypeResolveContext only) is used.
-		/// </remarks>
-		public ITypeReference ToTypeReference(InterningProvider interningProvider = null)
-		{
-			return ToTypeReference(GetNameLookupMode(), interningProvider);
-		}
-
-		/// <summary>
-		/// Create an ITypeReference for this AstType.
-		/// </summary>
-		/// <remarks>
-		/// The resulting type reference will read the context information from the
-		/// <see cref="ITypeResolveContext"/>:
-		/// For resolving type parameters, the CurrentTypeDefinition/CurrentMember is used.
-		/// For resolving simple names, the current namespace and usings from the CurrentUsingScope
-		/// (on CSharpTypeResolveContext only) is used.
-		/// </remarks>
-		public abstract ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider = null);
 
 		/// <summary>
 		/// Gets the name lookup mode from the context (looking at the ancestors of this <see cref="AstType"/>).
@@ -178,7 +58,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			{
 				return NameLookupMode.TypeInUsingDeclaration;
 			}
-			else if (outermostType.Role == Roles.BaseType)
+			else if (outermostType.Slot?.Kind == Slots.BaseType)
 			{
 				// Use BaseTypeReference for a type's base type, and for a constraint on a type.
 				// Do not use it for a constraint on a method.

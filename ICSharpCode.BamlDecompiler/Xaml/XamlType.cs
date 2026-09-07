@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright (c) 2015 Ki
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,12 +64,12 @@ namespace ICSharpCode.BamlDecompiler.Xaml
 
 			string xmlNs = null;
 			if (elem.Annotation<XmlnsScope>() != null)
-				xmlNs = elem.Annotation<XmlnsScope>().LookupXmlns(FullAssemblyName, TypeNamespace);
+				xmlNs = elem.Annotation<XmlnsScope>().LookupXmlns(FullAssemblyName, TypeNamespace, TypeName);
 			if (xmlNs == null)
-				xmlNs = ctx.XmlNs.LookupXmlns(FullAssemblyName, TypeNamespace);
+				xmlNs = ctx.XmlNs.LookupXmlns(FullAssemblyName, TypeNamespace, TypeName);
 			// Sometimes there's no reference to System.Xaml even if x:Type is used
 			if (xmlNs == null)
-				xmlNs = ctx.TryGetXmlNamespace(Assembly, TypeNamespace);
+				xmlNs = XamlContext.TryGetXmlNamespace(Assembly, TypeNamespace, elem);
 
 			if (xmlNs == null)
 			{

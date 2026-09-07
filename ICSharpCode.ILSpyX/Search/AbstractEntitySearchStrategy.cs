@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -41,6 +41,13 @@ namespace ICSharpCode.ILSpyX.Search
 		protected bool CheckVisibility(IEntity? entity)
 		{
 			if (apiVisibility == ApiVisibility.All)
+				return true;
+
+			// The query parser sets IncludePrivateApi when the user types `<` or `>` —
+			// characteristic of compiler-generated names (state-machines, display classes,
+			// anonymous closures). Bypass the public-only filter so those names actually
+			// surface as results when the user is hunting for them specifically.
+			if (searchRequest.IncludePrivateApi)
 				return true;
 
 			while (entity != null)

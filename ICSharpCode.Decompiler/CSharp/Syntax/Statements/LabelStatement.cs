@@ -1,4 +1,4 @@
-﻿// 
+// 
 // LabelStatement.cs
 //
 // Author:
@@ -24,51 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Label:
+	/// <c>labeled_statement ::= identifier ':' statement</c> (C# grammar §13.5)
 	/// </summary>
-	public class LabelStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class LabelStatement : Statement
 	{
-		public string Label {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier LabelToken {
-			get { return GetChildByRole(Roles.Identifier); }
-			set { SetChildByRole(Roles.Identifier, value); }
-		}
-
-		public CSharpTokenNode ColonToken {
-			get { return GetChildByRole(Roles.Colon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitLabelStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitLabelStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitLabelStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			LabelStatement o = other as LabelStatement;
-			return o != null && MatchString(this.Label, o.Label);
-		}
+		[Slot("Identifier")]
+		public partial string Label { get; set; }
 	}
 }

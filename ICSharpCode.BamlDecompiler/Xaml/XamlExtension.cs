@@ -1,4 +1,4 @@
-﻿/*
+/*
 	Copyright (c) 2015 Ki
 
 	Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,7 +43,7 @@ namespace ICSharpCode.BamlDecompiler.Xaml
 			if (value is XamlExtension)
 				sb.Append(((XamlExtension)value).ToString(ctx, ctxElement));
 			else
-				sb.Append(value.ToString());
+				sb.Append(XamlUtils.QuoteMarkupExtensionValue(value.ToString()));
 		}
 
 		public string ToString(XamlContext ctx, XElement ctxElement)

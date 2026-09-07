@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FixedStatement.cs
 //
 // Author:
@@ -24,61 +24,25 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// fixed (Type Variables) EmbeddedStatement
+	/// <c>fixed_statement ::= 'fixed' '(' type variable_initializer* ')' statement</c> (C# grammar §24.7)
 	/// </summary>
-	public class FixedStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class FixedStatement : Statement
 	{
-		public static readonly TokenRole FixedKeywordRole = new TokenRole("fixed");
+		public const string FixedKeyword = "fixed";
 
-		public CSharpTokenNode FixedToken {
-			get { return GetChildByRole(FixedKeywordRole); }
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
+		[Slot("Variable")]
+		public partial AstNodeCollection<VariableInitializer> Variables { get; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public AstNodeCollection<VariableInitializer> Variables {
-			get { return GetChildrenByRole(Roles.Variable); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public Statement EmbeddedStatement {
-			get { return GetChildByRole(Roles.EmbeddedStatement); }
-			set { SetChildByRole(Roles.EmbeddedStatement, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitFixedStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitFixedStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitFixedStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			FixedStatement o = other as FixedStatement;
-			return o != null && this.Type.DoMatch(o.Type, match) && this.Variables.DoMatch(o.Variables, match) && this.EmbeddedStatement.DoMatch(o.EmbeddedStatement, match);
-		}
+		[Slot("EmbeddedStatement")]
+		public partial Statement EmbeddedStatement { get; set; }
 	}
 }

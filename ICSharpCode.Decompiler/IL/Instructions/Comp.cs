@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 // Copyright (c) 2014 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -86,7 +86,7 @@ namespace ICSharpCode.Decompiler.IL
 
 		public static string GetToken(this ComparisonKind kind)
 		{
-			return BinaryOperatorExpression.GetOperatorRole(kind.ToBinaryOperatorType()).Token;
+			return BinaryOperatorExpression.GetOperatorToken(kind.ToBinaryOperatorType());
 		}
 	}
 
@@ -161,12 +161,26 @@ namespace ICSharpCode.Decompiler.IL
 		}
 
 		public override StackType ResultType => LiftingKind == ComparisonLiftingKind.ThreeValuedLogic ? StackType.O : StackType.I4;
+
+		public override IType InferType(ICompilation compilation)
+		{
+			IType boolType = compilation.FindType(KnownTypeCode.Boolean);
+			if (LiftingKind == ComparisonLiftingKind.ThreeValuedLogic)
+			{
+				return NullableType.Create(compilation, boolType);
+			}
+			else
+			{
+				return boolType;
+			}
+		}
+
 		public bool IsLifted => LiftingKind != ComparisonLiftingKind.None;
 		public StackType UnderlyingResultType => StackType.I4;
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 			if (LiftingKind == ComparisonLiftingKind.None)
 			{
 				Debug.Assert(Left.ResultType == InputType);
@@ -179,7 +193,7 @@ namespace ICSharpCode.Decompiler.IL
 			}
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			if (options.UseLogicOperationSugar && MatchLogicNot(out var arg))
@@ -228,6 +242,30 @@ namespace ICSharpCode.Decompiler.IL
 		{
 			var liftingKind = isLifted ? ComparisonLiftingKind.ThreeValuedLogic : ComparisonLiftingKind.None;
 			return new Comp(ComparisonKind.Equality, liftingKind, StackType.I4, Sign.None, arg, new LdcI4(0));
+		}
+
+		internal override bool CanInlineIntoSlot(int childIndex, ILInstruction expressionBeingMoved)
+		{
+			// ExpressionBuilder translates comp.o(a op b) for op not in (==, !=) into
+			// Unsafe.As(ref a) op Unsafe.As(ref b), which requires that a and b are variables
+			// and not expressions. Returning false in those cases prevents inlining.
+			// However if one of the arguments is LdNull, then we don't need the Unsafe.As trickery, and can always inline.
+			if (kind.IsEqualityOrInequality() || this.InputType != StackType.O)
+			{
+				// OK, won't need Unsafe.As.
+				return true;
+			}
+			if (expressionBeingMoved is LdLoc || expressionBeingMoved.MatchLdsFld(out _))
+			{
+				// OK, can use variable/field name with Unsafe.As(ref x)
+				return true;
+			}
+			if (Sign != Sign.Signed && (expressionBeingMoved is LdNull || Left is LdNull || Right is LdNull))
+			{
+				// OK, this is the "compare with null" special case that doesn't need Unsafe.As()
+				return true;
+			}
+			return false;
 		}
 	}
 }

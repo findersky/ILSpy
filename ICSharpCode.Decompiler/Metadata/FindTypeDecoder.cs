@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 Siegfried Pammer
+// Copyright (c) 2022 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -60,8 +60,6 @@ namespace ICSharpCode.Decompiler.Metadata
 			this.typeName = type.MetadataName;
 			this.namespaceName = type.Namespace;
 		}
-
-
 
 		public bool GetArrayType(bool elementType, ArrayShape shape) => elementType;
 		public bool GetByReferenceType(bool elementType) => elementType;

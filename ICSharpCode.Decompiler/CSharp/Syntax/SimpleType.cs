@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FullTypeName.cs
 //
 // Author:
@@ -24,63 +24,18 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using System.Collections.Generic;
+#nullable enable
 
-using ICSharpCode.Decompiler.CSharp.Resolver;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
-using ICSharpCode.Decompiler.TypeSystem;
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class SimpleType : AstType
+	/// <summary>
+	/// <c>simple_type ::= identifier ( '&lt;' type ( ',' type )* '&gt;' )?</c> (C# grammar §7.8.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class SimpleType : AstType
 	{
-		#region Null
-		public new static readonly SimpleType Null = new NullSimpleType();
-
-		sealed class NullSimpleType : SimpleType
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-
-			public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider)
-			{
-				return SpecialType.UnknownType;
-			}
-		}
-		#endregion
-
-		public SimpleType()
-		{
-		}
-
-		public SimpleType(string identifier)
-		{
-			this.Identifier = identifier;
-		}
-
 		public SimpleType(Identifier identifier)
 		{
 			this.IdentifierToken = identifier;
@@ -88,83 +43,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		public SimpleType(string identifier, TextLocation location)
 		{
-			SetChildByRole(Roles.Identifier, Syntax.Identifier.Create(identifier, location));
+			SetChild(Slots.Identifier, Syntax.Identifier.Create(identifier, location));
 		}
+		[Slot("Identifier")]
+		public partial string? Identifier { get; set; }
 
-		public SimpleType(string identifier, IEnumerable<AstType> typeArguments)
-		{
-			this.Identifier = identifier;
-			foreach (var arg in typeArguments)
-			{
-				AddChild(arg, Roles.TypeArgument);
-			}
-		}
-
-		public SimpleType(string identifier, params AstType[] typeArguments) : this(identifier, (IEnumerable<AstType>)typeArguments)
-		{
-		}
-
-		public string Identifier {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Syntax.Identifier.Create(value));
-			}
-		}
-
-		public Identifier IdentifierToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public AstNodeCollection<AstType> TypeArguments {
-			get { return GetChildrenByRole(Roles.TypeArgument); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitSimpleType(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitSimpleType(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitSimpleType(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			SimpleType o = other as SimpleType;
-			return o != null && MatchString(this.Identifier, o.Identifier) && this.TypeArguments.DoMatch(o.TypeArguments, match);
-		}
-
-		public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider = null)
-		{
-			if (interningProvider == null)
-				interningProvider = InterningProvider.Dummy;
-			var typeArguments = new List<ITypeReference>();
-			foreach (var ta in this.TypeArguments)
-			{
-				typeArguments.Add(ta.ToTypeReference(lookupMode, interningProvider));
-			}
-			string identifier = interningProvider.Intern(this.Identifier);
-			if (typeArguments.Count == 0 && string.IsNullOrEmpty(identifier))
-			{
-				// empty SimpleType is used for typeof(List<>).
-				return SpecialType.UnboundTypeArgument;
-			}
-			var t = new SimpleTypeOrNamespaceReference(identifier, interningProvider.InternList(typeArguments), lookupMode);
-			return interningProvider.Intern(t);
-		}
+		[Slot("TypeArgument")]
+		public partial AstNodeCollection<AstType> TypeArguments { get; }
 	}
 }
-

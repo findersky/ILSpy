@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2025 Siegfried Pammer
+// Copyright (c) 2025 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -140,6 +140,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				argument.ReplaceWith(expr);
 			}
 			block.Instructions.RemoveRange(startPos, containingStmt.ChildIndex - startPos);
+			context.EndStep(containingStmt);
 		}
 	}
 }

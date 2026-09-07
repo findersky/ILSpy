@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Siegfried Pammer
+// Copyright (c) 2020 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,45 +16,20 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// TypeName VariableDesignation
+	/// <c>declaration_expression ::= type variable_designation</c> (C# grammar §12.20)
 	/// </summary>
-	public class DeclarationExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class DeclarationExpression : Expression
 	{
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public VariableDesignation Designation {
-			get { return GetChildByRole(Roles.VariableDesignationRole); }
-			set { SetChildByRole(Roles.VariableDesignationRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDeclarationExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDeclarationExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDeclarationExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is DeclarationExpression o
-				&& Type.DoMatch(o.Type, match)
-				&& Designation.DoMatch(o.Designation, match);
-		}
+		[Slot("VariableDesignation")]
+		public partial VariableDesignation Designation { get; set; }
 	}
 }

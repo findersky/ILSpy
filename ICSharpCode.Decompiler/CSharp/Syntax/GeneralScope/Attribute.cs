@@ -1,4 +1,4 @@
-﻿// 
+// 
 // Attribute.cs
 //
 // Author:
@@ -24,69 +24,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Attribute(Arguments)
+	/// <c>attribute ::= type ( '(' expression* ')' )?</c> (C# grammar §23.3)
 	/// </summary>
-	public class Attribute : AstNode
+	[DecompilerAstNode]
+	public sealed partial class Attribute : AstNode
 	{
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstNodeCollection<Expression> Arguments {
-			get { return base.GetChildrenByRole(Roles.Argument); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
+		[Slot("Argument")]
+		public partial AstNodeCollection<Expression> Arguments { get; }
 
 		// HasArgumentList == false: [Empty]
-		public bool HasArgumentList {
-			get;
-			set;
-		}
+		public bool HasArgumentList { get; set; }
 
-		public override void AcceptVisitor(IAstVisitor visitor)
+		public override string ToString(CSharpFormattingOptions? formattingOptions)
 		{
-			visitor.VisitAttribute(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitAttribute(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitAttribute(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			Attribute o = other as Attribute;
-			return o != null && this.Type.DoMatch(o.Type, match) && this.Arguments.DoMatch(o.Arguments, match);
-		}
-
-		public override string ToString(CSharpFormattingOptions formattingOptions)
-		{
-			if (IsNull)
-				return "Null";
 			return base.ToString(formattingOptions);
 		}
 	}

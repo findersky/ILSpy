@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 Siegfried Pammer
+// Copyright (c) 2019 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -79,7 +79,15 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		internal bool IsStaticLocalFunction { get; }
 
-		public IMember MemberDefinition => this;
+		public IMember MemberDefinition {
+			get {
+				var baseMethodDefinition = (IMethod)baseMethod.MemberDefinition;
+				if (ReferenceEquals(baseMethodDefinition, baseMethod))
+					return this;
+				return new LocalFunctionMethod(baseMethodDefinition, Name, IsStaticLocalFunction,
+					NumberOfCompilerGeneratedParameters, NumberOfCompilerGeneratedTypeParameters);
+			}
+		}
 
 		public IType ReturnType => baseMethod.ReturnType;
 		IEnumerable<IMember> IMember.ExplicitlyImplementedInterfaceMembers => baseMethod.ExplicitlyImplementedInterfaceMembers;

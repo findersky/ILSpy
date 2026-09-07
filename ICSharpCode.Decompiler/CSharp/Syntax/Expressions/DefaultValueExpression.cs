@@ -1,4 +1,4 @@
-﻿// 
+// 
 // DefaultValueExpression.cs
 //  
 // Author:
@@ -24,62 +24,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// default(Type)
+	/// <c>default_value_expression ::= 'default' ( '(' type ')' )?</c> (C# grammar §12.8.21)
 	/// </summary>
-	public class DefaultValueExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class DefaultValueExpression : Expression
 	{
-		public readonly static TokenRole DefaultKeywordRole = new TokenRole("default");
+		public const string DefaultKeyword = "default";
 
-		public CSharpTokenNode DefaultToken {
-			get { return GetChildByRole(DefaultKeywordRole); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public DefaultValueExpression()
-		{
-		}
-
-		public DefaultValueExpression(AstType type)
-		{
-			AddChild(type, Roles.Type);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDefaultValueExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDefaultValueExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDefaultValueExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			DefaultValueExpression o = other as DefaultValueExpression;
-			return o != null && this.Type.DoMatch(o.Type, match);
-		}
+		[Slot("Type")]
+		public partial AstType? Type { get; set; }
 	}
 }
-

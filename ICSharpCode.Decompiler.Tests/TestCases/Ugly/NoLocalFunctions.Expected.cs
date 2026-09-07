@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -44,19 +44,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Ugly
 
 		private static void SimpleCapture()
 		{
-			_003C_003Ec__DisplayClass1_0 A_ = default(_003C_003Ec__DisplayClass1_0);
-			A_.x = 1;
-			_003CSimpleCapture_003Eg__F_007C1_0(ref A_);
+			_003C_003Ec__DisplayClass1_0 obj = default(_003C_003Ec__DisplayClass1_0);
+			obj.x = 1;
+			_003CSimpleCapture_003Eg__F_007C1_0(ref obj);
 		}
 
 		private static void SimpleCaptureWithRef()
 		{
-			_003C_003Ec__DisplayClass2_0 _003C_003Ec__DisplayClass2_ = new _003C_003Ec__DisplayClass2_0();
-			_003C_003Ec__DisplayClass2_.x = 1;
 #if OPT
-			new Handle(new Func<int>(_003C_003Ec__DisplayClass2_._003CSimpleCaptureWithRef_003Eg__F_007C0));
+			_003C_003Ec__DisplayClass2_0 obj = new _003C_003Ec__DisplayClass2_0();
+			obj.x = 1;
+			new Handle(new Func<int>(obj._003CSimpleCaptureWithRef_003Eg__F_007C0));
 #else
-			Handle handle = new Handle(new Func<int>(_003C_003Ec__DisplayClass2_._003CSimpleCaptureWithRef_003Eg__F_007C0));
+			_003C_003Ec__DisplayClass2_0 obj = new _003C_003Ec__DisplayClass2_0();
+			obj.x = 1;
+			Handle handle = new Handle(new Func<int>(obj._003CSimpleCaptureWithRef_003Eg__F_007C0));
 #endif
 		}
 
@@ -67,9 +69,9 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Ugly
 		}
 
 		[CompilerGenerated]
-		private static int _003CSimpleCapture_003Eg__F_007C1_0(ref _003C_003Ec__DisplayClass1_0 A_0)
+		private static int _003CSimpleCapture_003Eg__F_007C1_0(ref _003C_003Ec__DisplayClass1_0 P_0)
 		{
-			return 42 + A_0.x;
+			return 42 + P_0.x;
 		}
 	}
 }

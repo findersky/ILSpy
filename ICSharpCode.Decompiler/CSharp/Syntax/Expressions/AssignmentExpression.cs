@@ -1,4 +1,4 @@
-﻿// 
+// 
 // AssignmentExpression.cs
 //
 // Author:
@@ -24,120 +24,77 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
-using System.Collections.Generic;
 using System.Linq.Expressions;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Left Operator= Right
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <c>assignment_expression ::= expression assignment_operator expression</c> (C# grammar §12.24)
+	/// <c>assignment_operator ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '&lt;&lt;=' | '&gt;&gt;=' | '&gt;&gt;&gt;=' | '&amp;=' | '|=' | '^='</c>
 	/// </summary>
-	public class AssignmentExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class AssignmentExpression : Expression
 	{
-		// reuse roles from BinaryOperatorExpression
-		public readonly static Role<Expression> LeftRole = BinaryOperatorExpression.LeftRole;
-		public readonly static Role<Expression> RightRole = BinaryOperatorExpression.RightRole;
+		public const string AssignToken = "=";
+		public const string AddToken = "+=";
+		public const string SubtractToken = "-=";
+		public const string MultiplyToken = "*=";
+		public const string DivideToken = "/=";
+		public const string ModulusToken = "%=";
+		public const string ShiftLeftToken = "<<=";
+		public const string ShiftRightToken = ">>=";
+		public const string UnsignedShiftRightToken = ">>>=";
+		public const string BitwiseAndToken = "&=";
+		public const string BitwiseOrToken = "|=";
+		public const string ExclusiveOrToken = "^=";
 
-		public readonly static TokenRole AssignRole = new TokenRole("=");
-		public readonly static TokenRole AddRole = new TokenRole("+=");
-		public readonly static TokenRole SubtractRole = new TokenRole("-=");
-		public readonly static TokenRole MultiplyRole = new TokenRole("*=");
-		public readonly static TokenRole DivideRole = new TokenRole("/=");
-		public readonly static TokenRole ModulusRole = new TokenRole("%=");
-		public readonly static TokenRole ShiftLeftRole = new TokenRole("<<=");
-		public readonly static TokenRole ShiftRightRole = new TokenRole(">>=");
-		public readonly static TokenRole UnsignedShiftRightRole = new TokenRole(">>>=");
-		public readonly static TokenRole BitwiseAndRole = new TokenRole("&=");
-		public readonly static TokenRole BitwiseOrRole = new TokenRole("|=");
-		public readonly static TokenRole ExclusiveOrRole = new TokenRole("^=");
-
-		public AssignmentExpression()
-		{
-		}
-
+		// Simple assignment convenience: Operator defaults to Assign. The (left, op, right) form is generated.
 		public AssignmentExpression(Expression left, Expression right)
 		{
 			this.Left = left;
 			this.Right = right;
 		}
 
-		public AssignmentExpression(Expression left, AssignmentOperatorType op, Expression right)
-		{
-			this.Left = left;
-			this.Operator = op;
-			this.Right = right;
-		}
+		[Slot("Left")]
+		public partial Expression Left { get; set; }
 
-		public AssignmentOperatorType Operator {
-			get;
-			set;
-		}
+		public AssignmentOperatorType Operator { get; set; }
 
-		public Expression Left {
-			get { return GetChildByRole(LeftRole); }
-			set { SetChildByRole(LeftRole, value); }
-		}
+		[Slot("Right")]
+		public partial Expression Right { get; set; }
 
-		public CSharpTokenNode OperatorToken {
-			get { return GetChildByRole(GetOperatorRole(Operator)); }
-		}
-
-		public Expression Right {
-			get { return GetChildByRole(RightRole); }
-			set { SetChildByRole(RightRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitAssignmentExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitAssignmentExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitAssignmentExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			AssignmentExpression o = other as AssignmentExpression;
-			return o != null && (this.Operator == AssignmentOperatorType.Any || this.Operator == o.Operator)
-				&& this.Left.DoMatch(o.Left, match) && this.Right.DoMatch(o.Right, match);
-		}
-
-		public static TokenRole GetOperatorRole(AssignmentOperatorType op)
+		public static string GetOperatorToken(AssignmentOperatorType op)
 		{
 			switch (op)
 			{
 				case AssignmentOperatorType.Assign:
-					return AssignRole;
+					return AssignToken;
 				case AssignmentOperatorType.Add:
-					return AddRole;
+					return AddToken;
 				case AssignmentOperatorType.Subtract:
-					return SubtractRole;
+					return SubtractToken;
 				case AssignmentOperatorType.Multiply:
-					return MultiplyRole;
+					return MultiplyToken;
 				case AssignmentOperatorType.Divide:
-					return DivideRole;
+					return DivideToken;
 				case AssignmentOperatorType.Modulus:
-					return ModulusRole;
+					return ModulusToken;
 				case AssignmentOperatorType.ShiftLeft:
-					return ShiftLeftRole;
+					return ShiftLeftToken;
 				case AssignmentOperatorType.ShiftRight:
-					return ShiftRightRole;
+					return ShiftRightToken;
 				case AssignmentOperatorType.UnsignedShiftRight:
-					return UnsignedShiftRightRole;
+					return UnsignedShiftRightToken;
 				case AssignmentOperatorType.BitwiseAnd:
-					return BitwiseAndRole;
+					return BitwiseAndToken;
 				case AssignmentOperatorType.BitwiseOr:
-					return BitwiseOrRole;
+					return BitwiseOrToken;
 				case AssignmentOperatorType.ExclusiveOr:
-					return ExclusiveOrRole;
+					return ExclusiveOrToken;
 				default:
 					throw new NotSupportedException("Invalid value for AssignmentOperatorType");
 			}

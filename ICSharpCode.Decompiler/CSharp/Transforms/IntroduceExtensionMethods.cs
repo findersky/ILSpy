@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,15 +16,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
-using ICSharpCode.Decompiler.CSharp.TypeSystem;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
+using ICSharpCode.Decompiler.TypeSystem.Implementation;
 using ICSharpCode.Decompiler.Util;
 
 namespace ICSharpCode.Decompiler.CSharp.Transforms
@@ -34,71 +37,65 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 	/// </summary>
 	public class IntroduceExtensionMethods : DepthFirstAstVisitor, IAstTransform
 	{
+		[AllowNull]
 		TransformContext context;
+		[AllowNull]
 		CSharpResolver resolver;
+		[AllowNull]
 		CSharpConversions conversions;
 
 		public void Run(AstNode rootNode, TransformContext context)
 		{
 			this.context = context;
 			this.conversions = CSharpConversions.Get(context.TypeSystem);
-			InitializeContext(rootNode.Annotation<UsingScope>());
+			// The decompiler attaches a UsingScope annotation to the syntax-tree root.
+			InitializeContext(rootNode.Annotation<UsingScope>()!);
 			rootNode.AcceptVisitor(this);
 		}
 
-		Stack<CSharpTypeResolveContext> resolveContextStack = new Stack<CSharpTypeResolveContext>();
-
 		void InitializeContext(UsingScope usingScope)
 		{
-			this.resolveContextStack = new Stack<CSharpTypeResolveContext>();
 			if (!string.IsNullOrEmpty(context.CurrentTypeDefinition?.Namespace))
 			{
 				foreach (string ns in context.CurrentTypeDefinition.Namespace.Split('.'))
 				{
-					usingScope = new UsingScope(usingScope, ns);
+					usingScope = usingScope.WithNestedNamespace(ns);
 				}
 			}
-			var currentContext = new CSharpTypeResolveContext(context.TypeSystem.MainModule, usingScope.Resolve(context.TypeSystem), context.CurrentTypeDefinition);
-			this.resolveContextStack.Push(currentContext);
+			var currentContext = new CSharpTypeResolveContext(context.TypeSystem.MainModule, usingScope, context.CurrentTypeDefinition);
 			this.resolver = new CSharpResolver(currentContext);
 		}
 
 		public override void VisitNamespaceDeclaration(NamespaceDeclaration namespaceDeclaration)
 		{
-			var previousContext = resolveContextStack.Peek();
-			var usingScope = previousContext.CurrentUsingScope.UnresolvedUsingScope;
+			var usingScope = resolver.CurrentUsingScope;
 			foreach (string ident in namespaceDeclaration.Identifiers)
 			{
-				usingScope = new UsingScope(usingScope, ident);
+				usingScope = usingScope.WithNestedNamespace(ident);
 			}
-			var currentContext = new CSharpTypeResolveContext(previousContext.CurrentModule, usingScope.Resolve(previousContext.Compilation));
-			resolveContextStack.Push(currentContext);
+			var previousResolver = this.resolver;
 			try
 			{
-				this.resolver = new CSharpResolver(currentContext);
+				this.resolver = this.resolver.WithCurrentUsingScope(usingScope);
 				base.VisitNamespaceDeclaration(namespaceDeclaration);
 			}
 			finally
 			{
-				this.resolver = new CSharpResolver(previousContext);
-				resolveContextStack.Pop();
+				this.resolver = previousResolver;
 			}
 		}
 
 		public override void VisitTypeDeclaration(TypeDeclaration typeDeclaration)
 		{
-			var previousContext = resolveContextStack.Peek();
-			var currentContext = previousContext.WithCurrentTypeDefinition(typeDeclaration.GetSymbol() as ITypeDefinition);
-			resolveContextStack.Push(currentContext);
+			var previousResolver = this.resolver;
+			this.resolver = resolver.WithCurrentTypeDefinition(typeDeclaration.GetSymbol() as ITypeDefinition);
 			try
 			{
-				this.resolver = new CSharpResolver(currentContext);
 				base.VisitTypeDeclaration(typeDeclaration);
 			}
 			finally
 			{
-				this.resolver = new CSharpResolver(previousContext);
-				resolveContextStack.Pop();
+				this.resolver = previousResolver;
 			}
 		}
 
@@ -110,29 +107,42 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			{
 				return;
 			}
-			var method = (IMethod)invocationExpression.GetSymbol();
+			var method = (IMethod)invocationExpression.GetSymbol()!;
+			bool stepped = false;
 			if (firstArgument is DirectionExpression dirExpr)
 			{
 				if (!context.Settings.RefExtensionMethods || dirExpr.FieldDirection == FieldDirection.Out)
 					return;
-				firstArgument = dirExpr.Expression;
+				context.Step("Introduce extension method call", invocationExpression);
+				stepped = true;
+				// A ref/out direction expression always wraps an operand.
+				firstArgument = dirExpr.Expression!;
 				target = firstArgument.GetResolveResult();
 				dirExpr.Detach();
 			}
 			else if (firstArgument is NullReferenceExpression)
 			{
 				Debug.Assert(context.RequiredNamespacesSuperset.Contains(method.Parameters[0].Type.Namespace));
-				firstArgument = firstArgument.ReplaceWith(expr => new CastExpression(context.TypeSystemAstBuilder.ConvertType(method.Parameters[0].Type), expr.Detach()));
+				context.Step("Introduce extension method call", invocationExpression);
+				stepped = true;
+				// The replacement is a freshly created CastExpression, so the result is non-null.
+				firstArgument = firstArgument.ReplaceWith(expr => new CastExpression(context.TypeSystemAstBuilder.ConvertType(method.Parameters[0].Type), expr.Detach()))!;
 			}
 			if (invocationExpression.Target is IdentifierExpression identifierExpression)
 			{
+				if (!stepped)
+					context.Step("Introduce extension method call", invocationExpression);
 				identifierExpression.Detach();
 				memberRefExpr = new MemberReferenceExpression(firstArgument.Detach(), method.Name, identifierExpression.TypeArguments.Detach());
 				invocationExpression.Target = memberRefExpr;
 			}
 			else
 			{
-				memberRefExpr.Target = firstArgument.Detach();
+				if (!stepped)
+					context.Step("Introduce extension method call", invocationExpression);
+				// The target is not an IdentifierExpression, so CanTransformToExtensionMethodCall
+				// matched the MemberReferenceExpression case and memberRefExpr is non-null.
+				memberRefExpr!.Target = firstArgument.Detach();
 			}
 			if (invocationExpression.GetResolveResult() is CSharpInvocationResolveResult irr)
 			{
@@ -147,9 +157,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		}
 
 		static bool CanTransformToExtensionMethodCall(CSharpResolver resolver,
-			InvocationExpression invocationExpression, out MemberReferenceExpression memberRefExpr,
-			out ResolveResult target,
-			out Expression firstArgument)
+			InvocationExpression invocationExpression, out MemberReferenceExpression? memberRefExpr,
+			[NotNullWhen(true)] out ResolveResult? target,
+			[NotNullWhen(true)] out Expression? firstArgument)
 		{
 			var method = invocationExpression.GetSymbol() as IMethod;
 			memberRefExpr = null;
@@ -186,7 +196,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			Debug.Assert(target != null);
 			ResolveResult[] args = new ResolveResult[invocationExpression.Arguments.Count - 1];
-			string[] argNames = null;
+			string[]? argNames = null;
 			int pos = 0;
 			foreach (var arg in invocationExpression.Arguments.Skip(1))
 			{
@@ -205,41 +215,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				}
 				pos++;
 			}
-			return CanTransformToExtensionMethodCall(resolver, method, typeArguments, target, args, argNames);
-		}
-
-		public static bool CanTransformToExtensionMethodCall(CSharpTypeResolveContext resolveContext,
-			InvocationExpression invocationExpression)
-		{
-			return CanTransformToExtensionMethodCall(new CSharpResolver(resolveContext),
-				invocationExpression, out _, out _, out _);
-		}
-
-		public static bool CanTransformToExtensionMethodCall(CSharpResolver resolver, IMethod method,
-			IReadOnlyList<IType> typeArguments, ResolveResult target, ResolveResult[] arguments, string[] argumentNames)
-		{
-			if (target is LambdaResolveResult)
-				return false;
-			var rr = resolver.ResolveMemberAccess(target, method.Name, typeArguments, NameLookupMode.InvocationTarget) as MethodGroupResolveResult;
-			if (rr == null)
-				return false;
-			var or = rr.PerformOverloadResolution(resolver.CurrentTypeResolveContext.Compilation, arguments, argumentNames, allowExtensionMethods: true);
-			if (or == null || or.IsAmbiguous)
-				return false;
-			return method.Equals(or.GetBestCandidateWithSubstitutedTypeArguments())
-				&& CSharpResolver.IsEligibleExtensionMethod(target.Type, method, useTypeInference: false, out _);
-		}
-
-		public static bool CanTransformToExtensionMethodCall(IMethod method, CSharpTypeResolveContext resolveContext, bool ignoreTypeArguments = false, bool ignoreArgumentNames = true)
-		{
-			if (method.Parameters.Count == 0)
-				return false;
-			var targetType = method.Parameters.Select(p => new ResolveResult(p.Type)).First();
-			var paramTypes = method.Parameters.Skip(1).Select(p => new ResolveResult(p.Type)).ToArray();
-			var paramNames = ignoreArgumentNames ? null : method.Parameters.SelectReadOnlyArray(p => p.Name);
-			var typeArgs = ignoreTypeArguments ? Empty<IType>.Array : method.TypeArguments.ToArray();
-			var resolver = new CSharpResolver(resolveContext);
-			return CanTransformToExtensionMethodCall(resolver, method, typeArgs, targetType, paramTypes, argumentNames: paramNames);
+			return resolver.CanTransformToExtensionMethodCall(method, typeArguments, target, args, argNames);
 		}
 	}
 }

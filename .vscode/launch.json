@@ -1,0 +1,37 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET Core Debugger (launch)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${command:dotrush.activeTargetPath}",
+            // ILSpy is single-instance: without this a launch forwards its arguments to an
+            // already-running ILSpy and exits before Avalonia starts, so no breakpoint is hit.
+            "args": ["--newinstance"],
+            "preLaunchTask": "dotrush: Build"
+        },
+        {
+            // Fallback for setups without the dotrush extension: builds and launches ILSpy
+            // directly, no ${command:dotrush.*} resolution involved.
+            "name": "ILSpy (no dotrush)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/ILSpy/bin/Debug/net10.0/ILSpy.dll",
+            "args": ["--newinstance"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": ".NET Core Debugger (attach)",
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:dotrush.pickProcess}"
+        }
+    ]
+}

@@ -95,10 +95,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		}
 
 #if CS110
-        public static AllOperators operator >>>(AllOperators a, int b)
-        {
-            return null;
-        }
+		public static AllOperators operator >>>(AllOperators a, int b)
+		{
+			return null;
+		}
 #endif
 
 		public static AllOperators operator ~(AllOperators a)
@@ -236,7 +236,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			c = a << 5;
 			c = a >> 5;
 #if CS110
-            c = a >>> 5;
+			c = a >>> 5;
 #endif
 			c = ~a;
 			c = !a;
@@ -294,5 +294,21 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #endif
 			a = num;
 		}
+#if CS110
+		public void CheckedCompoundAssign()
+		{
+			a += b;
+			a -= b;
+			checked
+			{
+				a += b;
+				a -= b;
+				a *= b;
+				a /= b;
+			}
+			// force end of checked block:
+			++a;
+		}
+#endif
 	}
 }

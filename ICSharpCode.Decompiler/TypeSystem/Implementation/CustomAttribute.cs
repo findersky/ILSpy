@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Daniel Grunwald
+// Copyright (c) 2018 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -40,6 +40,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 		CustomAttributeValue<IType> value;
 		bool valueDecoded;
 		bool hasDecodeErrors;
+		readonly object syncRoot = new object();
 
 		internal CustomAttribute(MetadataModule module, IMethod attrCtor, CustomAttributeHandle handle)
 		{
@@ -76,7 +77,7 @@ namespace ICSharpCode.Decompiler.TypeSystem.Implementation
 
 		void DecodeValue()
 		{
-			lock (this)
+			lock (syncRoot)
 			{
 				try
 				{

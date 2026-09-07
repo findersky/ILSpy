@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,22 +16,24 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Represents a 'cref' reference in XML documentation.
+	/// No C# spec grammar production: this models a 'cref' reference inside XML documentation comments, not C# source syntax.
+	/// <code>
+	/// documentation_reference ::=
+	///       type_name
+	///     | type_name '.' member_name
+	///     | member_name
+	/// </code>
 	/// </summary>
-	public class DocumentationReference : AstNode
+	[DecompilerAstNode]
+	public sealed partial class DocumentationReference : AstNode
 	{
-		public static readonly Role<AstType> DeclaringTypeRole = new Role<AstType>("DeclaringType", AstType.Null);
-		public static readonly Role<AstType> ConversionOperatorReturnTypeRole = new Role<AstType>("ConversionOperatorReturnType", AstType.Null);
-
-		SymbolKind symbolKind;
-		OperatorType operatorType;
-		bool hasParameterList;
-
 		/// <summary>
 		/// Gets/Sets the entity type.
 		/// Possible values are:
@@ -40,78 +42,53 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		///   <c>SymbolKind.TypeDefinition</c> for references to primitive types,
 		///   and <c>SymbolKind.None</c> for everything else.
 		/// </summary>
-		public SymbolKind SymbolKind {
-			get { return symbolKind; }
-			set {
-				ThrowIfFrozen();
-				symbolKind = value;
-			}
-		}
+		public SymbolKind SymbolKind { get; set; }
 
 		/// <summary>
 		/// Gets/Sets the operator type.
 		/// This property is only used when SymbolKind==Operator.
 		/// </summary>
-		public OperatorType OperatorType {
-			get { return operatorType; }
-			set {
-				ThrowIfFrozen();
-				operatorType = value;
-			}
-		}
+		public OperatorType OperatorType { get; set; }
 
 		/// <summary>
 		/// Gets/Sets whether a parameter list was provided.
 		/// </summary>
-		public bool HasParameterList {
-			get { return hasParameterList; }
-			set {
-				ThrowIfFrozen();
-				hasParameterList = value;
-			}
-		}
-
-		public override NodeType NodeType {
-			get { return NodeType.Unknown; }
-		}
+		public bool HasParameterList { get; set; }
 
 		/// <summary>
 		/// Gets/Sets the declaring type.
 		/// </summary>
-		public AstType DeclaringType {
-			get { return GetChildByRole(DeclaringTypeRole); }
-			set { SetChildByRole(DeclaringTypeRole, value); }
-		}
+		[Slot("DeclaringType")]
+		public partial AstType? DeclaringType { get; set; }
 
 		/// <summary>
 		/// Gets/sets the member name.
 		/// This property is only used when SymbolKind==None.
 		/// </summary>
 		public string MemberName {
-			get { return GetChildByRole(Roles.Identifier).Name; }
-			set { SetChildByRole(Roles.Identifier, Identifier.Create(value)); }
+			get { return NameToken.Name; }
+			set { NameToken = Identifier.Create(value); }
 		}
+
+		[Slot("Identifier")]
+		public partial Identifier NameToken { get; set; }
 
 		/// <summary>
 		/// Gets/Sets the return type of conversion operators.
 		/// This property is only used when SymbolKind==Operator and OperatorType is explicit or implicit.
 		/// </summary>
-		public AstType ConversionOperatorReturnType {
-			get { return GetChildByRole(ConversionOperatorReturnTypeRole); }
-			set { SetChildByRole(ConversionOperatorReturnTypeRole, value); }
-		}
+		[Slot("ConversionOperatorReturnType")]
+		public partial AstType ConversionOperatorReturnType { get; set; }
 
-		public AstNodeCollection<AstType> TypeArguments {
-			get { return GetChildrenByRole(Roles.TypeArgument); }
-		}
+		[Slot("TypeArgument")]
+		public partial AstNodeCollection<AstType> TypeArguments { get; }
 
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
+		protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
 		{
-			DocumentationReference o = other as DocumentationReference;
+			DocumentationReference? o = other as DocumentationReference;
 			if (!(o != null && this.SymbolKind == o.SymbolKind && this.HasParameterList == o.HasParameterList))
 				return false;
 			if (this.SymbolKind == SymbolKind.Operator)
@@ -132,21 +109,6 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 					return false;
 			}
 			return this.Parameters.DoMatch(o.Parameters, match);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDocumentationReference(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDocumentationReference(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDocumentationReference(this, data);
 		}
 	}
 }

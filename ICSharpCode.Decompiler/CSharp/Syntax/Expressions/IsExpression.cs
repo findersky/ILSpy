@@ -1,4 +1,4 @@
-﻿// 
+// 
 // TypeOfIsExpression.cs
 //
 // Author:
@@ -23,62 +23,24 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-using System.Collections.Generic;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Expression is Type
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <c>is_expression ::= expression 'is' type</c> (C# grammar §12.15.1)
 	/// </summary>
-	public class IsExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class IsExpression : Expression
 	{
-		public readonly static TokenRole IsKeywordRole = new TokenRole("is");
+		public const string IsKeyword = "is";
 
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
-		public CSharpTokenNode IsToken {
-			get { return GetChildByRole(IsKeywordRole); }
-		}
-
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public IsExpression()
-		{
-		}
-
-		public IsExpression(Expression expression, AstType type)
-		{
-			AddChild(expression, Roles.Expression);
-			AddChild(type, Roles.Type);
-		}
-
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitIsExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitIsExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitIsExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			IsExpression o = other as IsExpression;
-			return o != null && this.Expression.DoMatch(o.Expression, match) && this.Type.DoMatch(o.Type, match);
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 	}
 }
-

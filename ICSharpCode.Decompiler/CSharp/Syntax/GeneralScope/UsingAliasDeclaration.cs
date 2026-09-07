@@ -1,4 +1,4 @@
-﻿// 
+// 
 // UsingAliasDeclaration.cs
 //  
 // Author:
@@ -24,85 +24,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// using Alias = Import;
+	/// <c>using_alias_directive ::= 'using' identifier '=' type ';'</c> (C# grammar §14.6.2)
 	/// </summary>
-	public class UsingAliasDeclaration : AstNode
+	[DecompilerAstNode]
+	public sealed partial class UsingAliasDeclaration : AstNode
 	{
-		public static readonly TokenRole UsingKeywordRole = new TokenRole("using");
-		public static readonly Role<Identifier> AliasRole = new Role<Identifier>("Alias", Identifier.Null);
-		public static readonly Role<AstType> ImportRole = UsingDeclaration.ImportRole;
+		public const string UsingKeyword = "using";
 
-		public override NodeType NodeType {
-			get {
-				return NodeType.Unknown;
-			}
-		}
+		[Slot("Alias")]
+		public partial string Alias { get; set; }
 
-		public CSharpTokenNode UsingToken {
-			get { return GetChildByRole(UsingKeywordRole); }
-		}
-
-		public string Alias {
-			get {
-				return GetChildByRole(AliasRole).Name;
-			}
-			set {
-				SetChildByRole(AliasRole, Identifier.Create(value));
-			}
-		}
-
-		public CSharpTokenNode AssignToken {
-			get { return GetChildByRole(Roles.Assign); }
-		}
-
-		public AstType Import {
-			get { return GetChildByRole(ImportRole); }
-			set { SetChildByRole(ImportRole, value); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public UsingAliasDeclaration()
-		{
-		}
+		[Slot("Import")]
+		public partial AstType Import { get; set; }
 
 		public UsingAliasDeclaration(string alias, string nameSpace)
 		{
-			AddChild(Identifier.Create(alias), AliasRole);
-			AddChild(new SimpleType(nameSpace), ImportRole);
-		}
-
-		public UsingAliasDeclaration(string alias, AstType import)
-		{
-			AddChild(Identifier.Create(alias), AliasRole);
-			AddChild(import, ImportRole);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitUsingAliasDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitUsingAliasDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitUsingAliasDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			UsingAliasDeclaration o = other as UsingAliasDeclaration;
-			return o != null && MatchString(this.Alias, o.Alias) && this.Import.DoMatch(o.Import, match);
+			AddChild(Identifier.Create(alias), Slots.Alias);
+			AddChild(new SimpleType(nameSpace), Slots.Import);
 		}
 	}
 }

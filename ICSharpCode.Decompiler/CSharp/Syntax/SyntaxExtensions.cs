@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2013 Daniel Grunwald
+// Copyright (c) 2013 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
@@ -52,15 +53,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 				|| operatorType == BinaryOperatorType.ExclusiveOr;
 		}
 
-		public static Statement GetNextStatement(this Statement statement)
+		public static Statement? GetNextStatement(this Statement statement)
 		{
-			AstNode next = statement.NextSibling;
+			AstNode? next = statement.NextSibling;
 			while (next != null && !(next is Statement))
 				next = next.NextSibling;
-			return (Statement)next;
+			return (Statement?)next;
 		}
 
-		public static bool IsArgList(this AstType type)
+		public static bool IsArgList(this AstType? type)
 		{
 			var simpleType = type as SimpleType;
 			return simpleType != null && simpleType.Identifier == "__arglist";

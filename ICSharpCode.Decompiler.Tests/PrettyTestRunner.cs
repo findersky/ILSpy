@@ -51,20 +51,20 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		static readonly CompilerOptions[] noRoslynOptions =
+		static readonly CompilerOptions[] noRoslynOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize
-		};
+		});
 
-		static readonly CompilerOptions[] roslynOnlyWithNet40Options =
+		static readonly CompilerOptions[] roslynOnlyWithNet40Options = Tester.SupportedOnCurrentPlatform(new[]
 		{
-			CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn1_3_2,
@@ -73,11 +73,13 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslynOnlyOptions =
+		static readonly CompilerOptions[] roslynOnlyOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn1_3_2,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
@@ -85,72 +87,120 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslyn2OrNewerWithNet40Options =
+		static readonly CompilerOptions[] roslyn2OrNewerWithNet40Options = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslyn2OrNewerOptions =
+		static readonly CompilerOptions[] roslyn2OrNewerOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslyn3OrNewerWithNet40Options =
+		static readonly CompilerOptions[] roslyn3OrNewerWithNet40Options = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslyn3OrNewerOptions =
+		static readonly CompilerOptions[] roslyn3OrNewerWithNet40Roslyn4Options = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		static readonly CompilerOptions[] roslyn3OrNewerOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslyn4OrNewerOptions =
+		static readonly CompilerOptions[] roslyn4OrNewerWithNet40Options = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		static readonly CompilerOptions[] roslyn4OrNewerOptions = Tester.SupportedOnCurrentPlatform(new[]
+		{
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.UseRoslynLatest,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
+		});
+
+		static readonly CompilerOptions[] roslyn5OrNewerOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] defaultOptions =
+		static readonly CompilerOptions[] defaultOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
-			CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn1_3_2,
@@ -159,20 +209,22 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] defaultOptionsWithMcs =
+		static readonly CompilerOptions[] defaultOptionsWithMcs = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
-			CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
-			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn1_3_2,
@@ -181,15 +233,17 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.UseRoslyn3_11_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
 			CompilerOptions.UseMcs2_6_4,
 			CompilerOptions.Optimize | CompilerOptions.UseMcs2_6_4,
 			CompilerOptions.UseMcs5_23,
 			CompilerOptions.Optimize | CompilerOptions.UseMcs5_23
-		};
+		});
 
-		[Test]
+		[Test, Platform("Win")] // uses the legacy (pre-Roslyn) csc, which only exists on Windows
 		public async Task HelloWorld()
 		{
 			await RunForLibrary();
@@ -199,7 +253,7 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task IndexRangeTest([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
 		{
-			if (cscOptions.HasFlag(CompilerOptions.UseRoslynLatest))
+			if (cscOptions.HasFlag(CompilerOptions.UseRoslyn4_14_0) || cscOptions.HasFlag(CompilerOptions.UseRoslynLatest))
 			{
 				Assert.Ignore("See https://github.com/icsharpcode/ILSpy/issues/2540");
 			}
@@ -251,8 +305,14 @@ namespace ICSharpCode.Decompiler.Tests
 			});
 		}
 
+		// Runs on Roslyn 3.x and Roslyn 4.x or newer, with TargetNet40 variants only for
+		// Roslyn 4.x or newer: targeting net40 makes the compiler emit the
+		// ThrowInvalidOperationException throw helper (SwitchExpressionException does not
+		// exist there), but Roslyn 3.x emits a plain inline
+		// "throw new InvalidOperationException()" instead, which is indistinguishable from
+		// user code and therefore intentionally not transformed.
 		[Test]
-		public async Task SwitchExpressions([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
+		public async Task SwitchExpressions([ValueSource(nameof(roslyn3OrNewerWithNet40Roslyn4Options))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -274,6 +334,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task AnonymousTypes([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task StringConcatenation([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -368,6 +434,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AutomaticEvents([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task QueryExpressions([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
@@ -386,6 +458,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ConditionalOperatorNesting([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task UnsafeCode([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.ReferenceUnsafe);
@@ -394,7 +472,7 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task ConstructorInitializers([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
 		{
-			await RunForLibrary(cscOptions: cscOptions);
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.ProcessXmlDoc);
 		}
 
 		[Test]
@@ -406,6 +484,24 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task OutVariables([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task DefaultLiteral([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task OverloadResolution([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task TargetTypedDefault([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -424,6 +520,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task DynamicTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task DynamicAwait([ValueSource(nameof(roslynOnlyOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -483,6 +585,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task AsyncAwaitPatterns([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task AsyncUsing([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(
@@ -495,6 +603,46 @@ namespace ICSharpCode.Decompiler.Tests
 		public async Task CustomTaskType([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task RuntimeAsync([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary("Async", cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview);
+		}
+
+		[Test]
+		public async Task RuntimeAsyncForeach([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary("AsyncForeach", cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview | CompilerOptions.GeneratePdb);
+		}
+
+		[Test]
+		public async Task RuntimeAsyncMain([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await Run("AsyncMain", cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview);
+		}
+
+		[Test]
+		public async Task RuntimeAsyncStreams([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary("AsyncStreams", cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview);
+		}
+
+		[Test]
+		public async Task RuntimeAsyncUsing([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(
+				"AsyncUsing",
+				cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview,
+				configureDecompiler: settings => { settings.UseEnhancedUsing = false; }
+			);
+		}
+
+		[Test]
+		public async Task RuntimeAsyncCustomTaskType([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary("CustomTaskType", cscOptions: cscOptions | CompilerOptions.EnableRuntimeAsync | CompilerOptions.Preview);
 		}
 
 		[Test]
@@ -530,6 +678,48 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task Records([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
 		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3610([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3611([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3909([ValueSource(nameof(roslyn3OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.NullableEnable);
+		}
+
+		[Test]
+		public async Task Issue3452([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.NullableEnable);
+		}
+
+		[Test]
+		public async Task Issue3598([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.NullableEnable);
+		}
+
+		[Test]
+		public async Task ExtensionEverything([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.Preview | CompilerOptions.NullableEnable);
+		}
+
+		[Test]
+		public async Task FieldKeyword([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
 			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.NullableEnable);
 		}
 
@@ -553,6 +743,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task RefLocalsAndReturns([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task CachedReadOnlySpanInitialization([ValueSource(nameof(roslyn2OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -600,6 +796,17 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task OptionalArgumentsDisabled([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(
+				cscOptions: cscOptions,
+				configureDecompiler: settings => {
+					settings.OptionalArguments = false;
+				}
+			);
+		}
+
+		[Test]
 		public async Task Comparisons([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
@@ -609,6 +816,42 @@ namespace ICSharpCode.Decompiler.Tests
 		public async Task ConstantsTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task ParamsCollections([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task LambdaOptionalAndParamsParameters([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task RefStructInterfaces([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task FirstClassSpanTypes([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task FirstClassSpanConversions([ValueSource(nameof(roslyn5OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task ExpandParamsArgumentsDisabled([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions, configureDecompiler: settings => settings.ExpandParamsArguments = false);
 		}
 
 		[Test]
@@ -631,6 +874,54 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task Issue3442([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3483([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions | CompilerOptions.CheckForOverflowUnderflow, configureDecompiler: settings => settings.CheckForOverflowUnderflow = true);
+		}
+
+		[Test]
+		public async Task Issue3541([ValueSource(nameof(roslyn4OrNewerWithNet40Options))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3571_A([ValueSource(nameof(roslyn2OrNewerWithNet40Options))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3571_B([ValueSource(nameof(roslyn2OrNewerWithNet40Options))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3571_C([ValueSource(nameof(roslyn2OrNewerWithNet40Options))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3576([ValueSource(nameof(roslyn2OrNewerWithNet40Options))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3584([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3877([ValueSource(nameof(roslyn2OrNewerWithNet40Options))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -684,7 +975,7 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
-		public async Task InterfaceTests([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		public async Task InterfaceTests([ValueSource(nameof(defaultOptionsWithMcs))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -732,6 +1023,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task Variance([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
 		public async Task StaticAbstractInterfaceMembers([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
@@ -745,6 +1042,24 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task PointerArithmetic([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task InlineArrayTests([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3684([ValueSource(nameof(roslyn4OrNewerOptions))] CompilerOptions cscOptions)
+		{
+			await RunForLibrary(cscOptions: cscOptions);
+		}
+
+		[Test]
+		public async Task Issue3751([ValueSource(nameof(defaultOptions))] CompilerOptions cscOptions)
 		{
 			await RunForLibrary(cscOptions: cscOptions);
 		}
@@ -780,7 +1095,7 @@ namespace ICSharpCode.Decompiler.Tests
 			configureDecompiler?.Invoke(settings);
 			var decompiled = await Tester.DecompileCSharp(exeFile, settings).ConfigureAwait(false);
 
-			// 3. Compile
+			// 3. Compare
 			CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(cscOptions).Append("EXPECTED_OUTPUT").ToArray());
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));
 		}

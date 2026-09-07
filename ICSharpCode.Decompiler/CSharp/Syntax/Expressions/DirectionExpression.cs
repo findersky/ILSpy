@@ -1,4 +1,4 @@
-﻿// 
+// 
 // DirectionExpression.cs
 //  
 // Author:
@@ -24,6 +24,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
@@ -36,67 +37,18 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 	}
 
 	/// <summary>
-	/// ref Expression
+	/// <c>argument_value ::= ( 'ref' | 'out' | 'in' )? expression</c> (C# grammar §12.6.2.1)
 	/// </summary>
-	public class DirectionExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class DirectionExpression : Expression
 	{
-		public readonly static TokenRole RefKeywordRole = new TokenRole("ref");
-		public readonly static TokenRole OutKeywordRole = new TokenRole("out");
-		public readonly static TokenRole InKeywordRole = new TokenRole("in");
+		public const string RefKeyword = "ref";
+		public const string OutKeyword = "out";
+		public const string InKeyword = "in";
 
-		public FieldDirection FieldDirection {
-			get;
-			set;
-		}
+		public FieldDirection FieldDirection { get; set; }
 
-		public CSharpTokenNode FieldDirectionToken {
-			get {
-				switch (FieldDirection)
-				{
-					case FieldDirection.Ref:
-						return GetChildByRole(RefKeywordRole);
-					case FieldDirection.In:
-						return GetChildByRole(InKeywordRole);
-					default:
-						return GetChildByRole(OutKeywordRole);
-				}
-			}
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public DirectionExpression()
-		{
-		}
-
-		public DirectionExpression(FieldDirection direction, Expression expression)
-		{
-			this.FieldDirection = direction;
-			AddChild(expression, Roles.Expression);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitDirectionExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitDirectionExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitDirectionExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			DirectionExpression o = other as DirectionExpression;
-			return o != null && this.FieldDirection == o.FieldDirection && this.Expression.DoMatch(o.Expression, match);
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 	}
 }

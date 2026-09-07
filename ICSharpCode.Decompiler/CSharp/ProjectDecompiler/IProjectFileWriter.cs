@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Siegfried Pammer
+// Copyright (c) 2020 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -37,5 +37,20 @@ namespace ICSharpCode.Decompiler.CSharp.ProjectDecompiler
 		/// <param name="files">A collection of source files to be included into the project.</param>
 		/// <param name="module">The module being decompiled.</param>
 		void Write(TextWriter target, IProjectInfoProvider project, IEnumerable<ProjectItemInfo> files, MetadataFile module);
+	}
+	public static class ProjectFileWriterExtensions
+	{
+		extension(IProjectFileWriter)
+		{
+			/// <summary>
+			/// Gets an instance of <see cref="IProjectFileWriter"/> based on the specified <paramref name="settings"/>.
+			/// </summary>
+			/// <param name="settings">The settings to use for getting the project file writer.</param>
+			/// <returns>An instance of <see cref="IProjectFileWriter"/>.</returns>
+			public static IProjectFileWriter FromSettings(DecompilerSettings settings)
+			{
+				return settings.UseSdkStyleProjectFormat ? ProjectFileWriterSdkStyle.Default : ProjectFileWriterDefault.Instance;
+			}
+		}
 	}
 }

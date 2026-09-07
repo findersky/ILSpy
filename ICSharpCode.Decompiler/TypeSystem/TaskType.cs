@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -38,6 +38,28 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return compilation.FindType(KnownTypeCode.Void);
 			else
 				return type.TypeArguments[0];
+		}
+
+		/// <summary>
+		/// Gets the element type of any task-like type (Task, Task&lt;T&gt;, ValueTask,
+		/// ValueTask&lt;T&gt;, or any [AsyncMethodBuilder]-attributed custom task type).
+		/// Returns void for non-generic task-likes. Any other type is returned unmodified.
+		/// </summary>
+		public static IType UnpackAnyTask(ICompilation compilation, IType type)
+		{
+			if (IsTask(type))
+			{
+				return type.TypeParameterCount == 0
+					? compilation.FindType(KnownTypeCode.Void)
+					: type.TypeArguments[0];
+			}
+			if (IsCustomTask(type, out _))
+			{
+				return type.TypeParameterCount == 0
+					? compilation.FindType(KnownTypeCode.Void)
+					: type.TypeArguments[0];
+			}
+			return type;
 		}
 
 		/// <summary>

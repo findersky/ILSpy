@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -16,113 +16,72 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 
 using ICSharpCode.Decompiler.Metadata;
 
-namespace ICSharpCode.ILSpy.Metadata
+namespace ICSharpCode.ILSpy.Metadata.CorTables
 {
-	class NestedClassTableTreeNode : MetadataTableTreeNode
+	/// <summary>
+	/// View of the NestedClass table — pairs each nested type with its enclosing type. Walked
+	/// directly from the table bytes because System.Reflection.Metadata only exposes
+	/// nested-type discovery as a per-typedef enumeration.
+	/// </summary>
+	public sealed class NestedClassTableTreeNode : MetadataTableTreeNode<NestedClassTableTreeNode.NestedClassEntry>
 	{
 		public NestedClassTableTreeNode(MetadataFile metadataFile)
 			: base(TableIndex.NestedClass, metadataFile)
 		{
 		}
 
-		public override bool View(ViewModels.TabPageModel tabPage)
+		protected override IReadOnlyList<NestedClassEntry> LoadTable()
 		{
-			tabPage.Title = Text.ToString();
-			tabPage.SupportsLanguageSwitching = false;
-
-			var view = Helpers.PrepareDataGrid(tabPage, this);
-			var metadata = metadataFile.Metadata;
-
 			var list = new List<NestedClassEntry>();
-			NestedClassEntry scrollTargetEntry = default;
-
+			var metadata = metadataFile.Metadata;
 			var length = metadata.GetTableRowCount(TableIndex.NestedClass);
-			ReadOnlySpan<byte> ptr = metadata.AsReadOnlySpan();
+			var reader = metadata.AsBlobReader();
+			reader.Offset = metadata.GetTableMetadataOffset(TableIndex.NestedClass);
+			int typeDefSize = metadata.GetTableRowCount(TableIndex.TypeDef) < ushort.MaxValue ? 2 : 4;
 			for (int rid = 1; rid <= length; rid++)
 			{
-				NestedClassEntry entry = new NestedClassEntry(metadataFile, ptr, rid);
-				if (entry.RID == this.scrollTarget)
-				{
-					scrollTargetEntry = entry;
-				}
-				list.Add(entry);
+				int nestedRow = typeDefSize == 2 ? reader.ReadUInt16() : reader.ReadInt32();
+				int enclosingRow = typeDefSize == 2 ? reader.ReadUInt16() : reader.ReadInt32();
+				list.Add(new NestedClassEntry(metadataFile, rid, MetadataTokens.TypeDefinitionHandle(nestedRow), MetadataTokens.TypeDefinitionHandle(enclosingRow)));
 			}
-
-			view.ItemsSource = list;
-
-			tabPage.Content = view;
-
-			if (scrollTargetEntry.RID > 0)
-			{
-				ScrollItemIntoView(view, scrollTargetEntry);
-			}
-
-			return true;
+			return list;
 		}
 
-		readonly struct NestedClass
+		public sealed class NestedClassEntry
 		{
-			public readonly TypeDefinitionHandle Nested;
-			public readonly TypeDefinitionHandle Enclosing;
-
-			public NestedClass(ReadOnlySpan<byte> ptr, int typeDefSize)
-			{
-				Nested = MetadataTokens.TypeDefinitionHandle(Helpers.GetValueLittleEndian(ptr, typeDefSize));
-				Enclosing = MetadataTokens.TypeDefinitionHandle(Helpers.GetValueLittleEndian(ptr.Slice(typeDefSize), typeDefSize));
-			}
-		}
-
-		struct NestedClassEntry
-		{
-			readonly MetadataFile metadataFile;
-			readonly NestedClass nestedClass;
-
 			public int RID { get; }
 
+			[ColumnInfo("X8")]
 			public int Token => 0x29000000 | RID;
 
-			public int Offset { get; }
+			[ColumnInfo("X8", Kind = ColumnKind.Token)]
+			public int NestedClass => MetadataTokens.GetToken(nested);
+
+			string? nestedClassTooltip;
+			public string? NestedClassTooltip => GenerateTooltip(ref nestedClassTooltip, metadataFile, nested);
 
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
-			public int NestedClass => MetadataTokens.GetToken(nestedClass.Nested);
+			public int EnclosingClass => MetadataTokens.GetToken(enclosing);
 
-			public void OnNestedClassClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, nestedClass.Nested, protocol: "metadata")));
-			}
+			string? enclosingClassTooltip;
+			public string? EnclosingClassTooltip => GenerateTooltip(ref enclosingClassTooltip, metadataFile, enclosing);
 
-			string nestedClassTooltip;
-			public string NestedClassTooltip => GenerateTooltip(ref nestedClassTooltip, metadataFile, nestedClass.Nested);
+			readonly MetadataFile metadataFile;
+			readonly TypeDefinitionHandle nested;
+			readonly TypeDefinitionHandle enclosing;
 
-			[ColumnInfo("X8", Kind = ColumnKind.Token)]
-			public int EnclosingClass => MetadataTokens.GetToken(nestedClass.Enclosing);
-
-			public void OnEnclosingClassClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, nestedClass.Enclosing, protocol: "metadata")));
-			}
-
-			string enclosingClassTooltip;
-			public string EnclosingClassTooltip => GenerateTooltip(ref enclosingClassTooltip, metadataFile, nestedClass.Enclosing);
-
-			public NestedClassEntry(MetadataFile metadataFile, ReadOnlySpan<byte> ptr, int row)
+			public NestedClassEntry(MetadataFile metadataFile, int rid, TypeDefinitionHandle nested, TypeDefinitionHandle enclosing)
 			{
 				this.metadataFile = metadataFile;
-				this.RID = row;
-				var rowOffset = metadataFile.Metadata.GetTableMetadataOffset(TableIndex.NestedClass)
-					+ metadataFile.Metadata.GetTableRowSize(TableIndex.NestedClass) * (row - 1);
-				this.Offset = metadataFile.MetadataOffset + rowOffset;
-				int typeDefSize = metadataFile.Metadata.GetTableRowCount(TableIndex.TypeDef) < ushort.MaxValue ? 2 : 4;
-				this.nestedClass = new NestedClass(ptr.Slice(rowOffset), typeDefSize);
-				this.nestedClassTooltip = null;
-				this.enclosingClassTooltip = null;
+				RID = rid;
+				this.nested = nested;
+				this.enclosing = enclosing;
 			}
 		}
 	}

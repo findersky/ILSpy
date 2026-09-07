@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -267,12 +267,7 @@ namespace ICSharpCode.ILSpyX
 					AddToListFromGAC("Microsoft.CSharp, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a");
 					break;
 				case object _ when path != null:
-					foreach (var file in Directory.GetFiles(path, "*.dll"))
-					{
-						var dllname = Path.GetFileName(file);
-						if (DoIncludeFile(dllname))
-							AddToListFromDirectory(file);
-					}
+					AddFrameworkAssembliesFromDirectory(list, path);
 					break;
 			}
 			return list;
@@ -284,27 +279,38 @@ namespace ICSharpCode.ILSpyX
 				if (file != null)
 					list.OpenAssembly(file);
 			}
+		}
 
-			void AddToListFromDirectory(string file)
+		/// <summary>
+		/// Opens every managed framework assembly in <paramref name="directory"/> into
+		/// <paramref name="list"/>, applying the same filter the preconfigured runtime lists use
+		/// (skips native helpers like *_cor3.dll and lower-cased runtime libraries such as
+		/// coreclr.dll / clrjit.dll). Shared by the "preconfigured runtime list" path and the
+		/// first-run default list, which seeds itself from the shared-framework directory ILSpy
+		/// is running on.
+		/// </summary>
+		public void AddFrameworkAssembliesFromDirectory(AssemblyList list, string directory)
+		{
+			foreach (var file in Directory.GetFiles(directory, "*.dll"))
 			{
-				if (File.Exists(file))
+				if (IsIncludedFrameworkFile(Path.GetFileName(file)))
 					list.OpenAssembly(file);
 			}
+		}
 
-			bool DoIncludeFile(string fileName)
-			{
-				if (fileName == "Microsoft.DiaSymReader.Native.amd64.dll")
-					return false;
-				if (fileName.EndsWith("_cor3.dll", StringComparison.OrdinalIgnoreCase))
-					return false;
-				if (char.IsUpper(fileName[0]))
-					return true;
-				if (fileName == "netstandard.dll")
-					return true;
-				if (fileName == "mscorlib.dll")
-					return true;
+		static bool IsIncludedFrameworkFile(string fileName)
+		{
+			if (fileName == "Microsoft.DiaSymReader.Native.amd64.dll")
 				return false;
-			}
+			if (fileName.EndsWith("_cor3.dll", StringComparison.OrdinalIgnoreCase))
+				return false;
+			if (char.IsUpper(fileName[0]))
+				return true;
+			if (fileName == "netstandard.dll")
+				return true;
+			if (fileName == "mscorlib.dll")
+				return true;
+			return false;
 		}
 	}
 }

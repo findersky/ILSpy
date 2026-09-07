@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ParameterDeclarationExpression.cs
 //
 // Author:
@@ -30,175 +30,40 @@ using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class ParameterDeclaration : AstNode
+	/// <summary>
+	/// <c>fixed_parameter ::= attribute_section* ( 'this' | 'scoped'? ( 'ref' 'readonly'? | 'out' | 'in' ) )? type identifier ( '=' expression )?</c> (C# grammar §15.6.2.1)
+	/// <c>parameter_array ::= attribute_section* 'params' type identifier</c> (C# grammar §15.6.2.1)
+	/// </summary>
+	[DecompilerAstNode(hasPatternPlaceholder: true)]
+	public partial class ParameterDeclaration : AstNode
 	{
-		public static readonly Role<AttributeSection> AttributeRole = EntityDeclaration.AttributeRole;
-		public static readonly TokenRole ThisModifierRole = new TokenRole("this");
-		public static readonly TokenRole ScopedRefRole = new TokenRole("scoped");
-		public static readonly TokenRole RefModifierRole = new TokenRole("ref");
-		public static readonly TokenRole ReadonlyModifierRole = ComposedType.ReadonlyRole;
-		public static readonly TokenRole OutModifierRole = new TokenRole("out");
-		public static readonly TokenRole InModifierRole = new TokenRole("in");
-		public static readonly TokenRole ParamsModifierRole = new TokenRole("params");
+		public const string ThisModifier = "this";
+		public const string ScopedRefKeyword = "scoped";
+		public const string RefModifier = "ref";
+		public const string ReadonlyModifier = ComposedType.ReadonlyKeyword;
+		public const string OutModifier = "out";
+		public const string InModifier = "in";
+		public const string ParamsModifier = "params";
 
-		#region PatternPlaceholder
-		public static implicit operator ParameterDeclaration?(PatternMatching.Pattern pattern)
-		{
-			return pattern != null ? new PatternPlaceholder(pattern) : null;
-		}
+		[Slot("AttributeSection")]
+		public partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		sealed class PatternPlaceholder : ParameterDeclaration, PatternMatching.INode
-		{
-			readonly PatternMatching.Pattern child;
+		public bool HasThisModifier { get; set; }
 
-			public PatternPlaceholder(PatternMatching.Pattern child)
-			{
-				this.child = child;
-			}
+		public bool IsParams { get; set; }
 
-			public override NodeType NodeType {
-				get { return NodeType.Pattern; }
-			}
+		public bool IsScopedRef { get; set; }
 
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitPatternPlaceholder(this, child);
-			}
+		public ReferenceKind ParameterModifier { get; set; }
 
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitPatternPlaceholder(this, child);
-			}
+		[Slot("Type")]
+		public partial AstType? Type { get; set; }
 
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitPatternPlaceholder(this, child, data);
-			}
+		[Slot("Identifier")]
+		public partial string? Name { get; set; }
 
-			protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
-			{
-				return child.DoMatch(other, match);
-			}
-
-			bool PatternMatching.INode.DoMatchCollection(Role role, PatternMatching.INode pos, PatternMatching.Match match, PatternMatching.BacktrackingInfo backtrackingInfo)
-			{
-				return child.DoMatchCollection(role, pos, match, backtrackingInfo);
-			}
-		}
-		#endregion
-
-		public override NodeType NodeType => NodeType.Unknown;
-
-		public AstNodeCollection<AttributeSection> Attributes {
-			get { return GetChildrenByRole(AttributeRole); }
-		}
-
-		bool hasThisModifier;
-		bool isParams;
-		bool isScopedRef;
-
-		public CSharpTokenNode ThisKeyword {
-			get {
-				if (hasThisModifier)
-				{
-					return GetChildByRole(ThisModifierRole);
-				}
-				return CSharpTokenNode.Null;
-			}
-		}
-
-		public bool HasThisModifier {
-			get { return hasThisModifier; }
-			set {
-				ThrowIfFrozen();
-				hasThisModifier = value;
-			}
-		}
-
-		public bool IsParams {
-			get { return isParams; }
-			set {
-				ThrowIfFrozen();
-				isParams = value;
-			}
-		}
-
-		public bool IsScopedRef {
-			get { return isScopedRef; }
-			set {
-				ThrowIfFrozen();
-				isScopedRef = value;
-			}
-		}
-
-		ReferenceKind parameterModifier;
-
-		public ReferenceKind ParameterModifier {
-			get { return parameterModifier; }
-			set {
-				ThrowIfFrozen();
-				parameterModifier = value;
-			}
-		}
-
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
-
-		public string Name {
-			get {
-				return GetChildByRole(Roles.Identifier).Name;
-			}
-			set {
-				SetChildByRole(Roles.Identifier, Identifier.Create(value));
-			}
-		}
-
-		public Identifier NameToken {
-			get {
-				return GetChildByRole(Roles.Identifier);
-			}
-			set {
-				SetChildByRole(Roles.Identifier, value);
-			}
-		}
-
-		public CSharpTokenNode AssignToken {
-			get { return GetChildByRole(Roles.Assign); }
-		}
-
-		public Expression DefaultExpression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitParameterDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitParameterDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitParameterDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
-		{
-			var o = other as ParameterDeclaration;
-			return o != null && this.Attributes.DoMatch(o.Attributes, match) && this.ParameterModifier == o.ParameterModifier
-				&& this.Type.DoMatch(o.Type, match) && MatchString(this.Name, o.Name)
-				&& this.DefaultExpression.DoMatch(o.DefaultExpression, match);
-		}
-
-		public ParameterDeclaration()
-		{
-		}
+		[Slot("Expression")]
+		public partial Expression? DefaultExpression { get; set; }
 
 		public new ParameterDeclaration Clone()
 		{
@@ -206,4 +71,3 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 	}
 }
-

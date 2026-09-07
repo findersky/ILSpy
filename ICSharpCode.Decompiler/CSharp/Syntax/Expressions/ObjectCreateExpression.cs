@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ObjectCreateExpression.cs
 //  
 // Author:
@@ -24,83 +24,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// new Type(Arguments) { Initializer }
+	/// <c>object_create_expression ::= 'new' type '(' expression* ')' array_initializer?</c> (C# grammar §12.8.17.2.1)
 	/// </summary>
-	public class ObjectCreateExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ObjectCreateExpression : Expression
 	{
-		public readonly static TokenRole NewKeywordRole = new TokenRole("new");
-		public readonly static Role<ArrayInitializerExpression> InitializerRole = ArrayCreateExpression.InitializerRole;
+		public const string NewKeyword = "new";
 
-		public CSharpTokenNode NewToken {
-			get { return GetChildByRole(NewKeywordRole); }
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
+		[Slot("Argument")]
+		public partial AstNodeCollection<Expression> Arguments { get; }
 
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstNodeCollection<Expression> Arguments {
-			get { return GetChildrenByRole(Roles.Argument); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public ArrayInitializerExpression Initializer {
-			get { return GetChildByRole(InitializerRole); }
-			set { SetChildByRole(InitializerRole, value); }
-		}
-
-		public ObjectCreateExpression()
-		{
-		}
-
-		public ObjectCreateExpression(AstType type, IEnumerable<Expression> arguments = null)
-		{
-			AddChild(type, Roles.Type);
-			if (arguments != null)
-			{
-				foreach (var arg in arguments)
-				{
-					AddChild(arg, Roles.Argument);
-				}
-			}
-		}
-
-		public ObjectCreateExpression(AstType type, params Expression[] arguments) : this(type, (IEnumerable<Expression>)arguments)
-		{
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitObjectCreateExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitObjectCreateExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitObjectCreateExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ObjectCreateExpression o = other as ObjectCreateExpression;
-			return o != null && this.Type.DoMatch(o.Type, match) && this.Arguments.DoMatch(o.Arguments, match) && this.Initializer.DoMatch(o.Initializer, match);
-		}
+		[Slot("Initializer")]
+		public partial ArrayInitializerExpression? Initializer { get; set; }
 	}
 }

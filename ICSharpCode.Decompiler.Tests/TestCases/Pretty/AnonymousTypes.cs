@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -40,11 +40,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		private void SimpleArray()
 		{
-#if ROSLYN && OPT
-			var obj = new[] {
-#else
 			var array = new[] {
-#endif
 				new {
 					X = 5,
 					Y = 2,
@@ -57,13 +53,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 				}
 			};
 
-#if ROSLYN && OPT
-			Console.WriteLine(obj[0].X);
-			Console.WriteLine(obj[1].X);
-#else
 			Console.WriteLine(array[0].X);
 			Console.WriteLine(array[1].X);
-#endif
 		}
 #if !MCS
 		private void JaggedArray()
@@ -80,19 +71,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 					Z = -6
 				}
 			};
-#if ROSLYN && OPT
-			var obj = new[] { array, array };
-
-			Console.WriteLine(array[0].X);
-			Console.WriteLine(array[1].X);
-			Console.WriteLine(obj.Length);
-#else
 			var array2 = new[] { array, array };
 
 			Console.WriteLine(array[0].X);
 			Console.WriteLine(array[1].X);
 			Console.WriteLine(array2.Length);
-#endif
 		}
 #endif
 #if CS70
@@ -110,5 +93,82 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 		{
 			v = init;
 		}
+
+		private static string NestedAnonymousTypeMembers()
+		{
+			var anon = new {
+				Outer = new {
+					Inner = 1
+				},
+				Arr = new[] {
+					new {
+						X = 1
+					}
+				}
+			};
+			return anon.Outer.Inner + anon.ToString() + anon.Arr[0].X;
+		}
+
+		private static object MemberProjection(Version v)
+		{
+			return new {
+				Major = v.Major,
+				Renamed = v.Minor
+			};
+		}
+
+		private void NullOfAnonymousType()
+		{
+			Identify(true ? null : new {
+				X = default(int),
+				Y = default(int)
+			});
+			Identify(true ? null : new {
+				N = default(int),
+				S = (string)null
+			});
+			Identify(true ? null : new {
+				Inner = new {
+					X = default(int)
+				}
+			});
+		}
+
+		private void NullOfAnonymousTypeNonGenericCall()
+		{
+#if OPT
+			MakeAction(new {
+				X = 0
+			})(null);
+#else
+			var action = MakeAction(new {
+				X = 0
+			});
+			action(null);
+#endif
+		}
+
+		private static void Identify<T>(T t)
+		{
+			Console.WriteLine(typeof(T).FullName);
+		}
+
+		private static Action<T> MakeAction<T>(T template)
+		{
+			return null;
+		}
+#if ROSLYN
+		private static TValue GetOrCreate<TKey, TValue>(TKey key, Func<TKey, int, TValue> factory)
+		{
+			return factory(key, 1);
+		}
+
+		private static int MixedLambdaParameters()
+		{
+			return GetOrCreate(new {
+				Value = 1
+			}, (item, context) => item.Value + context);
+		}
+#endif
 	}
 }

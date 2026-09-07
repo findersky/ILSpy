@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,12 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-using ICSharpCode.Decompiler.FlowAnalysis;
 using ICSharpCode.Decompiler.IL.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 
@@ -33,7 +31,7 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 		{
 			if (!context.Settings.AwaitInCatchFinally)
 				return;
-			HashSet<BlockContainer> changedContainers = new HashSet<BlockContainer>();
+			bool needsUnreachableCodeCleanup = false;
 
 			// analyze all try-catch statements in the function
 			foreach (var tryCatch in function.Descendants.OfType<TryCatch>().ToArray())
@@ -80,36 +78,16 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 				// [stloc V_3(ldloc E_100)	- copy exception variable to a temporary]
 				// stloc V_6(ldloc V_3)	- store exception in 'global' object variable
 				// br IL_0075				- jump out of catch block to the head of the finallyBlock
-				var catchBlockEntry = catchBlockContainer.EntryPoint;
-				ILVariable objectVariable;
-				switch (catchBlockEntry.Instructions.Count)
+				if (!MatchObjectStoreCatchHandler(catchBlockContainer, exceptionVariable,
+					out var objectVariable, out var entryPointOfFinally))
 				{
-					case 2:
-						if (!catchBlockEntry.Instructions[0].MatchStLoc(out objectVariable, out var value))
-							continue;
-						if (!value.MatchLdLoc(exceptionVariable))
-							continue;
-						break;
-					case 3:
-						if (!catchBlockEntry.Instructions[0].MatchStLoc(out var temporaryVariable, out value))
-							continue;
-						if (!value.MatchLdLoc(exceptionVariable))
-							continue;
-						if (!catchBlockEntry.Instructions[1].MatchStLoc(out objectVariable, out value))
-							continue;
-						if (!value.MatchLdLoc(temporaryVariable))
-							continue;
-						break;
-					default:
-						continue;
-				}
-				if (!catchBlockEntry.Instructions[catchBlockEntry.Instructions.Count - 1].MatchBranch(out var entryPointOfFinally))
 					continue;
+				}
 				// globalCopyVar should only be used once, at the end of the finally-block
 				if (objectVariable.LoadCount != 1 || objectVariable.StoreCount > 2)
 					continue;
 
-				var beforeExceptionCaptureBlock = (Block)LocalFunctionDecompiler.GetStatement(objectVariable.LoadInstructions[0])?.Parent;
+				var beforeExceptionCaptureBlock = Block.FindClosestBlock(objectVariable.LoadInstructions[0]);
 				if (beforeExceptionCaptureBlock == null)
 					continue;
 
@@ -132,13 +110,13 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 
 				context.StepStartGroup("Inline finally block with await", tryCatch.Handlers[0]);
 				var cfg = new ControlFlowGraph(container, context.CancellationToken);
-				changedContainers.Add(container);
+				needsUnreachableCodeCleanup = true;
 
 				var finallyContainer = new BlockContainer().WithILRange(catchBlockContainer);
 				tryCatch.ReplaceWith(new TryFinally(tryCatch.TryBlock, finallyContainer).WithILRange(tryCatch.TryBlock));
 
 				context.Step("Move blocks into finally", finallyContainer);
-				MoveDominatedBlocksToContainer(entryPointOfFinally, beforeExceptionCaptureBlock, cfg, finallyContainer);
+				MoveDominatedBlocksToContainer(entryPointOfFinally, beforeExceptionCaptureBlock, cfg, finallyContainer, context);
 
 				SimplifyEndOfFinally(context, objectVariable, beforeExceptionCaptureBlock, objectVariableCopy, finallyContainer);
 
@@ -184,42 +162,15 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 
 			context.Step("Clean up", function);
 
-			// clean up all modified containers
-			foreach (var container in changedContainers)
-				container.SortBlocks(deleteUnreachableBlocks: true);
-
-			((BlockContainer)function.Body).SortBlocks(deleteUnreachableBlocks: true);
-
-			void MoveDominatedBlocksToContainer(Block newEntryPoint, Block endBlock, ControlFlowGraph graph,
-				BlockContainer targetContainer)
+			if (needsUnreachableCodeCleanup)
 			{
-				var node = graph.GetNode(newEntryPoint);
-				var endNode = endBlock == null ? null : graph.GetNode(endBlock);
-
-				MoveBlock(newEntryPoint, targetContainer);
-
-				foreach (var n in graph.cfg)
+				// Cleaning up only the modified containers is insufficient, deleting blocks in
+				// any container can also cause other blocks in parent containers to become unreachable.
+				// So we just clean up everything.
+				foreach (var container in function.Body.Descendants.OfType<BlockContainer>())
 				{
-					Block block = (Block)n.UserData;
-
-					if (node.Dominates(n))
-					{
-						if (endNode != null && endNode != n && endNode.Dominates(n))
-							continue;
-
-						if (block.Parent == targetContainer)
-							continue;
-
-						MoveBlock(block, targetContainer);
-					}
+					container.SortBlocks(deleteUnreachableBlocks: true);
 				}
-			}
-
-			void MoveBlock(Block block, BlockContainer target)
-			{
-				context.Step($"Move {block.Label} to container at IL_{target.StartILOffset:x4}", target);
-				block.Remove();
-				target.Blocks.Add(block);
 			}
 
 			static void SimplifyEndOfFinally(ILTransformContext context, ILVariable objectVariable, Block beforeExceptionCaptureBlock, ILVariable objectVariableCopy, BlockContainer finallyContainer)
@@ -276,6 +227,82 @@ namespace ICSharpCode.Decompiler.IL.ControlFlow
 			}
 
 			return true;
+		}
+
+		/// <summary>
+		/// Matches a catch handler that stores its exception in an "object"-typed local and then
+		/// branches out of the catch:
+		///     [stloc tmp(ldloc exceptionVariable);]
+		///     stloc objectVariable(ldloc tmp_or_exceptionVariable)
+		///     br branchTarget
+		/// Used by the state-machine async lowering AND by the runtime-async try-finally lowering.
+		/// </summary>
+		internal static bool MatchObjectStoreCatchHandler(BlockContainer catchBlockContainer,
+			ILVariable exceptionVariable, out ILVariable objectVariable, out Block branchTarget)
+		{
+			objectVariable = null;
+			branchTarget = null;
+			var entry = catchBlockContainer.EntryPoint;
+			ILInstruction value;
+			switch (entry.Instructions.Count)
+			{
+				case 2:
+					if (!entry.Instructions[0].MatchStLoc(out objectVariable, out value))
+						return false;
+					if (!value.MatchLdLoc(exceptionVariable))
+						return false;
+					break;
+				case 3:
+					if (!entry.Instructions[0].MatchStLoc(out var temporaryVariable, out value))
+						return false;
+					if (!value.MatchLdLoc(exceptionVariable))
+						return false;
+					if (!entry.Instructions[1].MatchStLoc(out objectVariable, out value))
+						return false;
+					if (!value.MatchLdLoc(temporaryVariable))
+						return false;
+					break;
+				default:
+					return false;
+			}
+			return entry.Instructions[entry.Instructions.Count - 1].MatchBranch(out branchTarget);
+		}
+
+		/// <summary>
+		/// Move <paramref name="newEntryPoint"/> and every block it dominates (excluding any block
+		/// dominated by <paramref name="endBlock"/> other than <paramref name="endBlock"/> itself)
+		/// from their current container into <paramref name="targetContainer"/>.
+		/// </summary>
+		internal static void MoveDominatedBlocksToContainer(Block newEntryPoint, Block endBlock,
+			ControlFlowGraph graph, BlockContainer targetContainer, ILTransformContext context)
+		{
+			var node = graph.GetNode(newEntryPoint);
+			var endNode = endBlock == null ? null : graph.GetNode(endBlock);
+
+			MoveBlock(newEntryPoint, targetContainer, context);
+
+			foreach (var n in graph.cfg)
+			{
+				Block block = (Block)n.UserData;
+
+				if (node.Dominates(n))
+				{
+					if (endNode != null && endNode != n && endNode.Dominates(n))
+						continue;
+
+					if (block.Parent == targetContainer)
+						continue;
+
+					MoveBlock(block, targetContainer, context);
+				}
+			}
+		}
+
+		static void MoveBlock(Block block, BlockContainer target, ILTransformContext context)
+		{
+			context.Step($"Move {block.Label} to container at IL_{target.StartILOffset:x4}", target);
+			block.Remove();
+			target.Blocks.Add(block);
 		}
 
 		static (Block, Block, ILVariable) FindBlockAfterFinally(ILTransformContext context, Block block, ILVariable objectVariable)

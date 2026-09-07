@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -500,6 +500,41 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #pragma warning restore CA2200 // Rethrow to preserve stack details
 			}
 		}
+
+		private static bool FilterWithSideEffect(Exception e, ref int log)
+		{
+			log++;
+			return e.Message.Length > 0;
+		}
+
+		public static void SideEffectingFilter()
+		{
+			int log = 0;
+			try
+			{
+				Console.WriteLine("try");
+			}
+			catch (Exception e) when (FilterWithSideEffect(e, ref log))
+			{
+				Console.WriteLine(log);
+			}
+		}
 #endif
+
+		public static void ContinueInCatchInForeach(int[] arr)
+		{
+			foreach (int value in arr)
+			{
+				try
+				{
+					Console.WriteLine(value);
+				}
+				catch (Exception)
+				{
+					continue;
+				}
+				Console.WriteLine("after");
+			}
+		}
 	}
 }

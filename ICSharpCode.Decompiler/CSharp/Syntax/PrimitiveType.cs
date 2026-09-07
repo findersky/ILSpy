@@ -1,4 +1,4 @@
-﻿// 
+// 
 // FullTypeName.cs
 //
 // Author:
@@ -24,18 +24,22 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
 
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
-using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.Decompiler.TypeSystem.Implementation;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class PrimitiveType : AstType
+	/// <summary>
+	/// <c>predefined_type ::= 'bool' | 'byte' | 'char' | 'decimal' | 'double' | 'float' | 'int' | 'long' | 'object' | 'sbyte' | 'short' | 'string' | 'uint' | 'ulong' | 'ushort'</c> (C# grammar §12.8.7.1)
+	/// <c>simple_type ::= numeric_type | 'bool'</c> (C# grammar §8.3.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class PrimitiveType : AstType
 	{
-		TextLocation location;
 		string keyword = string.Empty;
 
 		public string Keyword {
@@ -43,11 +47,13 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			set {
 				if (value == null)
 					throw new ArgumentNullException();
-				ThrowIfFrozen();
 				keyword = value;
 			}
 		}
 
+		// Derived from Keyword (which DoMatch already compares); exclude it so the match
+		// doesn't redundantly re-run the keyword switch.
+		[ExcludeFromMatch]
 		public KnownTypeCode KnownTypeCode {
 			get { return GetTypeCodeForPrimitiveType(this.Keyword); }
 		}
@@ -64,66 +70,19 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public PrimitiveType(string keyword, TextLocation location)
 		{
 			this.Keyword = keyword;
-			this.location = location;
+			StorePrintStart(location);
 		}
 
-		public override TextLocation StartLocation {
-			get {
-				return location;
-			}
-		}
-
-		internal void SetStartLocation(TextLocation value)
-		{
-			ThrowIfFrozen();
-			this.location = value;
-		}
-
+		// StartLocation comes from the base (stored at print time); only the end needs deriving.
 		public override TextLocation EndLocation {
 			get {
-				return new TextLocation(location.Line, location.Column + keyword.Length);
+				return new TextLocation(StartLocation.Line, StartLocation.Column + keyword.Length);
 			}
 		}
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitPrimitiveType(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitPrimitiveType(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitPrimitiveType(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			PrimitiveType o = other as PrimitiveType;
-			return o != null && MatchString(this.Keyword, o.Keyword);
-		}
-
-		public override string ToString(CSharpFormattingOptions formattingOptions)
+		public override string ToString(CSharpFormattingOptions? formattingOptions)
 		{
 			return Keyword;
-		}
-
-		public override ITypeReference ToTypeReference(NameLookupMode lookupMode, InterningProvider interningProvider = null)
-		{
-			KnownTypeCode typeCode = GetTypeCodeForPrimitiveType(this.Keyword);
-			if (typeCode == KnownTypeCode.None)
-			{
-				if (this.Keyword == "__arglist")
-					return SpecialType.ArgList;
-				return new UnknownType(null, this.Keyword);
-			}
-			else
-			{
-				return KnownTypeReference.Get(typeCode);
-			}
 		}
 
 		public static KnownTypeCode GetTypeCodeForPrimitiveType(string keyword)

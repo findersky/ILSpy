@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011-2016 Siegfried Pammer
+// Copyright (c) 2011-2016 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -67,6 +67,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						{
 							v.CaptureScope = BlockContainer.FindClosestContainer(store);
 						}
+					}
+					if (f != null)
+					{
+						context.EndStep(f);
 					}
 					context.StepEndGroup();
 				}
@@ -195,7 +199,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			// Embed the lambda into the parent function's ILAst, so that "Show steps" can show
 			// how the lambda body is being transformed.
 			value.ReplaceWith(function);
-			function.CheckInvariant(ILPhase.Normal);
+			function.CheckInvariant(ILPhase.Normal, context.TypeSystem);
 
 			var contextPrefix = targetMethod.Name;
 			foreach (ILVariable v in function.Variables.Where(v => v.Kind != VariableKind.Parameter))

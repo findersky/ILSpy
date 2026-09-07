@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -49,6 +49,18 @@ namespace ICSharpCode.Decompiler.Tests
 					Assert.That(File.Exists(Path.Combine(TestCasePath, testName + ".cs")));
 				}
 			}
+		}
+
+		[Test]
+		public async Task ConditionalChain()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task AnonymousMethodEdgeCases()
+		{
+			await Run();
 		}
 
 		[Test, Ignore("Need to decide how to represent virtual methods without 'newslot' flag")]
@@ -130,7 +142,19 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task TruncatedAccessorBody()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task EvalOrder()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task TailCall()
 		{
 			await Run();
 		}
@@ -149,6 +173,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task UnknownTypes()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task NoAccessorProperties()
 		{
 			await Run();
 		}
@@ -196,6 +226,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task Issue1638()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue2104()
 		{
 			await Run();
@@ -203,6 +239,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task Issue2443()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task Issue3344CkFinite()
 		{
 			await Run();
 		}
@@ -220,7 +262,31 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task Issue3465()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task Issue3466()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task Issue3504()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task Issue3524()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task Issue3552()
 		{
 			await Run();
 		}
@@ -229,6 +295,24 @@ namespace ICSharpCode.Decompiler.Tests
 		public async Task Issue2260SwitchString()
 		{
 			await Run();
+		}
+
+		[Test]
+		public async Task SwitchOnStringNegativeCharIndex()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task CachedReadOnlySpanFromLazyCache()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task SpanConversionOperatorMismatch()
+		{
+			await Run(settings: new DecompilerSettings { FileScopedNamespaces = false, FirstClassSpanTypes = true });
 		}
 
 		[Test]
@@ -244,6 +328,12 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task StackAllocDuplicateStore()
+		{
+			await Run();
+		}
+
+		[Test, Platform("Win")] // UseLegacyAssembler requires the .NET Framework ilasm
 		public async Task Unsafe()
 		{
 			await Run(assemblerOptions: AssemblerOptions.Library | AssemblerOptions.UseLegacyAssembler);
@@ -251,6 +341,12 @@ namespace ICSharpCode.Decompiler.Tests
 
 		[Test]
 		public async Task CallIndirect()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task InstanceOperatorCall()
 		{
 			await Run();
 		}
@@ -276,7 +372,19 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task EnumArithmeticOutOfRange()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task GuessAccessors()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task InaccessibleParameterTypes()
 		{
 			await Run();
 		}
@@ -288,7 +396,41 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task SealedRecordProtectedCopyCtor()
+		{
+			await Run();
+		}
+
+		[Test]
 		public async Task MonoFixed()
+		{
+			await Run();
+		}
+
+		[Test]
+		public async Task ExtensionEncodingV1()
+		{
+			// uses Microsoft.Net.Compilers.Toolset 5.0.0-2.25380.108
+			// see ExtensionEncodingV1.il for details
+			await Run();
+		}
+
+		[Test]
+		public async Task ExtensionEncodingV2()
+		{
+			// uses Microsoft.Net.Compilers.Toolset 5.0.0-2.25451.107
+			// see ExtensionEncodingV2.il for details
+			await Run();
+		}
+
+		[Test]
+		public async Task SortSwitchSections()
+		{
+			await Run(settings: new DecompilerSettings { SortSwitchSections = true, FileScopedNamespaces = false });
+		}
+
+		[Test]
+		public async Task Issue3729()
 		{
 			await Run();
 		}
@@ -307,7 +449,7 @@ namespace ICSharpCode.Decompiler.Tests
 			var executable = await Tester.AssembleIL(ilFile, assemblerOptions).ConfigureAwait(false);
 			var decompiled = await Tester.DecompileCSharp(executable, settings).ConfigureAwait(false);
 
-			CodeAssert.FilesAreEqual(csFile, decompiled);
+			CodeAssert.FilesAreEqual(csFile, decompiled, ["EXPECTED_OUTPUT"]);
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));
 		}
 
@@ -319,7 +461,7 @@ namespace ICSharpCode.Decompiler.Tests
 			{
 				if (File.Exists(Path.Combine(TestCasePath, "FSharp.Core.dll")))
 					return;
-				string fsharpCoreDll = Path.Combine(TestCasePath, "..\\..\\..\\ILSpy-tests\\FSharp\\FSharp.Core.dll");
+				string fsharpCoreDll = Path.Combine(TestCasePath, "..", "..", "..", "ILSpy-tests", "FSharp", "FSharp.Core.dll");
 				if (!File.Exists(fsharpCoreDll))
 					Assert.Ignore("Ignored because of missing ILSpy-tests repo. Must be checked out separately from https://github.com/icsharpcode/ILSpy-tests!");
 				File.Copy(fsharpCoreDll, Path.Combine(TestCasePath, "FSharp.Core.dll"));

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -17,22 +17,22 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Globalization;
 using System.IO;
-using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
 
 namespace ICSharpCode.ILSpyX.Settings
 {
 	/// <summary>
-	/// Manages IL Spy settings.
+	/// Manages ILSpy settings.
 	/// </summary>
 	public class ILSpySettings : ISettingsProvider
 	{
 		/// <summary>
 		/// This settings file path provider determines where to load settings file from, includes filename
 		/// </summary>
-		public static ISettingsFilePathProvider? SettingsFilePathProvider { get; set; }
+		public static Func<string>? SettingsFilePathProvider { get; set; }
 
 		XElement root;
 
@@ -114,6 +114,11 @@ namespace ICSharpCode.ILSpyX.Settings
 				}
 				catch (XmlException)
 				{
+					// The file cannot be parsed, and it is about to be replaced by the one written
+					// below. It is the only copy of whatever the user had - assembly lists above all -
+					// and a file that fails to parse is usually one typo away from readable, so it is
+					// kept instead of overwritten (issue #2919).
+					KeepUnreadableFile(config);
 					doc = new XDocument(new XElement("ILSpy"));
 				}
 				doc.Root!.SetAttributeValue("version", DecompilerVersionInfo.Major + "." + DecompilerVersionInfo.Minor + "." + DecompilerVersionInfo.Build + "." + DecompilerVersionInfo.Revision);
@@ -123,44 +128,38 @@ namespace ICSharpCode.ILSpyX.Settings
 			}
 		}
 
+		/// <summary>
+		/// Moves a settings file that could not be read out of the way, under a name that says what
+		/// it is and never replaces an earlier one - two bad starts in a row must not cost the copy
+		/// that still has the data.
+		/// </summary>
+		static void KeepUnreadableFile(string config)
+		{
+			try
+			{
+				if (!File.Exists(config))
+					return;
+				string baseName = config + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+				string kept = baseName;
+				for (int attempt = 1; File.Exists(kept); attempt++)
+					kept = baseName + "-" + attempt;
+				File.Move(config, kept);
+			}
+			catch (IOException)
+			{
+				// Keeping the file is what matters; failing to name the copy must not stop settings
+				// from being saved.
+			}
+			catch (UnauthorizedAccessException)
+			{
+			}
+		}
+
 		static string GetConfigFile()
 		{
-			if (null != SettingsFilePathProvider)
-				return SettingsFilePathProvider.GetSettingsFilePath();
-
-			throw new ArgumentNullException(nameof(SettingsFilePathProvider));
-			// return "ILSpy.xml";
+			return SettingsFilePathProvider?.Invoke() ?? throw new ArgumentNullException(nameof(SettingsFilePathProvider));
 		}
 
 		const string ConfigFileMutex = "01A91708-49D1-410D-B8EB-4DE2662B3971";
-
-		/// <summary>
-		/// Helper class for serializing access to the config file when multiple ILSpy instances are running.
-		/// </summary>
-		sealed class MutexProtector : IDisposable
-		{
-			readonly Mutex mutex;
-
-			public MutexProtector(string name)
-			{
-				this.mutex = new Mutex(true, name, out bool createdNew);
-				if (createdNew)
-					return;
-
-				try
-				{
-					mutex.WaitOne();
-				}
-				catch (AbandonedMutexException)
-				{
-				}
-			}
-
-			public void Dispose()
-			{
-				mutex.ReleaseMutex();
-				mutex.Dispose();
-			}
-		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -320,6 +320,78 @@ namespace ICSharpCode.Decompiler.Tests.Output
 			ambience.ConversionFlags = flags;
 
 			Assert.That(ambience.ConvertSymbol(dtor), Is.EqualTo(expectedOutput));
+		}
+		#endregion
+
+		#region Dynamic (synthesized member) tests
+		[Test]
+		public void DynamicType()
+		{
+			ambience.ConversionFlags = ConversionFlags.None;
+			Assert.That(ambience.ConvertType(SpecialType.Dynamic), Is.EqualTo("dynamic"));
+		}
+
+		[Test]
+		public void DynamicInvokeMember()
+		{
+			// The shape ExpressionBuilder synthesizes for a.Compute(1, "two", d): dynamic return,
+			// per-argument types from the callsite delegate (constants keep their compile-time type),
+			// declared on the dynamic type.
+			var method = new FakeMethod(compilation, SymbolKind.Method) {
+				Name = "Compute",
+				ReturnType = SpecialType.Dynamic,
+				DeclaringType = SpecialType.Dynamic,
+				Parameters = new IParameter[] {
+					new DefaultParameter(compilation.FindType(KnownTypeCode.Int32), string.Empty),
+					new DefaultParameter(compilation.FindType(KnownTypeCode.String), string.Empty),
+					new DefaultParameter(SpecialType.Dynamic, string.Empty),
+				},
+			};
+			ambience.ConversionFlags = ConversionFlags.ShowReturnType | ConversionFlags.ShowParameterList;
+			Assert.That(ambience.ConvertSymbol(method), Is.EqualTo("dynamic Compute(int, string, dynamic)"));
+
+			// The same member as DecompilerTextView.BuildHoverContent renders it (full hover form): the
+			// unnamed synthetic parameters collapse to their types, so there is no dangling-name artifact.
+			ambience.ConversionFlags = ConversionFlags.All & ~(ConversionFlags.ShowBody | ConversionFlags.PlaceReturnTypeAfterParameterList);
+			Assert.That(ambience.ConvertSymbol(method), Is.EqualTo("public dynamic dynamic.Compute(int, string, dynamic)"));
+		}
+		[Test]
+		public void DynamicIndexer()
+		{
+			// The shape ExpressionBuilder synthesizes for a[b]: an indexer with dynamic return, index
+			// parameters typed from the callsite delegate, declared on the dynamic type. It carries no
+			// accessors, which the ambience renders cleanly (no empty { } artifact).
+			var indexer = new FakeProperty(compilation) {
+				Name = "Item",
+				IsIndexer = true,
+				ReturnType = SpecialType.Dynamic,
+				DeclaringType = SpecialType.Dynamic,
+				Parameters = new IParameter[] { new DefaultParameter(compilation.FindType(KnownTypeCode.Int32), string.Empty) },
+			};
+			ambience.ConversionFlags = ConversionFlags.ShowReturnType | ConversionFlags.ShowParameterList;
+			Assert.That(ambience.ConvertSymbol(indexer), Is.EqualTo("dynamic this[int]"));
+
+			ambience.ConversionFlags = ConversionFlags.All & ~(ConversionFlags.ShowBody | ConversionFlags.PlaceReturnTypeAfterParameterList);
+			Assert.That(ambience.ConvertSymbol(indexer), Is.EqualTo("public dynamic dynamic.this[int]"));
+		}
+
+		[Test]
+		public void ParameterizedProperty()
+		{
+			// A named property with parameters (VB.NET parameterized property); C# has no
+			// syntax for it, but signature surfaces show the parameter list in parentheses.
+			var property = new FakeProperty(compilation) {
+				Name = "Data",
+				ReturnType = compilation.FindType(KnownTypeCode.Int32),
+				DeclaringType = SpecialType.Dynamic,
+				Parameters = new IParameter[] { new DefaultParameter(compilation.FindType(KnownTypeCode.Int32), "index") },
+			};
+
+			ambience.ConversionFlags = ILSpyMainTreeViewMemberFlags;
+			Assert.That(ambience.ConvertSymbol(property), Is.EqualTo("Data(int) : int"));
+
+			ambience.ConversionFlags = ConversionFlags.All & ~(ConversionFlags.ShowBody | ConversionFlags.PlaceReturnTypeAfterParameterList);
+			Assert.That(ambience.ConvertSymbol(property), Is.EqualTo("public int dynamic.Data(int index)"));
 		}
 		#endregion
 

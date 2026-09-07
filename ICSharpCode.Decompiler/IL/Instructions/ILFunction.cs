@@ -23,6 +23,7 @@ using System.Diagnostics;
 using System.Linq;
 
 using ICSharpCode.Decompiler.IL.Transforms;
+using ICSharpCode.Decompiler.Instrumentation;
 using ICSharpCode.Decompiler.TypeSystem;
 using ICSharpCode.Decompiler.Util;
 
@@ -229,7 +230,7 @@ namespace ICSharpCode.Decompiler.IL
 			this.kind = kind;
 		}
 
-		internal override void CheckInvariant(ILPhase phase)
+		internal override void CheckInvariant(ILPhase phase, ICompilation compilation)
 		{
 			switch (kind)
 			{
@@ -262,7 +263,7 @@ namespace ICSharpCode.Decompiler.IL
 				Debug.Assert(Variables[i].IndexInFunction == i);
 				Variables[i].CheckInvariant();
 			}
-			base.CheckInvariant(phase);
+			base.CheckInvariant(phase, compilation);
 		}
 
 		void CloneVariables()
@@ -270,7 +271,7 @@ namespace ICSharpCode.Decompiler.IL
 			throw new NotSupportedException("ILFunction.CloneVariables is currently not supported!");
 		}
 
-		public override void WriteTo(ITextOutput output, ILAstWritingOptions options)
+		protected override void WriteToCore(ITextOutput output, ILAstWritingOptions options)
 		{
 			WriteILRange(output, options);
 			output.Write(OpCode);
@@ -400,20 +401,27 @@ namespace ICSharpCode.Decompiler.IL
 		/// </summary>
 		public void RunTransforms(IEnumerable<IILTransform> transforms, ILTransformContext context)
 		{
-			this.CheckInvariant(ILPhase.Normal);
+			this.CheckInvariant(ILPhase.Normal, context.TypeSystem);
+			bool traceTransforms = DecompilerEventSource.Log.IsTransformTracingEnabled();
 			foreach (var transform in transforms)
 			{
 				context.CancellationToken.ThrowIfCancellationRequested();
+				// 'near: this' is what lets a halt on a group opener be traced back to the function it
+				// belongs to; without a position the step carries no anchor and the halt cannot be
+				// attributed to any member.
 				if (transform is BlockILTransform blockTransform)
 				{
-					context.StepStartGroup(blockTransform.ToString());
+					context.StepStartGroup(blockTransform.ToString(), this);
 				}
 				else
 				{
-					context.StepStartGroup(transform.GetType().Name);
+					context.StepStartGroup(transform.GetType().Name, this);
 				}
+				long traceStart = traceTransforms ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 				transform.Run(this, context);
-				this.CheckInvariant(ILPhase.Normal);
+				if (traceTransforms)
+					DecompilerEventSource.Log.ILTransformExecuted(transform, this, traceStart);
+				this.CheckInvariant(ILPhase.Normal, context.TypeSystem);
 				context.StepEndGroup(keepIfEmpty: true);
 			}
 		}

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // UnaryOperatorExpression.cs
 //
 // Author:
@@ -24,119 +24,88 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Linq.Expressions;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Operator Expression
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <code>
+	/// unary_operator_expression ::=
+	///       unary_operator expression
+	///     | expression postfix_unary_operator
+	/// </code>
+	/// (C# grammar §12.9, §12.8.16)
+	/// <c>unary_operator ::= '+' | '-' | '!' | '~' | '++' | '--' | '*' | '&amp;' | '^' | 'await'</c>
+	/// <c>postfix_unary_operator ::= '++' | '--' | '!' | '?'</c>
 	/// </summary>
-	public class UnaryOperatorExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class UnaryOperatorExpression : Expression
 	{
-		public readonly static TokenRole NotRole = new TokenRole("!");
-		public readonly static TokenRole BitNotRole = new TokenRole("~");
-		public readonly static TokenRole MinusRole = new TokenRole("-");
-		public readonly static TokenRole PlusRole = new TokenRole("+");
-		public readonly static TokenRole IncrementRole = new TokenRole("++");
-		public readonly static TokenRole DecrementRole = new TokenRole("--");
-		public readonly static TokenRole DereferenceRole = new TokenRole("*");
-		public readonly static TokenRole AddressOfRole = new TokenRole("&");
-		public readonly static TokenRole AwaitRole = new TokenRole("await");
-		public readonly static TokenRole NullConditionalRole = new TokenRole("?");
-		public readonly static TokenRole SuppressNullableWarningRole = new TokenRole("!");
-		public readonly static TokenRole IndexFromEndRole = new TokenRole("^");
-		public readonly static TokenRole PatternNotRole = new TokenRole("not");
+		public const string NotToken = "!";
+		public const string BitNotToken = "~";
+		public const string MinusToken = "-";
+		public const string PlusToken = "+";
+		public const string IncrementToken = "++";
+		public const string DecrementToken = "--";
+		public const string DereferenceToken = "*";
+		public const string AddressOfToken = "&";
+		public const string AwaitKeyword = "await";
+		public const string NullConditionalToken = "?";
+		public const string SuppressNullableWarningToken = "!";
+		public const string IndexFromEndToken = "^";
+		public const string PatternNotKeyword = "not";
+		public UnaryOperatorType Operator { get; set; }
 
-		public UnaryOperatorExpression()
-		{
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
-		public UnaryOperatorExpression(UnaryOperatorType op, Expression expression)
-		{
-			this.Operator = op;
-			this.Expression = expression;
-		}
-
-		public UnaryOperatorType Operator {
-			get;
-			set;
-		}
-
-		public CSharpTokenNode OperatorToken {
-			get { return GetChildByRole(GetOperatorRole(Operator)); }
-		}
-
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitUnaryOperatorExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitUnaryOperatorExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitUnaryOperatorExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			UnaryOperatorExpression o = other as UnaryOperatorExpression;
-			return o != null && (this.Operator == UnaryOperatorType.Any || this.Operator == o.Operator)
-				&& this.Expression.DoMatch(o.Expression, match);
-		}
-
-		public static TokenRole GetOperatorRole(UnaryOperatorType op)
+		public static string? GetOperatorToken(UnaryOperatorType op)
 		{
 			switch (op)
 			{
 				case UnaryOperatorType.Not:
-					return NotRole;
+					return NotToken;
 				case UnaryOperatorType.BitNot:
-					return BitNotRole;
+					return BitNotToken;
 				case UnaryOperatorType.Minus:
-					return MinusRole;
+					return MinusToken;
 				case UnaryOperatorType.Plus:
-					return PlusRole;
+					return PlusToken;
 				case UnaryOperatorType.Increment:
 				case UnaryOperatorType.PostIncrement:
-					return IncrementRole;
+					return IncrementToken;
 				case UnaryOperatorType.PostDecrement:
 				case UnaryOperatorType.Decrement:
-					return DecrementRole;
+					return DecrementToken;
 				case UnaryOperatorType.Dereference:
-					return DereferenceRole;
+					return DereferenceToken;
 				case UnaryOperatorType.AddressOf:
-					return AddressOfRole;
+					return AddressOfToken;
 				case UnaryOperatorType.Await:
-					return AwaitRole;
+					return AwaitKeyword;
 				case UnaryOperatorType.NullConditional:
-					return NullConditionalRole;
+					return NullConditionalToken;
 				case UnaryOperatorType.NullConditionalRewrap:
 				case UnaryOperatorType.IsTrue:
 					return null; // no syntax
 				case UnaryOperatorType.SuppressNullableWarning:
-					return SuppressNullableWarningRole;
+					return SuppressNullableWarningToken;
 				case UnaryOperatorType.IndexFromEnd:
-					return IndexFromEndRole;
+					return IndexFromEndToken;
 				case UnaryOperatorType.PatternNot:
-					return PatternNotRole;
+					return PatternNotKeyword;
 				case UnaryOperatorType.PatternRelationalLessThan:
-					return BinaryOperatorExpression.LessThanRole;
+					return BinaryOperatorExpression.LessThanToken;
 				case UnaryOperatorType.PatternRelationalLessThanOrEqual:
-					return BinaryOperatorExpression.LessThanOrEqualRole;
+					return BinaryOperatorExpression.LessThanOrEqualToken;
 				case UnaryOperatorType.PatternRelationalGreaterThan:
-					return BinaryOperatorExpression.GreaterThanRole;
+					return BinaryOperatorExpression.GreaterThanToken;
 				case UnaryOperatorType.PatternRelationalGreaterThanOrEqual:
-					return BinaryOperatorExpression.GreaterThanOrEqualRole;
+					return BinaryOperatorExpression.GreaterThanOrEqualToken;
 				default:
 					throw new NotSupportedException("Invalid value for UnaryOperatorType");
 			}

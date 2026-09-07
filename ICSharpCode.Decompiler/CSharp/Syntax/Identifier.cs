@@ -1,4 +1,4 @@
-﻿// 
+// 
 // Identifier.cs
 //
 // Author:
@@ -24,55 +24,30 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class Identifier : AstNode
+	/// <summary>
+	/// <code>
+	/// identifier ::=
+	///       Simple_Identifier
+	///     | contextual_keyword
+	///     | discard_token
+	/// </code>
+	/// (C# lexical grammar §6.4.3)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class Identifier : AstNode
 	{
-		public new static readonly Identifier Null = new NullIdentifier();
-		sealed class NullIdentifier : Identifier
-		{
-			public override bool IsNull {
-				get {
-					return true;
-				}
-			}
-
-			public override void AcceptVisitor(IAstVisitor visitor)
-			{
-				visitor.VisitNullNode(this);
-			}
-
-			public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-			{
-				return visitor.VisitNullNode(this);
-			}
-
-			public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-			{
-				return visitor.VisitNullNode(this, data);
-			}
-
-			protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-			{
-				return other == null || other.IsNull;
-			}
-		}
-
-		public override NodeType NodeType {
-			get {
-				return NodeType.Token;
-			}
-		}
-
 		string name;
 		public string Name {
 			get { return this.name; }
 			set {
 				if (value == null)
 					throw new ArgumentNullException(nameof(value));
-				ThrowIfFrozen();
 				this.name = value;
 			}
 		}
@@ -86,24 +61,12 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 
 		internal void SetStartLocation(TextLocation value)
 		{
-			ThrowIfFrozen();
 			this.startLocation = value;
 		}
 
-		const uint verbatimBit = 1u << AstNodeFlagsUsedBits;
-
-		public bool IsVerbatim {
-			get {
-				return (flags & verbatimBit) != 0;
-			}
-			set {
-				ThrowIfFrozen();
-				if (value)
-					flags |= verbatimBit;
-				else
-					flags &= ~verbatimBit;
-			}
-		}
+		// The @-escaping is a lexical detail, not structural; exclude it from matching.
+		[ExcludeFromMatch]
+		public bool IsVerbatim { get; set; }
 
 		public override TextLocation EndLocation {
 			get {
@@ -116,11 +79,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			this.name = string.Empty;
 		}
 
-		protected Identifier(string name, TextLocation location)
+		private Identifier(string name, TextLocation location)
 		{
 			if (name == null)
 				throw new ArgumentNullException(nameof(name));
-			this.Name = name;
+			this.name = name;
 			this.startLocation = location;
 		}
 
@@ -129,10 +92,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return Create(name, TextLocation.Empty);
 		}
 
+		// Convenience for optional names (a [Slot] string? property): an empty or null name maps to a
+		// null token (no name), any other name to an Identifier.
+		public static Identifier? CreateIfNotEmpty(string? name)
+		{
+			return string.IsNullOrEmpty(name) ? null : Create(name);
+		}
+
 		public static Identifier Create(string name, TextLocation location)
 		{
 			if (string.IsNullOrEmpty(name))
-				return Identifier.Null;
+				return new Identifier(string.Empty, location);
 			if (name[0] == '@')
 				return new Identifier(name.Substring(1), new TextLocation(location.Line, location.Column + 1)) { IsVerbatim = true };
 			else
@@ -142,32 +112,11 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		public static Identifier Create(string name, TextLocation location, bool isVerbatim)
 		{
 			if (string.IsNullOrEmpty(name))
-				return Identifier.Null;
+				return new Identifier(string.Empty, location);
 
 			if (isVerbatim)
 				return new Identifier(name, location) { IsVerbatim = true };
 			return new Identifier(name, location);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitIdentifier(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitIdentifier(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitIdentifier(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			Identifier o = other as Identifier;
-			return o != null && !o.IsNull && MatchString(this.Name, o.Name);
 		}
 	}
 }

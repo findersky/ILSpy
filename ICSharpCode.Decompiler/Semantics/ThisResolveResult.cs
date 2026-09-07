@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+using ICSharpCode.Decompiler.CSharp;
+using ICSharpCode.Decompiler.IL;
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.Semantics
@@ -23,12 +25,15 @@ namespace ICSharpCode.Decompiler.Semantics
 	/// <summary>
 	/// Represents the 'this' reference.
 	/// Also used for the 'base' reference.
+	/// Both read the 'this' parameter of the current function, so this is also the
+	/// <see cref="ILVariableResolveResult"/> of that variable. The type is the one the
+	/// reference is spelled with: 'base' carries the base type, not the variable's type.
 	/// </summary>
-	public class ThisResolveResult : ResolveResult
+	public class ThisResolveResult : ILVariableResolveResult
 	{
 		bool causesNonVirtualInvocation;
 
-		public ThisResolveResult(IType type, bool causesNonVirtualInvocation = false) : base(type)
+		public ThisResolveResult(ILVariable thisVariable, IType type, bool causesNonVirtualInvocation = false) : base(thisVariable, type)
 		{
 			this.causesNonVirtualInvocation = causesNonVirtualInvocation;
 		}

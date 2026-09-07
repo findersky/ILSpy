@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -17,115 +17,63 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Windows.Media;
 
-using ICSharpCode.AvalonEdit.Document;
-using ICSharpCode.AvalonEdit.Rendering;
+using Avalonia;
+using Avalonia.Media;
+
+using AvaloniaEdit.Document;
+using AvaloniaEdit.Rendering;
 
 namespace ICSharpCode.ILSpy.TextView
 {
 	/// <summary>
-	/// Allows language specific search for matching brackets.
+	/// Paints a soft-tinted rounded outline around the two brackets of a matched pair.
+	/// Lives on the selection layer (below text) so the bracket characters stay legible.
 	/// </summary>
-	public interface IBracketSearcher
+	public sealed class BracketHighlightRenderer : IBackgroundRenderer
 	{
-		/// <summary>
-		/// Searches for a matching bracket from the given offset to the start of the document.
-		/// </summary>
-		/// <returns>A BracketSearchResult that contains the positions and lengths of the brackets. Return null if there is nothing to highlight.</returns>
-		BracketSearchResult SearchBracket(IDocument document, int offset);
-	}
+		// Avalonia ships with no theme resource for "bracket highlight" by default, so we
+		// hard-code subtle defaults that work on both light and dark editor backgrounds.
+		// (#406680 outline, ~20% transparent #99A8C8 fill — sampled from VS's bracket
+		// pair highlight at 100% font size on the default Light theme.)
+		static readonly Pen DefaultBorderPen = new(new SolidColorBrush(Color.FromArgb(0x80, 0x40, 0x66, 0x80)), 1);
+		static readonly IBrush DefaultBackgroundBrush = new SolidColorBrush(Color.FromArgb(0x33, 0x99, 0xA8, 0xC8));
 
-	public class DefaultBracketSearcher : IBracketSearcher
-	{
-		public static readonly DefaultBracketSearcher DefaultInstance = new DefaultBracketSearcher();
+		BracketSearchResult? result;
+		readonly global::AvaloniaEdit.Rendering.TextView textView;
 
-		public BracketSearchResult SearchBracket(IDocument document, int offset)
+		public BracketHighlightRenderer(global::AvaloniaEdit.Rendering.TextView textView)
 		{
-			return null;
+			this.textView = textView ?? throw new ArgumentNullException(nameof(textView));
+			textView.BackgroundRenderers.Add(this);
 		}
-	}
 
-	/// <summary>
-	/// Describes a pair of matching brackets found by <see cref="IBracketSearcher"/>.
-	/// </summary>
-	public class BracketSearchResult
-	{
-		public int OpeningBracketOffset { get; private set; }
+		public KnownLayer Layer => KnownLayer.Selection;
 
-		public int OpeningBracketLength { get; private set; }
-
-		public int ClosingBracketOffset { get; private set; }
-
-		public int ClosingBracketLength { get; private set; }
-
-		public BracketSearchResult(int openingBracketOffset, int openingBracketLength,
-								   int closingBracketOffset, int closingBracketLength)
-		{
-			this.OpeningBracketOffset = openingBracketOffset;
-			this.OpeningBracketLength = openingBracketLength;
-			this.ClosingBracketOffset = closingBracketOffset;
-			this.ClosingBracketLength = closingBracketLength;
-		}
-	}
-
-	public class BracketHighlightRenderer : IBackgroundRenderer
-	{
-		BracketSearchResult result;
-		Pen borderPen;
-		Brush backgroundBrush;
-		ICSharpCode.AvalonEdit.Rendering.TextView textView;
-
-		public void SetHighlight(BracketSearchResult result)
+		public void SetHighlight(BracketSearchResult? result)
 		{
 			if (this.result != result)
 			{
 				this.result = result;
-				this.borderPen = (Pen)textView.FindResource(Themes.ResourceKeys.BracketHighlightBorderPen);
-				this.backgroundBrush = (SolidColorBrush)textView.FindResource(Themes.ResourceKeys.BracketHighlightBackgroundBrush);
-				textView.InvalidateLayer(this.Layer);
+				textView.InvalidateLayer(Layer);
 			}
 		}
 
-		public BracketHighlightRenderer(ICSharpCode.AvalonEdit.Rendering.TextView textView)
-		{
-			if (textView == null)
-				throw new ArgumentNullException("textView");
-
-			this.borderPen = (Pen)textView.FindResource(Themes.ResourceKeys.BracketHighlightBorderPen);
-			this.backgroundBrush = (SolidColorBrush)textView.FindResource(Themes.ResourceKeys.BracketHighlightBackgroundBrush);
-
-			this.textView = textView;
-
-			this.textView.BackgroundRenderers.Add(this);
-		}
-
-		public KnownLayer Layer {
-			get {
-				return KnownLayer.Selection;
-			}
-		}
-
-		public void Draw(ICSharpCode.AvalonEdit.Rendering.TextView textView, DrawingContext drawingContext)
+		public void Draw(global::AvaloniaEdit.Rendering.TextView textView, DrawingContext drawingContext)
 		{
 			if (this.result == null)
 				return;
-
-			BackgroundGeometryBuilder builder = new BackgroundGeometryBuilder();
-
-			builder.CornerRadius = 1;
-			builder.AlignToWholePixels = true;
-			builder.BorderThickness = borderPen?.Thickness ?? 0;
-
-			builder.AddSegment(textView, new TextSegment() { StartOffset = result.OpeningBracketOffset, Length = result.OpeningBracketLength });
+			var builder = new BackgroundGeometryBuilder {
+				CornerRadius = 1,
+				AlignToWholePixels = true,
+				BorderThickness = DefaultBorderPen.Thickness,
+			};
+			builder.AddSegment(textView, new TextSegment { StartOffset = result.OpeningBracketOffset, Length = result.OpeningBracketLength });
 			builder.CloseFigure(); // prevent connecting the two segments
-			builder.AddSegment(textView, new TextSegment() { StartOffset = result.ClosingBracketOffset, Length = result.ClosingBracketLength });
-
-			Geometry geometry = builder.CreateGeometry();
+			builder.AddSegment(textView, new TextSegment { StartOffset = result.ClosingBracketOffset, Length = result.ClosingBracketLength });
+			var geometry = builder.CreateGeometry();
 			if (geometry != null)
-			{
-				drawingContext.DrawGeometry(backgroundBrush, borderPen, geometry);
-			}
+				drawingContext.DrawGeometry(DefaultBackgroundBrush, DefaultBorderPen, geometry);
 		}
 	}
 }

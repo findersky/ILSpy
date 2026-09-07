@@ -1,4 +1,4 @@
-﻿// 
+// 
 // IndexerExpression.cs
 //  
 // Author:
@@ -26,69 +26,20 @@
 
 using System.Collections.Generic;
 
+#nullable enable
+
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Target[Arguments]
+	/// <c>element_access ::= expression '[' expression* ']'</c> (C# grammar §12.8.12.1)
 	/// </summary>
-	public class IndexerExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class IndexerExpression : Expression
 	{
-		public Expression Target {
-			get { return GetChildByRole(Roles.TargetExpression); }
-			set { SetChildByRole(Roles.TargetExpression, value); }
-		}
+		[Slot("TargetExpression")]
+		public partial Expression? Target { get; set; }
 
-		public CSharpTokenNode LBracketToken {
-			get { return GetChildByRole(Roles.LBracket); }
-		}
-
-		public AstNodeCollection<Expression> Arguments {
-			get { return GetChildrenByRole<Expression>(Roles.Argument); }
-		}
-
-		public CSharpTokenNode RBracketToken {
-			get { return GetChildByRole(Roles.RBracket); }
-		}
-
-		public IndexerExpression()
-		{
-		}
-
-		public IndexerExpression(Expression target, IEnumerable<Expression> arguments)
-		{
-			AddChild(target, Roles.TargetExpression);
-			if (arguments != null)
-			{
-				foreach (var arg in arguments)
-				{
-					AddChild(arg, Roles.Argument);
-				}
-			}
-		}
-
-		public IndexerExpression(Expression target, params Expression[] arguments) : this(target, (IEnumerable<Expression>)arguments)
-		{
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitIndexerExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitIndexerExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitIndexerExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			IndexerExpression o = other as IndexerExpression;
-			return o != null && this.Target.DoMatch(o.Target, match) && this.Arguments.DoMatch(o.Arguments, match);
-		}
+		[Slot("Argument")]
+		public partial AstNodeCollection<Expression> Arguments { get; }
 	}
 }

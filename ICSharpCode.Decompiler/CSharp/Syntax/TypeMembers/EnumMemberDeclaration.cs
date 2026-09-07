@@ -1,4 +1,4 @@
-﻿// 
+// 
 // EnumMemberDeclaration.cs
 //
 // Author:
@@ -24,48 +24,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using ICSharpCode.Decompiler.TypeSystem;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class EnumMemberDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>enum_member_declaration ::= attribute_section* identifier ( '=' expression )?</c> (C# grammar §20.4)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class EnumMemberDeclaration : EntityDeclaration
 	{
-		public static readonly Role<Expression> InitializerRole = new Role<Expression>("Initializer", Expression.Null);
-
 		public override SymbolKind SymbolKind {
 			get { return SymbolKind.Field; }
 		}
 
-		public CSharpTokenNode AssignToken {
-			get { return GetChildByRole(Roles.Assign); }
-		}
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
 
-		public Expression Initializer {
-			get { return GetChildByRole(InitializerRole); }
-			set { SetChildByRole(InitializerRole, value); }
-		}
+		[Slot("Identifier")]
+		public override partial Identifier NameToken { get; set; }
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitEnumMemberDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitEnumMemberDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitEnumMemberDeclaration(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			EnumMemberDeclaration o = other as EnumMemberDeclaration;
-			return o != null && this.MatchAttributesAndModifiers(o, match)
-				&& MatchString(this.Name, o.Name) && this.Initializer.DoMatch(o.Initializer, match);
-		}
+		[Slot("EnumMemberInitializer")]
+		public partial Expression? Initializer { get; set; }
 	}
 }
-

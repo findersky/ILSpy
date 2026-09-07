@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ThisReferenceExpression.cs
 //  
 // Author:
@@ -24,49 +24,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// this
+	/// <c>this_access ::= 'this'</c> (C# grammar §12.8.14)
 	/// </summary>
-	public class ThisReferenceExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ThisReferenceExpression : Expression
 	{
-		public TextLocation Location {
-			get;
-			set;
-		}
-
-		public override TextLocation StartLocation {
-			get {
-				return Location;
-			}
-		}
+		// StartLocation comes from the base (stored at print time); only the end needs deriving.
 		public override TextLocation EndLocation {
 			get {
-				return new TextLocation(Location.Line, Location.Column + "this".Length);
+				return new TextLocation(StartLocation.Line, StartLocation.Column + "this".Length);
 			}
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitThisReferenceExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitThisReferenceExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitThisReferenceExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ThisReferenceExpression o = other as ThisReferenceExpression;
-			return o != null;
 		}
 	}
 }

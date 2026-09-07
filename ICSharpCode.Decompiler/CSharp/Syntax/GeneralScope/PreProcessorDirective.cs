@@ -1,4 +1,4 @@
-﻿// 
+// 
 // PreProcessorDirective.cs
 //  
 // Author:
@@ -23,6 +23,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+#nullable enable
+
 using System.Linq;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
@@ -46,61 +48,29 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		Line = 12
 	}
 
-	public class LinePreprocessorDirective : PreProcessorDirective
+	/// <summary>
+	/// <c>line_directive ::= '#' 'line' ( decimal_digit+ string_literal? | 'default' | 'hidden' )</c> (C# lexical grammar)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class LinePreprocessorDirective : PreProcessorDirective
 	{
-		public int LineNumber {
-			get;
-			set;
-		}
-
-		public string FileName {
-			get;
-			set;
-		}
-
 		public LinePreprocessorDirective(TextLocation startLocation, TextLocation endLocation) : base(PreProcessorDirectiveType.Line, startLocation, endLocation)
 		{
 		}
 
-		public LinePreprocessorDirective(string argument = null) : base(PreProcessorDirectiveType.Line, argument)
+		public LinePreprocessorDirective(string? argument = null) : base(PreProcessorDirectiveType.Line, argument)
 		{
 		}
 	}
 
-	public class PragmaWarningPreprocessorDirective : PreProcessorDirective
+	/// <summary>
+	/// <c>pragma_warning_directive ::= '#' 'pragma' 'warning' ( 'disable' | 'restore' ) expression*</c> (C# lexical grammar)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class PragmaWarningPreprocessorDirective : PreProcessorDirective
 	{
-		public static readonly Role<PrimitiveExpression> WarningRole = new Role<PrimitiveExpression>("Warning", null);
-
-		public static readonly TokenRole PragmaKeywordRole = new TokenRole("#pragma");
-		public static readonly TokenRole WarningKeywordRole = new TokenRole("warning");
-		public static readonly TokenRole DisableKeywordRole = new TokenRole("disable");
-		public static readonly TokenRole RestoreKeywordRole = new TokenRole("restore");
-
-		public bool Disable {
-			get {
-				return !DisableToken.IsNull;
-			}
-		}
-
-		public CSharpTokenNode PragmaToken {
-			get { return GetChildByRole(PragmaKeywordRole); }
-		}
-
-		public CSharpTokenNode WarningToken {
-			get { return GetChildByRole(WarningKeywordRole); }
-		}
-
-		public CSharpTokenNode DisableToken {
-			get { return GetChildByRole(DisableKeywordRole); }
-		}
-
-		public CSharpTokenNode RestoreToken {
-			get { return GetChildByRole(RestoreKeywordRole); }
-		}
-
-		public AstNodeCollection<PrimitiveExpression> Warnings {
-			get { return GetChildrenByRole(WarningRole); }
-		}
+		[Slot("Warning")]
+		public partial AstNodeCollection<PrimitiveExpression> Warnings { get; }
 
 		public override TextLocation EndLocation {
 			get {
@@ -115,7 +85,7 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		{
 		}
 
-		public PragmaWarningPreprocessorDirective(string argument = null) : base(PreProcessorDirectiveType.Pragma, argument)
+		public PragmaWarningPreprocessorDirective(string? argument = null) : base(PreProcessorDirectiveType.Pragma, argument)
 		{
 		}
 
@@ -125,77 +95,30 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		}
 	}
 
-	public class PreProcessorDirective : AstNode
+	/// <summary>
+	/// <c>pp_directive ::= '#' pp_kind new_line</c> (C# lexical grammar §6.5.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public partial class PreProcessorDirective : Trivia
 	{
-		public override NodeType NodeType {
-			get {
-				return NodeType.Whitespace;
-			}
-		}
+		public PreProcessorDirectiveType Type { get; set; }
 
-		public PreProcessorDirectiveType Type {
-			get;
-			set;
-		}
+		public string? Argument { get; set; }
 
-		public string Argument {
-			get;
-			set;
-		}
-
-		/// <summary>
-		/// For an '#if' directive, specifies whether the condition evaluated to true.
-		/// </summary>
-		public bool Take {
-			get;
-			set;
-		}
-
-		TextLocation startLocation;
-		public override TextLocation StartLocation {
-			get {
-				return startLocation;
-			}
-		}
-
-		TextLocation endLocation;
-		public override TextLocation EndLocation {
-			get {
-				return endLocation;
-			}
-		}
-
-		public PreProcessorDirective(PreProcessorDirectiveType type, TextLocation startLocation, TextLocation endLocation)
+		public PreProcessorDirective(PreProcessorDirectiveType type, TextLocation startLocation, TextLocation endLocation) : base(startLocation, endLocation)
 		{
 			this.Type = type;
-			this.startLocation = startLocation;
-			this.endLocation = endLocation;
 		}
 
-		public PreProcessorDirective(PreProcessorDirectiveType type, string argument = null)
+		public PreProcessorDirective(PreProcessorDirectiveType type, string? argument = null)
 		{
 			this.Type = type;
 			this.Argument = argument;
 		}
 
-		public override void AcceptVisitor(IAstVisitor visitor)
+		protected internal override bool DoMatch(AstNode? other, PatternMatching.Match match)
 		{
-			visitor.VisitPreProcessorDirective(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitPreProcessorDirective(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitPreProcessorDirective(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			PreProcessorDirective o = other as PreProcessorDirective;
+			PreProcessorDirective? o = other as PreProcessorDirective;
 			return o != null && Type == o.Type && MatchString(Argument, o.Argument);
 		}
 	}

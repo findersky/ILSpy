@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
@@ -11,6 +11,10 @@
   <ItemGroup>
     <PackageReference Include="PowerShellStandard.Library" />
     <PackageReference Include="Mono.Cecil" />
+    <!-- Unify System.Memory with the version ICSharpCode.Decompiler binds to;
+         without this, PowerShellStandard.Library's transitive 4.5.5 wins as
+         "primary" and conflicts with Decompiler.dll's 4.6.x binding (MSB3277). -->
+    <PackageReference Include="System.Memory" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,7 +28,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Condition=" '$(OS)' == 'Windows_NT' " Command="powershell -Command &quot;Copy-Item $(ProjectDir)manifest.psd1 $(TargetDir)$(TargetName).psd1&quot;" />
-	<Exec Condition=" '$(OS)' != 'Windows_NT' " Command="pwsh -Command &quot;Copy-Item $(ProjectDir)manifest.psd1 $(TargetDir)$(TargetName).psd1&quot;" />
+    <Exec Condition=" '$(OS)' == 'Windows_NT' " Command="powershell -Command &quot;Copy-Item '$(ProjectDir)manifest.psd1' '$(TargetDir)$(TargetName).psd1'&quot;" />
+	<Exec Condition=" '$(OS)' != 'Windows_NT' " Command="pwsh -Command &quot;Copy-Item '$(ProjectDir)manifest.psd1' '$(TargetDir)$(TargetName).psd1'&quot;" />
   </Target>
 </Project>

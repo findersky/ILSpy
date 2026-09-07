@@ -9,107 +9,171 @@ on:
 permissions:
   contents: read
 
+env:
+  DOTNET_SDK_VERSION: '11.0.x'
+  DOTNET_SDK_QUALITY: 'preview'
+  StagingDirectory: buildartifacts
+
 jobs:
+  # Skip push builds for branches whose open PR already builds them; see pr-build-gate.yml.
+  Gate:
+    permissions:
+      pull-requests: read
+    uses: ./.github/workflows/pr-build-gate.yml
+
   Build:
+    name: Desktop (Windows)
+    needs: Gate
+    if: needs.Gate.outputs.run == 'true'
     permissions:
       packages: write  # for dotnet nuget push
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
     strategy:
       fail-fast: false
       matrix:
         Configuration: [ Debug, Release ]
     env:
       BuildPlatform: Any CPU
-      StagingDirectory: buildartifacts 
+      BuildAndPublishVsix: true
+
+    defaults:
+      run:
+        shell: pwsh
 
     steps:
     - run: mkdir -p $env:StagingDirectory
       
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         submodules: true
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: actions/setup-dotnet@v4
+    - uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: '8.0.x'
-        dotnet-quality: 'ga'
+        dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+        dotnet-quality: ${{ env.DOTNET_SDK_QUALITY }}
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
       env:
         DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
         DOTNET_ROOT: ${{ runner.temp }}/.dotnet
 
     - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Install dotnet-format
-      run: dotnet tool install -g dotnet-format --version "8.3.546805" --add-source https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet8/nuget/v3/index.json
+      env:
+        DOTNET_FORMAT_VERSION: 10.0.100-rtm.25531.102
+        DOTNET_FORMAT_SOURCE: https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet10-transport/nuget/v3/index.json
+      run: dotnet tool install -g dotnet-format --version "${{env.DOTNET_FORMAT_VERSION}}" --source "${{env.DOTNET_FORMAT_SOURCE}}"
 
     - name: Install wix (locked version)
-      run: dotnet tool install --global wix --version 6.0.0
+      run: dotnet tool install --global wix --version 6.0.2
+      
+    - name: Install wix extension (locked version)
+      run: wix.exe extension add -g WixToolset.UI.wixext/6.0.2
 
     - name: Get Version
       id: version
-      shell: pwsh
       run: |
         .\BuildTools\ghactions-install.ps1
         Get-ChildItem Env: | Where-Object {$_.Name -Match "^ILSPY_"} | %{ echo "$($_.Name)=$($_.Value)" } | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     - name: Restore the application
-      run: msbuild ILSpy.sln /t:Restore /p:Configuration=${{ matrix.configuration }} /p:Platform=$env:BuildPlatform
+      run: >
+        dotnet restore ILSpy.sln
+        /p:RestoreEnablePackagePruning=false
+        /p:Configuration=${{ matrix.configuration }}
+        /p:Platform="$env:BuildPlatform"
 
     - name: Build
-      run: msbuild ILSpy.sln /p:Configuration=${{ matrix.configuration }} /p:Platform=$env:BuildPlatform /m
-
-    - name: Execute unit tests
-      run: dotnet test --logger "trx;LogFileName=${{ matrix.configuration }}.trx" --results-directory test-results $env:Tests1 $env:Tests2 $env:Tests3
-      env:
-        Tests1: ICSharpCode.Decompiler.Tests\bin\${{ matrix.configuration }}\net8.0-windows\win-x64\ICSharpCode.Decompiler.Tests.dll
-        Tests2: ILSpy.Tests\bin\${{ matrix.configuration }}\net8.0-windows\ILSpy.Tests.dll
-        Tests3: ILSpy.BamlDecompiler.Tests\bin\${{ matrix.configuration }}\net8.0-windows\win-x64\ILSpy.BamlDecompiler.Tests.dll
-
-    - name: Upload Test Logs
-      uses: actions/upload-artifact@v4
-      if: success() || failure()
-      with:
-        name: test-results-${{ matrix.configuration }}
-        path: 'test-results/${{ matrix.configuration }}.trx'
-
-    - name: Create Test Report
-      uses: icsharpcode/test-summary-action@dist
-      if: always()
-      with:
-        paths: "test-results/${{ matrix.configuration }}.trx"
-        folded: true
+      run: >
+        dotnet build ILSpy.sln --no-restore
+        -c ${{ matrix.configuration }}
+        /p:Platform="$env:BuildPlatform" /m
 
     - name: Format check
       run: dotnet-format whitespace --verify-no-changes --verbosity detailed ILSpy.sln
-      
-    - name: Verify package contents
-      if: matrix.configuration == 'debug'
-      shell: pwsh
-      run: |
-        .\BuildTools\create-filelists.ps1
-        git diff --exit-code
-    
-    - name: Zip ILSpy (framework-dependent)
-      run: 7z a -tzip $env:StagingDirectory\ILSpy_binaries.zip .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*.dll .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*.exe .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*.config .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*.json .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*\ILSpy.resources.dll .\ILSpy\bin\${{ matrix.configuration }}\net8.0-windows\*\ILSpy.ReadyToRun.Plugin.resources.dll
+
+    - name: Execute unit tests
+      id: unit-tests
+      # All test hosts of the solution run concurrently on a 4-core runner. Server GC (enabled by
+      # ICSharpCode.Decompiler.Tests for machines it has to itself) keeps that host at 100% CPU
+      # and starves the neighbours: the process-module walks in ILSpy.Tests.Windows blow their
+      # 60 s budget and ILSpy.Tests takes almost twice as long, while the decompiler suite itself
+      # gains little here. The environment variable overrides the runtimeconfig setting.
+      env:
+        DOTNET_gcServer: 0
+      run: >
+        dotnet test --solution ilspy.sln
+        --configuration ${{ matrix.configuration }}
+        --no-build --report-trx
+        --results-directory test-results/${{ matrix.configuration }}
+
+    - name: Upload Test Logs
+      uses: actions/upload-artifact@v7
+      if: success() || failure()
+      with:
+        name: test-results-${{ matrix.configuration }}
+        path: 'test-results/${{ matrix.configuration }}/*.trx'
+
+    - name: Upload TestCases on test failure
+      uses: actions/upload-artifact@v7
+      if: failure() && steps.unit-tests.outcome == 'failure'
+      with:
+        name: testcases-${{ matrix.configuration }}
+        path: ICSharpCode.Decompiler.Tests/TestCases
+        compression-level: 9
+
+    # The Windows build compiles the WPF XAML fixtures into this assembly as BAML resources.
+    # Archiving it lets the BAML decompiler be exercised against real BAML on non-Windows hosts.
+    - name: Upload BamlDecompiler test binaries
+      uses: actions/upload-artifact@v7
+      if: failure() && steps.unit-tests.outcome == 'failure'
+      with:
+        name: bamldecompiler-tests-${{ matrix.configuration }}
+        path: ILSpy.BamlDecompiler.Tests.Windows\bin\${{ matrix.configuration }}\net11.0-windows\**
+        if-no-files-found: warn
+
+    - name: Create Test Report
+      uses: test-summary/action@v2
+      if: always()
+      with:
+        paths: "test-results/${{ matrix.configuration }}/*.trx"
+        folded: true
 
     - name: Publish x64/arm64 framework-dependent/self-contained
-      shell: pwsh
-      run: .\publish.ps1
+      run: .\publish.ps1 -Configuration ${{ matrix.configuration }}
+    
+    - name: Zip ILSpy (framework-dependent)
+      run: >
+        7z a -tzip $env:StagingDirectory\ILSpy_binaries.zip ${{ matrix.configuration == 'release' && '''-xr!*.pdb''' || '' }}
+        .\ILSpy\bin\${{ matrix.configuration }}\net10.0\win-x64\publish\fwdependent\*
 
     - name: Zip ILSpy Release (x64 self-contained)
-      if: matrix.configuration == 'release'    
-      run: 7z a -tzip $env:StagingDirectory\ILSpy_selfcontained_x64.zip .\ILSpy\bin\Release\net8.0-windows\win-x64\publish\selfcontained\*  
+      if: matrix.configuration == 'release'
+      run: >
+        7z a -tzip $env:StagingDirectory\ILSpy_selfcontained_x64.zip '-xr!*.pdb'
+        .\ILSpy\bin\Release\net10.0\win-x64\publish\selfcontained\*
 
     - name: Zip ILSpy Release (arm64 framework-dependent)
-      if: matrix.configuration == 'release'    
-      run: 7z a -tzip $env:StagingDirectory\ILSpy_binaries_arm64.zip .\ILSpy\bin\Release\net8.0-windows\win-arm64\publish\fwdependent\*
+      if: matrix.configuration == 'release'
+      run: >
+        7z a -tzip $env:StagingDirectory\ILSpy_binaries_arm64.zip '-xr!*.pdb'
+        .\ILSpy\bin\Release\net10.0\win-arm64\publish\fwdependent\*
 
+    # The persistent MSBuild server (on by default since .NET SDK 11.0.100-preview.7,
+    # dotnet/sdk#55231) breaks the SBOM generation Microsoft.Sbom.Targets runs inside
+    # pack: sbom-tool's console backend caches the server's redirected console writer
+    # from the first pack, so the later packs in the reused server process fail their
+    # component-detection scan with ObjectDisposedException and emit SBOMs with zero
+    # packages. Opt out so each pack runs in a fresh single-shot MSBuild process.
     - name: Pack NuGets
       if: matrix.configuration == 'release'
+      env:
+        DOTNET_CLI_USE_MSBUILD_SERVER: 'false'
       run: |
         dotnet pack ICSharpCode.Decompiler --no-restore
         dotnet pack ICSharpCode.BamlDecompiler --no-restore
@@ -118,28 +182,24 @@ jobs:
     - name: Build Installer (x64 and arm64, framework-dependent)
       if: matrix.configuration == 'release'  
       run: |
-        msbuild ILSpy.Installer.sln /t:Restore /p:Configuration="Release" /p:Platform="Any CPU"
-        msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU"
-        msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU" /p:PlatformForInstaller="ARM64"
+        dotnet msbuild ILSpy.Installer.sln /t:Restore /p:Configuration="Release" /p:Platform="Any CPU"
+        dotnet msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU"
+        dotnet msbuild ILSpy.Installer.sln /p:Configuration="Release" /p:Platform="Any CPU" /p:PlatformForInstaller="ARM64"
 
-    - name: Build VS Extensions (for 2017-2019 and 2022)
-      if: matrix.configuration == 'release'  
+    - name: Build VS Extension (for VS 2022)
+      if: matrix.configuration == 'release' && env.BuildAndPublishVsix == 'true'
+      run: dotnet build ILSpy.VSExtensions.slnx -c Release
+      
+    - name: Verify package contents
+      if: matrix.configuration == 'debug'
       run: |
-        msbuild ILSpy.VSExtensions.sln /t:Restore /p:Configuration="Release" /p:Platform="Any CPU"
-        msbuild ILSpy.VSExtensions.sln /p:Configuration="Release" /p:Platform="Any CPU"
+        .\BuildTools\create-filelists.ps1
+        git diff --exit-code
 
     # https://github.com/actions/upload-artifact
-    - name: Upload VSIX (VS 2019) release build artifacts
-      if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ILSpy VS Addin for VS 2017-2019 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
-        path: ILSpy.AddIn\bin\${{ matrix.configuration }}\net472\*.vsix
-        if-no-files-found: error
-
     - name: Upload VSIX (VS 2022) release build artifacts
-      if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      if: matrix.configuration == 'release' && env.BuildAndPublishVsix == 'true'
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy VS Addin for VS 2022 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ILSpy.AddIn.VS2022\bin\${{ matrix.configuration }}\net472\*.vsix
@@ -147,7 +207,7 @@ jobs:
 
     - name: Upload Decompiler NuGet release build artifacts
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ICSharpCode.Decompiler NuGet Package (${{ matrix.configuration }})
         path: ICSharpCode.Decompiler\bin\Release\ICSharpCode.Decompiler*.nupkg
@@ -156,11 +216,13 @@ jobs:
     - name: Publish Decompiler NuGet
       if: github.ref == 'refs/heads/master' && matrix.configuration == 'release'
       run: |
-        dotnet nuget push "ICSharpCode.Decompiler\bin\Release\ICSharpCode.Decompiler*.nupkg" --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}
+        dotnet nuget push "ICSharpCode.Decompiler\bin\Release\ICSharpCode.Decompiler*.nupkg" `
+          --api-key ${{ secrets.GITHUB_TOKEN }} `
+          --source https://nuget.pkg.github.com/${{ github.repository_owner }}
 
     - name: Upload ILSpyX NuGet release build artifacts
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ICSharpCode.ILSpyX NuGet Package (${{ matrix.configuration }})
         path: ICSharpCode.ILSpyX\bin\Release\ICSharpCode.ILSpyX*.nupkg
@@ -169,23 +231,27 @@ jobs:
     - name: Publish ILSpyX NuGet
       if: github.ref == 'refs/heads/master' && matrix.configuration == 'release'
       run: |
-        dotnet nuget push "ICSharpCode.ILSpyX\bin\Release\ICSharpCode.ILSpyX*.nupkg" --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}
+        dotnet nuget push "ICSharpCode.ILSpyX\bin\Release\ICSharpCode.ILSpyX*.nupkg" `
+          --api-key ${{ secrets.GITHUB_TOKEN }} `
+          --source https://nuget.pkg.github.com/${{ github.repository_owner }}
 
     - name: Upload BamlDecompiler NuGet release build artifacts
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ICSharpCode.BamlDecompiler NuGet Package (${{ matrix.configuration }})
         path: ICSharpCode.BamlDecompiler\bin\Release\ICSharpCode.BamlDecompiler*.nupkg
         if-no-files-found: error
 
-    - name: Publish DecomBamlDecompilerpiler NuGet
+    - name: Publish BamlDecompiler NuGet
       if: github.ref == 'refs/heads/master' && matrix.configuration == 'release'
       run: |
-        dotnet nuget push "ICSharpCode.BamlDecompiler\bin\Release\ICSharpCode.BamlDecompiler*.nupkg" --api-key ${{ secrets.GITHUB_TOKEN }} --source https://nuget.pkg.github.com/${{ github.repository_owner }}
+        dotnet nuget push "ICSharpCode.BamlDecompiler\bin\Release\ICSharpCode.BamlDecompiler*.nupkg" `
+          --api-key ${{ secrets.GITHUB_TOKEN }} `
+          --source https://nuget.pkg.github.com/${{ github.repository_owner }}
 
     - name: Upload zip binaries build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ${{ env.StagingDirectory }}\ILSpy_binaries.zip
@@ -193,7 +259,7 @@ jobs:
 
     - name: Upload x64 self-contained zip (Release-only)
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy self-contained x64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ${{ env.StagingDirectory }}\ILSpy_selfcontained_x64.zip
@@ -201,7 +267,7 @@ jobs:
 
     - name: Upload arm64 framework-dependent zip (Release-only)
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy arm64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ${{ env.StagingDirectory }}\ILSpy_binaries_arm64.zip
@@ -209,7 +275,7 @@ jobs:
 
     - name: Upload x64 installer artifact
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy Installer x64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ILSpy.Installer\wix\*-x64.msi
@@ -217,7 +283,7 @@ jobs:
 
     - name: Upload arm64 installer artifact
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ILSpy Installer arm64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (${{ matrix.configuration }})
         path: ILSpy.Installer\wix\*-arm64.msi
@@ -225,8 +291,163 @@ jobs:
 
     - name: Upload ilspycmd release build artifacts
       if: matrix.configuration == 'release'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ilspycmd dotnet tool (${{ matrix.configuration }})
         path: ICSharpCode.ILSpyCmd\bin\Release\ilspycmd*.nupkg
+        if-no-files-found: error
+
+  # Linux and macOS build the desktop solution filter, run the UI tests on their own
+  # platform, and package self-contained Release bundles. NuGet packing and all
+  # Windows-specific packaging stay in the Windows job above. The decompiler tests run on
+  # Linux but not macOS (already covered by Windows + Linux; they dominate the runtime of
+  # the slowest job); they need the ILSpy-tests submodule (the TargetNet40 configs compile
+  # against its legacy reference assemblies even on non-Windows); configs that genuinely
+  # need Windows (legacy csc, mcs, 32-bit, roundtrip) self-exclude via
+  # Tester.SupportedOnCurrentPlatform and [Platform("Win")]. ILSpy.Tests.Windows runs only
+  # in the Windows job by design.
+
+  Desktop:
+    needs: Gate
+    if: needs.Gate.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-15
+            platform: macos
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+    - run: mkdir -p $env:StagingDirectory
+
+    - uses: actions/checkout@v7
+      with:
+        submodules: true
+        fetch-depth: 0
+        persist-credentials: false
+
+    - uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+        dotnet-quality: ${{ env.DOTNET_SDK_QUALITY }}
+        cache: true
+        cache-dependency-path: '**/packages.lock.json'
+      env:
+        DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        DOTNET_ROOT: ${{ runner.temp }}/.dotnet
+
+    - name: Get Version
+      id: version
+      run: |
+        ./BuildTools/ghactions-install.ps1
+        Get-ChildItem Env: | Where-Object {$_.Name -Match "^ILSPY_"} | %{ echo "$($_.Name)=$($_.Value)" } | Out-File -FilePath $Env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+    - name: Restore the application
+      run: >
+        dotnet restore ILSpy.Desktop.slnf
+        /p:RestoreEnablePackagePruning=false
+        /p:Configuration=Release
+        /p:Platform="Any CPU"
+
+    - name: Build
+      run: >
+        dotnet build ILSpy.Desktop.slnf --no-restore
+        -c Release
+        /p:Platform="Any CPU" /m
+
+    - name: Execute UI tests
+      run: >
+        dotnet test --project ILSpy.Tests/ILSpy.Tests.csproj
+        --configuration Release
+        --no-build --report-trx
+        --results-directory test-results
+
+    - name: Execute decompiler tests
+      id: decompiler-tests
+      if: matrix.platform != 'macos'
+      run: >
+        dotnet test --project ICSharpCode.Decompiler.Tests/ICSharpCode.Decompiler.Tests.csproj
+        --configuration Release
+        --no-build --report-trx
+        --results-directory test-results
+
+    - name: Execute ilspycmd tests
+      run: >
+        dotnet test --project ICSharpCode.ILSpyCmd.Tests/ICSharpCode.ILSpyCmd.Tests.csproj
+        --configuration Release
+        --no-build --report-trx
+        --results-directory test-results
+
+    - name: Execute BAML decompiler tests
+      run: >
+        dotnet test --project ILSpy.BamlDecompiler.Tests/ILSpy.BamlDecompiler.Tests.csproj
+        --configuration Release
+        --no-build --report-trx
+        --results-directory test-results
+
+    - name: Upload Test Logs
+      uses: actions/upload-artifact@v7
+      if: success() || failure()
+      with:
+        name: test-results-${{ matrix.platform }}
+        path: 'test-results/*.trx'
+
+    - name: Upload TestCases on test failure
+      uses: actions/upload-artifact@v7
+      if: failure() && steps.decompiler-tests.outcome == 'failure'
+      with:
+        name: testcases-${{ matrix.platform }}
+        path: ICSharpCode.Decompiler.Tests/TestCases
+        compression-level: 9
+
+    - name: Create Test Report
+      uses: test-summary/action@v2
+      if: always()
+      with:
+        paths: "test-results/*.trx"
+        folded: true
+
+    - name: Publish (self-contained)
+      run: ./publish.ps1 -Configuration Release -Platform ${{ matrix.platform }}
+
+    - name: Package
+      run: ./BuildTools/package-${{ matrix.platform }}.ps1 -Configuration Release -Version "${{ steps.version.outputs.ILSPY_VERSION_NUMBER }}" -StagingDirectory $env:StagingDirectory
+
+    - name: Upload zip build artifact (Linux)
+      if: matrix.platform == 'linux'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ILSpy Linux x64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (Release)
+        path: ${{ env.StagingDirectory }}/ILSpy_linux-x64_*.zip
+        if-no-files-found: error
+
+    - name: Upload deb build artifact
+      if: matrix.platform == 'linux'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ILSpy Linux x64 deb ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (Release)
+        path: ${{ env.StagingDirectory }}/*.deb
+        if-no-files-found: error
+
+    - name: Upload rpm build artifact
+      if: matrix.platform == 'linux'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ILSpy Linux x64 rpm ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (Release)
+        path: ${{ env.StagingDirectory }}/*.rpm
+        if-no-files-found: error
+
+    - name: Upload app bundle build artifact (macOS)
+      if: matrix.platform == 'macos'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ILSpy macOS arm64 ${{ steps.version.outputs.ILSPY_VERSION_NUMBER }} (Release)
+        path: ${{ env.StagingDirectory }}/ILSpy_macos-arm64_*.zip
         if-no-files-found: error

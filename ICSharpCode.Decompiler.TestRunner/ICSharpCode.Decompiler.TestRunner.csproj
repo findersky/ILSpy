@@ -2,8 +2,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <!-- Explicit RID list so packages.lock.json carries every RID (host-independent), matching
+         the test project that drives this runner and keeping the lock stable across OSes. -->
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;osx-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
 </Project>

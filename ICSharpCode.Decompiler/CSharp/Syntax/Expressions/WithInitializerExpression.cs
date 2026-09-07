@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2021 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2021 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,52 +16,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Expression with Initializer
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <c>with_expression ::= expression 'with' array_initializer</c> (C# grammar §12.10)
 	/// </summary>
-	public class WithInitializerExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class WithInitializerExpression : Expression
 	{
-		public readonly static TokenRole WithKeywordRole = new TokenRole("with");
-		public readonly static Role<ArrayInitializerExpression> InitializerRole = ArrayCreateExpression.InitializerRole;
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
-
-		public CSharpTokenNode WithToken {
-			get { return GetChildByRole(WithKeywordRole); }
-		}
-
-		public ArrayInitializerExpression Initializer {
-			get { return GetChildByRole(InitializerRole); }
-			set { SetChildByRole(InitializerRole, value); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitWithInitializerExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitWithInitializerExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitWithInitializerExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, Match match)
-		{
-			return other is WithInitializerExpression o
-				&& this.Expression.DoMatch(o.Expression, match)
-				&& this.Initializer.DoMatch(o.Initializer, match);
-		}
+		[Slot("Initializer")]
+		public partial ArrayInitializerExpression Initializer { get; set; }
 	}
 }

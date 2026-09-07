@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2016 Daniel Grunwald
+// Copyright (c) 2016 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -19,6 +19,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -36,7 +37,7 @@ using NUnit.Framework;
 
 namespace ICSharpCode.Decompiler.Roundtrip
 {
-	[TestFixture, Parallelizable(ParallelScope.All)]
+	[TestFixture, Parallelizable(ParallelScope.All), Platform("Win")]
 	public class RoundtripAssembly
 	{
 		public static readonly string TestDir = Path.GetFullPath(Path.Combine(Tester.TestCasePath, "../../ILSpy-tests"));
@@ -204,6 +205,9 @@ namespace ICSharpCode.Decompiler.Roundtrip
 							decompiler.StrongNameKeyFile = Path.Combine(inputDir, snkFilePath);
 						}
 						decompiler.DecompileProject(module, decompiledDir);
+						// The exporter reports what it could not decompile instead of throwing, so
+						// without this a decompiler crash produces a stub and the round trip passes.
+						Assert.That(decompiler.Errors.Select(e => e.ToString()), Is.Empty);
 						Console.WriteLine($"Decompiled {fileToRoundtrip} in {w.Elapsed.TotalSeconds:f2}");
 						projectFile = Path.Combine(decompiledDir, module.Name + ".csproj");
 					}
@@ -290,8 +294,8 @@ namespace ICSharpCode.Decompiler.Roundtrip
 
 		class TestProjectDecompiler : WholeProjectDecompiler
 		{
-			public TestProjectDecompiler(Guid projectGuid, IAssemblyResolver resolver, AssemblyReferenceClassifier assemblyReferenceClassifier, DecompilerSettings settings)
-				: base(settings, projectGuid, resolver, null, assemblyReferenceClassifier, debugInfoProvider: null)
+			public TestProjectDecompiler(Guid projectGuid, IAssemblyResolver resolver, IAssemblyReferenceClassifier assemblyReferenceClassifier, DecompilerSettings settings)
+				: base(settings, projectGuid, resolver, IProjectFileWriter.FromSettings(settings), assemblyReferenceClassifier, debugInfoProvider: null)
 			{
 			}
 		}

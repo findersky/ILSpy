@@ -1,4 +1,4 @@
-﻿// 
+// 
 // YieldBreakStatement.cs
 //
 // Author:
@@ -24,48 +24,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// yield break;
+	/// <c>yield_statement ::= 'yield' 'break' ';'</c> (C# grammar §13.15)
 	/// </summary>
-	public class YieldBreakStatement : Statement
+	[DecompilerAstNode]
+	public sealed partial class YieldBreakStatement : Statement
 	{
-		public static readonly TokenRole YieldKeywordRole = new TokenRole("yield");
-		public static readonly TokenRole BreakKeywordRole = new TokenRole("break");
-
-		public CSharpTokenNode YieldToken {
-			get { return GetChildByRole(YieldKeywordRole); }
-		}
-
-		public CSharpTokenNode BreakToken {
-			get { return GetChildByRole(BreakKeywordRole); }
-		}
-
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitYieldBreakStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitYieldBreakStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitYieldBreakStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			YieldBreakStatement o = other as YieldBreakStatement;
-			return o != null;
-		}
+		public const string YieldKeyword = "yield";
+		public const string BreakKeyword = "break";
 	}
 }

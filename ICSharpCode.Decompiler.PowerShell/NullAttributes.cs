@@ -1,4 +1,10 @@
-﻿#if !NETCORE
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+//
+// Nullable-annotation attribute polyfills from dotnet/runtime, for target frameworks
+// that lack them.
+
+#if !NETCORE
 
 #nullable enable
 

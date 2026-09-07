@@ -1,4 +1,4 @@
-﻿// 
+// 
 // AnonymousMethodExpression.cs
 //
 // Author:
@@ -24,96 +24,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Linq;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// [async] delegate(Parameters) {Body}
+	/// <c>anonymous_method_expression ::= 'async'? 'delegate' parameter* block</c> (C# grammar §12.22.1)
 	/// </summary>
-	public class AnonymousMethodExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class AnonymousMethodExpression : Expression
 	{
-		public readonly static TokenRole DelegateKeywordRole = new TokenRole("delegate");
-		public readonly static TokenRole AsyncModifierRole = LambdaExpression.AsyncModifierRole;
+		public const string DelegateKeyword = "delegate";
+		public const string AsyncModifier = LambdaExpression.AsyncModifier;
 
-		bool isAsync;
+		public bool IsAsync { get; set; }
 
-		public bool IsAsync {
-			get { return isAsync; }
-			set { ThrowIfFrozen(); isAsync = value; }
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		// used to tell the difference between delegate {} and delegate () {}
-		bool hasParameterList;
-
-		public bool HasParameterList {
-			get { return hasParameterList || Parameters.Any(); }
-			set { ThrowIfFrozen(); hasParameterList = value; }
-		}
-
-		public CSharpTokenNode DelegateToken {
-			get { return GetChildByRole(DelegateKeywordRole); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
-
-		public AnonymousMethodExpression()
-		{
-		}
-
-		public AnonymousMethodExpression(BlockStatement body, IEnumerable<ParameterDeclaration> parameters = null)
-		{
-			if (parameters != null)
-			{
-				hasParameterList = true;
-				foreach (var parameter in parameters)
-				{
-					AddChild(parameter, Roles.Parameter);
-				}
-			}
-			AddChild(body, Roles.Body);
-		}
-
-		public AnonymousMethodExpression(BlockStatement body, params ParameterDeclaration[] parameters) : this(body, (IEnumerable<ParameterDeclaration>)parameters)
-		{
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitAnonymousMethodExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitAnonymousMethodExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitAnonymousMethodExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			AnonymousMethodExpression o = other as AnonymousMethodExpression;
-			return o != null && this.IsAsync == o.IsAsync && this.HasParameterList == o.HasParameterList
-				&& this.Parameters.DoMatch(o.Parameters, match) && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("Body")]
+		public partial BlockStatement Body { get; set; }
 	}
 }

@@ -1,14 +1,14 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
-// 
+// Copyright (c) 2026 AlphaSierraPapa for the SharpDevelop Team
+//
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
 // without restriction, including without limitation the rights to use, copy, modify, merge,
 // publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
 // to whom the Software is furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all copies or
 // substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 // INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
 // PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
@@ -23,51 +23,36 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 
 using ICSharpCode.Decompiler.Metadata;
-using ICSharpCode.Decompiler.TypeSystem;
-using ICSharpCode.ILSpy.TreeNodes;
 
-namespace ICSharpCode.ILSpy.Metadata
+namespace ICSharpCode.ILSpy.Metadata.CorTables
 {
-	internal class MethodTableTreeNode : MetadataTableTreeNode
+	/// <summary>
+	/// View of the MethodDef table — every method body the module ships. The RVA points
+	/// into the .text section's IL stream (0 for abstract / interface methods); the
+	/// ParamList token is the first row in the Param table covering this method's parameters.
+	/// </summary>
+	public sealed class MethodTableTreeNode : MetadataTableTreeNode<MethodTableTreeNode.MethodDefEntry>
 	{
 		public MethodTableTreeNode(MetadataFile metadataFile)
 			: base(TableIndex.MethodDef, metadataFile)
 		{
 		}
 
-		public override bool View(ViewModels.TabPageModel tabPage)
+		protected override IReadOnlyList<MethodDefEntry> LoadTable()
 		{
-			tabPage.Title = Text.ToString();
-			tabPage.SupportsLanguageSwitching = false;
-
-			var view = Helpers.PrepareDataGrid(tabPage, this);
-			var metadata = metadataFile.Metadata;
 			var list = new List<MethodDefEntry>();
-			MethodDefEntry scrollTargetEntry = default;
-
-			foreach (var row in metadata.MethodDefinitions)
+			// ParamList comes from the raw row (GetMethodDefParamLists): the computed range
+			// (GetParameters) is empty for a parameterless method, but the stored value is the
+			// running list position (the next method's first Param row, or one past the Param
+			// table's end), never 0.
+			foreach (var (handle, paramList) in metadataFile.Metadata.GetMethodDefParamLists())
 			{
-				MethodDefEntry entry = new MethodDefEntry(metadataFile, row);
-				if (entry.RID == scrollTarget)
-				{
-					scrollTargetEntry = entry;
-				}
-				list.Add(entry);
+				list.Add(new MethodDefEntry(metadataFile, handle, paramList));
 			}
-
-			view.ItemsSource = list;
-
-			tabPage.Content = view;
-
-			if (scrollTargetEntry.RID > 0)
-			{
-				ScrollItemIntoView(view, scrollTargetEntry);
-			}
-
-			return true;
+			return list;
 		}
 
-		struct MethodDefEntry : IMemberTreeNode
+		public sealed class MethodDefEntry
 		{
 			readonly MetadataFile metadataFile;
 			readonly MethodDefinitionHandle handle;
@@ -75,13 +60,13 @@ namespace ICSharpCode.ILSpy.Metadata
 
 			public int RID => MetadataTokens.GetRowNumber(handle);
 
+			[ColumnInfo("X8")]
 			public int Token => MetadataTokens.GetToken(handle);
 
-			public int Offset => metadataFile.MetadataOffset
-				+ metadataFile.Metadata.GetTableMetadataOffset(TableIndex.MethodDef)
-				+ metadataFile.Metadata.GetTableRowSize(TableIndex.MethodDef) * (RID - 1);
+			[ColumnInfo("X8")]
+			public int Offset => GetRowOffset(metadataFile, TableIndex.MethodDef, RID);
 
-			[ColumnInfo("X8", Kind = ColumnKind.Other)]
+			[ColumnInfo("X8")]
 			public MethodAttributes Attributes => methodDef.Attributes;
 
 			const MethodAttributes otherFlagsMask = ~(MethodAttributes.MemberAccessMask | MethodAttributes.VtableLayoutMask);
@@ -92,7 +77,7 @@ namespace ICSharpCode.ILSpy.Metadata
 				FlagGroup.CreateMultipleChoiceGroup(typeof(MethodAttributes), "Flags:", (int)otherFlagsMask, (int)(methodDef.Attributes & otherFlagsMask), includeAll: false),
 			};
 
-			[ColumnInfo("X8", Kind = ColumnKind.Other)]
+			[ColumnInfo("X8")]
 			public MethodImplAttributes ImplAttributes => methodDef.ImplAttributes;
 
 			public object ImplAttributesTooltip => new FlagsTooltip {
@@ -100,6 +85,7 @@ namespace ICSharpCode.ILSpy.Metadata
 				FlagGroup.CreateSingleChoiceGroup(typeof(MethodImplAttributes), "Managed type: ", (int)MethodImplAttributes.ManagedMask, (int)(methodDef.ImplAttributes & MethodImplAttributes.ManagedMask), new Flag("Managed (0000)", 0, false), includeAny: false),
 			};
 
+			[ColumnInfo("X8")]
 			public int RVA => methodDef.RelativeVirtualAddress;
 
 			public string Name => metadataFile.Metadata.GetString(methodDef.Name);
@@ -109,37 +95,31 @@ namespace ICSharpCode.ILSpy.Metadata
 			[ColumnInfo("X8", Kind = ColumnKind.HeapOffset)]
 			public int Signature => MetadataTokens.GetHeapOffset(methodDef.Signature);
 
-			string signatureTooltip;
+			string? signatureTooltip;
 
-			public string SignatureTooltip => GenerateTooltip(ref signatureTooltip, metadataFile, handle);
+			public string? SignatureTooltip => GenerateTooltip(ref signatureTooltip, metadataFile, handle);
 
 			[ColumnInfo("X8", Kind = ColumnKind.Token)]
-			public int ParamList => MetadataTokens.GetToken(methodDef.GetParameters().FirstOrDefault());
+			public int ParamList => 0x08000000 | paramList;
 
-			public void OnParamListClick()
-			{
-				MessageBus.Send(this, new NavigateToReferenceEventArgs(new EntityReference(metadataFile, methodDef.GetParameters().FirstOrDefault(), protocol: "metadata")));
-			}
-
-			string paramListTooltip;
-			public string ParamListTooltip {
+			string? paramListTooltip;
+			public string? ParamListTooltip {
 				get {
 					var param = methodDef.GetParameters().FirstOrDefault();
 					if (param.IsNil)
-						return null;
+						return "(method has no Param rows; the stored value is the start of its empty parameter list: the next method's first Param row, or one past the end of the Param table)";
 					return GenerateTooltip(ref paramListTooltip, metadataFile, param);
 				}
 			}
 
-			IEntity IMemberTreeNode.Member => ((MetadataModule)metadataFile.GetTypeSystemWithCurrentOptionsOrNull(SettingsService, AssemblyTreeModel.CurrentLanguageVersion)?.MainModule)?.GetDefinition(handle);
+			readonly int paramList;
 
-			public MethodDefEntry(MetadataFile metadataFile, MethodDefinitionHandle handle)
+			public MethodDefEntry(MetadataFile metadataFile, MethodDefinitionHandle handle, int paramList)
 			{
+				this.paramList = paramList;
 				this.metadataFile = metadataFile;
 				this.handle = handle;
-				this.methodDef = metadataFile.Metadata.GetMethodDefinition(handle);
-				this.signatureTooltip = null;
-				this.paramListTooltip = null;
+				methodDef = metadataFile.Metadata.GetMethodDefinition(handle);
 			}
 		}
 	}

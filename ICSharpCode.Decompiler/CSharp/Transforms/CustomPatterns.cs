@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,6 +16,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
 using System.Linq;
 
@@ -27,7 +29,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
 	sealed class TypePattern : Pattern
 	{
-		readonly string ns;
+		readonly string? ns;
 		readonly string name;
 
 		public TypePattern(Type type)
@@ -36,10 +38,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			this.name = type.Name;
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
-			ComposedType ct = other as ComposedType;
-			AstType o;
+			ComposedType? ct = other as ComposedType;
+			AstType? o;
 			if (ct != null && !ct.HasRefSpecifier && !ct.HasNullableSpecifier && ct.PointerRank == 0 && !ct.ArraySpecifiers.Any())
 			{
 				// Special case: ILSpy sometimes produces a ComposedType but then removed all array specifiers
@@ -71,9 +73,9 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			this.childNode = new AnyNode(groupName);
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
-			InvocationExpression ie = other as InvocationExpression;
+			InvocationExpression? ie = other as InvocationExpression;
 			if (ie != null && ie.Annotation<LdTokenAnnotation>() != null && ie.Arguments.Count == 1)
 			{
 				return childNode.DoMatch(ie.Arguments.Single(), match);
@@ -105,7 +107,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				), "TypeHandle");
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
 			return childNode.DoMatch(other, match);
 		}

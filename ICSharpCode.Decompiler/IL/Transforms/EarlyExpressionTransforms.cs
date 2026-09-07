@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Daniel Grunwald
+// Copyright (c) 2017 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -117,6 +117,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						checkForOverflow: false, Sign.None);
 				}
 				inst.ReplaceWith(replacement);
+				context.EndStep(replacement);
 				return true;
 			}
 			return false;
@@ -144,6 +145,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						checkForOverflow: false, Sign.None);
 				}
 				inst.ReplaceWith(replacement);
+				context.EndStep(replacement);
 				return true;
 			}
 			return false;
@@ -161,16 +163,71 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				temp = ldfldaTarget;
 				range = range.Concat(temp.ILRanges);
 			}
-			if (temp.MatchAddressOf(out var addressOfTarget, out _) && addressOfTarget.MatchLdLoc(out var v))
+			if (!temp.MatchAddressOf(out var addressOfTarget, out var addressOfType))
+				return;
+			ILInstruction replacement;
+			switch (addressOfTarget)
 			{
-				context.Step($"ldobj(...(addressof(ldloca {v.Name}))) => ldobj(...(ldloca {v.Name}))", inst);
-				var replacement = new LdLoca(v).WithILRange(addressOfTarget);
-				foreach (var r in range)
-				{
-					replacement = replacement.WithILRange(r);
-				}
-				temp.ReplaceWith(replacement);
+				case LdLoc { Variable: var v }:
+					context.Step($"ldobj(...(addressof(ldloca {v.Name}))) => ldobj(...(ldloca {v.Name}))", inst);
+					replacement = new LdLoca(v).WithILRange(addressOfTarget);
+					break;
+				// The enclosing ldobj only reads through the temporary the addressof creates, so
+				// the copy can be elided and the read go directly through the inner address.
+				// This shape arises when a struct field chain is read by value (ldfld, then a
+				// field of the loaded value), e.g. reading element 8+ of a long tuple via Rest.
+				// The type check keeps the elision on that shape: re-rooting a read of an
+				// incompatible type onto the inner address would read memory behind it that the
+				// copy never covered.
+				case LdObj { UnalignedPrefix: 0, IsVolatile: false } innerLdObj
+					when TypeUtils.IsCompatibleTypeForMemoryAccess(innerLdObj.Type, addressOfType):
+					context.Step("ldobj(...(addressof(ldobj(addr)))) => ldobj(...(addr))", inst);
+					replacement = innerLdObj.Target;
+					range = range.Concat(addressOfTarget.ILRanges);
+					break;
+				default:
+					return;
 			}
+			foreach (var r in range)
+			{
+				replacement = replacement.WithILRange(r);
+			}
+			temp.ReplaceWith(replacement);
+			context.EndStep(replacement);
+		}
+
+		protected internal override void VisitCall(Call inst)
+		{
+			base.VisitCall(inst);
+			TransformAsyncHelpersAwaitToAwait(inst, context);
+		}
+
+		// runtime-async lowering emits `call AsyncHelpers.Await(value)` in place of the IL Await
+		// instruction. Convert it back so downstream transforms (UsingTransform's MatchDisposeBlock
+		// and friends pattern-match on Await via UnwrapAwait) see the canonical shape that the
+		// state-machine async pipeline also produces. Gate on the current function actually being
+		// a runtime-async method — ILReader sets IsAsync iff the MethodImpl.Async bit is present —
+		// so a non-async method that calls the helper directly (legal, just unusual) doesn't get
+		// rewritten into IL that the surrounding non-async control flow can't represent.
+		internal static bool TransformAsyncHelpersAwaitToAwait(Call inst, ILTransformContext context)
+		{
+			if (!context.Settings.AsyncAwait || !context.Function.IsAsync)
+				return false;
+			if (!inst.Method.IsStatic || inst.Arguments.Count != 1 || !IsAsyncHelpersMethod(inst.Method, "Await"))
+				return false;
+			context.Step("call AsyncHelpers.Await(value) => await(value)", inst);
+			var awaitInst = new Await(inst.Arguments[0]).WithILRange(inst);
+			awaitInst.GetAwaiterMethod = null;
+			awaitInst.GetResultMethod = inst.Method;
+			inst.ReplaceWith(awaitInst);
+			context.EndStep(awaitInst);
+			return true;
+		}
+
+		internal static bool IsAsyncHelpersMethod(IMethod method, string name)
+		{
+			return method.Name == name
+				&& method.DeclaringType?.FullName == "System.Runtime.CompilerServices.AsyncHelpers";
 		}
 
 		protected internal override void VisitNewObj(NewObj inst)
@@ -179,6 +236,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			{
 				context.Step("TransformDecimalCtorToConstant", inst);
 				inst.ReplaceWith(decimalConstant);
+				context.EndStep(decimalConstant);
 				return;
 			}
 

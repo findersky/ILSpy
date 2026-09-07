@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Daniel Grunwald
+// Copyright (c) 2020 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -269,6 +269,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					newCall.AddILRange(block.Instructions[i]);
 				}
 				call.ReplaceWith(newCall);
+				context.EndStep(newCall);
 				block.Instructions.RemoveRange(startPos, pos - startPos);
 			}
 
@@ -358,6 +359,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					newCall.AddILRange(block.Instructions[i]);
 				}
 				call.ReplaceWith(newCall);
+				context.EndStep(newCall);
 				block.Instructions.RemoveRange(startPos, pos - startPos);
 			}
 

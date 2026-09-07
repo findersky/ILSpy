@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2020 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -17,6 +17,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Diagnostics;
@@ -29,7 +30,7 @@ namespace ICSharpCode.ILSpyX.TreeView
 	/// <summary>
 	/// Collection that validates that inserted nodes do not have another parent.
 	/// </summary>
-	public sealed class SharpTreeNodeCollection : IList<SharpTreeNode>, INotifyCollectionChanged
+	public sealed class SharpTreeNodeCollection : IList<SharpTreeNode>, IList, INotifyCollectionChanged
 	{
 		readonly SharpTreeNode parent;
 		List<SharpTreeNode> list = new List<SharpTreeNode>();
@@ -44,6 +45,11 @@ namespace ICSharpCode.ILSpyX.TreeView
 
 		void OnCollectionChanged(NotifyCollectionChangedEventArgs e)
 		{
+			// Checked here rather than in each mutator: every one of them funnels through this method,
+			// and this is the last point before OnChildrenChanged rewrites the flat-list tree and
+			// notifies the flattener. A violation therefore leaves the flat list untouched instead of
+			// half-updated; only the backing List<T> has already moved.
+			parent.VerifyChildrenChange(e);
 			Debug.Assert(!isRaisingEvent);
 			isRaisingEvent = true;
 			try
@@ -93,6 +99,20 @@ namespace ICSharpCode.ILSpyX.TreeView
 		bool ICollection<SharpTreeNode>.IsReadOnly {
 			get { return false; }
 		}
+
+		#region IList Members
+
+		public bool IsFixedSize => ((IList)list).IsFixedSize;
+
+		public bool IsReadOnly => ((IList)list).IsReadOnly;
+
+		public bool IsSynchronized => ((ICollection)list).IsSynchronized;
+
+		public object SyncRoot => ((ICollection)list).SyncRoot;
+
+		object IList.this[int index] { get => this[index]; set => this[index] = (SharpTreeNode)value; }
+
+		#endregion
 
 		public int IndexOf(SharpTreeNode node)
 		{
@@ -234,6 +254,53 @@ namespace ICSharpCode.ILSpyX.TreeView
 			if (firstToRemove < list.Count)
 			{
 				RemoveRange(firstToRemove, list.Count - firstToRemove);
+			}
+		}
+
+		public int Add(object value)
+		{
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
+			if (!(value is SharpTreeNode node))
+				throw new ArgumentException("Value must be a SharpTreeNode", nameof(value));
+			Add(node);
+			return list.IndexOf(node);
+		}
+
+		public bool Contains(object value)
+		{
+			return value is SharpTreeNode node && Contains(node);
+		}
+
+		public int IndexOf(object value)
+		{
+			return value is SharpTreeNode node ? IndexOf(node) : -1;
+		}
+
+		public void Insert(int index, object value)
+		{
+			if (value == null)
+				throw new ArgumentNullException(nameof(value));
+			if (!(value is SharpTreeNode node))
+				throw new ArgumentException("Value must be a SharpTreeNode", nameof(value));
+			Insert(index, node);
+		}
+
+		public void Remove(object value)
+		{
+			if (value is SharpTreeNode node)
+				Remove(node);
+		}
+
+		public void CopyTo(Array array, int index)
+		{
+			if (array is SharpTreeNode[] nodes)
+			{
+				CopyTo(nodes, index);
+			}
+			else
+			{
+				((ICollection)list).CopyTo(array, index);
 			}
 		}
 	}

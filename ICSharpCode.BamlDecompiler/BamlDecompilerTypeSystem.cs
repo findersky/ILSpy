@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Siegfried Pammer
+// Copyright (c) 2021 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -40,6 +40,37 @@ namespace ICSharpCode.BamlDecompiler
 				"System.Xml, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"
 			};
 
+		// A type each of these assemblies must define for the module resolved under its name to be
+		// the assembly BAML means by it. .NET ships a WindowsBase facade on every platform - it
+		// resolves everywhere and carries none of the WPF types, because those live in the
+		// WindowsDesktop runtime pack - and a module like that has to give way to the synthetic
+		// stand-in the way an assembly that does not resolve at all does. Without this, a document
+		// using System.Windows.Point or Size is lost outright on a machine without WPF.
+		static readonly Dictionary<string, TopLevelTypeName> wellKnownProbeTypes = new(StringComparer.OrdinalIgnoreCase) {
+			["WindowsBase"] = new TopLevelTypeName("System.Windows", "Point"),
+			["PresentationCore"] = new TopLevelTypeName("System.Windows.Media", "Brush"),
+			["PresentationFramework"] = new TopLevelTypeName("System.Windows.Controls", "Button")
+		};
+
+		/// <summary>
+		/// Whether <paramref name="file"/> is the assembly its name claims, rather than a facade
+		/// standing where it should be.
+		/// </summary>
+		static bool IsTheAssemblyItIsNamedAfter(MetadataFile file)
+		{
+			if (!wellKnownProbeTypes.TryGetValue(file.Name, out var probeType))
+				return true;
+			return !file.GetTypeDefinition(probeType).IsNil;
+		}
+
+		// The WPF assemblies whose types serialize under the presentation XML namespace. When one of
+		// these has to be synthesized (e.g. inspecting a WPF binary on a non-Windows machine), the
+		// synthetic module reproduces its XmlnsDefinitionAttribute mapping so known types still emit
+		// the clean presentation xmlns rather than a clr-namespace fallback.
+		static readonly HashSet<string> presentationXmlnsAssemblies = new(StringComparer.OrdinalIgnoreCase) {
+				"WindowsBase", "PresentationCore", "PresentationFramework", "PresentationUI"
+			};
+
 		public BamlDecompilerTypeSystem(MetadataFile mainModule, IAssemblyResolver assemblyResolver)
 		{
 			if (mainModule == null)
@@ -69,9 +100,10 @@ namespace ICSharpCode.BamlDecompiler
 			{
 				assemblyReferenceQueue.Enqueue((true, mainModule, refs));
 			}
-			foreach (var bamlReference in defaultBamlReferences)
+			var defaultReferences = defaultBamlReferences.Select(AssemblyNameReference.Parse).ToArray();
+			foreach (var bamlReference in defaultReferences)
 			{
-				assemblyReferenceQueue.Enqueue((true, mainModule, AssemblyNameReference.Parse(bamlReference)));
+				assemblyReferenceQueue.Enqueue((true, mainModule, bamlReference));
 			}
 			var comparer = KeyComparer.Create(((bool IsAssembly, MetadataFile MainModule, object Reference) reference) =>
 				reference.IsAssembly ? "A:" + ((IAssemblyReference)reference.Reference).FullName :
@@ -94,6 +126,15 @@ namespace ICSharpCode.BamlDecompiler
 				if (asm != null)
 				{
 					referencedAssemblies.Add(asm);
+					// Whether an element is a markup extension is decided by walking its base types,
+					// and a base type can sit in an assembly the document's own assembly never names.
+					// Stopping at the assemblies it does name leaves such a type unresolved, the
+					// extension unrecognised, and the decompiler's placeholder namespace in the XAML
+					// (issue #2930).
+					foreach (var indirectReference in asm.AssemblyReferences)
+					{
+						assemblyReferenceQueue.Enqueue((true, asm, indirectReference));
+					}
 					var metadata = asm.Metadata;
 					foreach (var h in metadata.ExportedTypes)
 					{
@@ -111,8 +152,30 @@ namespace ICSharpCode.BamlDecompiler
 					}
 				}
 			}
+			// A facade standing in for a well-known assembly is worse than nothing: it satisfies the
+			// name, so no stand-in is synthesized, and then every type BAML expects from it is
+			// missing. Drop it and let the stand-in below take its place.
+			referencedAssemblies.RemoveAll(file => !IsTheAssemblyItIsNamedAfter(file));
 			var mainModuleWithOptions = mainModule.WithOptions(TypeSystemOptions.Default);
 			var referencedAssembliesWithOptions = referencedAssemblies.Select(file => file.WithOptions(TypeSystemOptions.Default));
+			// Substitute a synthetic stand-in for every well-known BAML assembly that could not be
+			// resolved (e.g. WPF assemblies when inspecting a WPF binary on a machine without WPF).
+			// KnownThings assumes these assemblies are always present; the stand-in upholds that
+			// invariant so the BAML decompiler degrades gracefully instead of failing outright.
+			var resolvedAssemblyNames = new HashSet<string>(
+				referencedAssemblies.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
+			resolvedAssemblyNames.Add(mainModule.Name);
+			var syntheticReferences = new List<IModuleReference>();
+			foreach (var reference in defaultReferences)
+			{
+				if (resolvedAssemblyNames.Contains(reference.Name))
+					continue;
+				string presentationXmlns = presentationXmlnsAssemblies.Contains(reference.Name)
+					? XamlContext.KnownNamespace_Presentation
+					: null;
+				syntheticReferences.Add(SyntheticWpfModule.CreateReference(reference, presentationXmlns));
+			}
+			referencedAssembliesWithOptions = referencedAssembliesWithOptions.Concat(syntheticReferences);
 			// Primitive types are necessary to avoid assertions in ILReader.
 			// Fallback to MinimalCorlib to provide the primitive types.
 			if (!HasType(KnownTypeCode.Void) || !HasType(KnownTypeCode.Int32))

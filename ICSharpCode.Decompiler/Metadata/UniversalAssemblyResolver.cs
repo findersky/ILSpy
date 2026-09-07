@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -19,6 +19,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -71,9 +72,12 @@ namespace ICSharpCode.Decompiler.Metadata
 				decompilerRuntime = DecompilerRuntime.NETCoreApp;
 			else if (Environment.OSVersion.Platform == PlatformID.Unix)
 				decompilerRuntime = DecompilerRuntime.Mono;
+			else
+				decompilerRuntime = DecompilerRuntime.NETFramework;
 		}
 
 		readonly Lazy<DotNetCorePathFinder> dotNetCorePathFinder;
+		ConcurrentDictionary<string, string>? versionFolders;
 		readonly bool throwOnError;
 		readonly PEStreamOptions streamOptions;
 		readonly MetadataReaderOptions metadataOptions;
@@ -82,6 +86,39 @@ namespace ICSharpCode.Decompiler.Metadata
 		readonly List<string?> directories = new List<string?>();
 		static readonly List<string> gac_paths = GetGacPaths();
 		static readonly DecompilerRuntime decompilerRuntime;
+
+		/// <inheritdoc/>
+		public IDisposable? BeginSnapshot()
+		{
+			versionFolders = new ConcurrentDictionary<string, string>();
+			return new Snapshot(this);
+		}
+
+		/// <summary>
+		/// The version folder to use inside <paramref name="basePath"/>, determined by
+		/// <paramref name="valueFactory"/> once per open scope, and on every call outside one.
+		/// </summary>
+		internal string GetOrAddVersionFolder(string basePath, Func<string, string> valueFactory)
+		{
+			return versionFolders is { } cache ? cache.GetOrAdd(basePath, valueFactory) : valueFactory(basePath);
+		}
+
+		/// <summary>
+		/// Holds what the resolver read from the file system until it is disposed. Two of these on
+		/// one resolver do not stack: the first to end takes the cache with it, and the other reads
+		/// the file system again.
+		/// </summary>
+		sealed class Snapshot : IDisposable
+		{
+			readonly UniversalAssemblyResolver resolver;
+
+			public Snapshot(UniversalAssemblyResolver resolver)
+			{
+				this.resolver = resolver;
+			}
+
+			public void Dispose() => resolver.versionFolders = null;
+		}
 
 		public void AddSearchDirectory(string? directory)
 		{
@@ -270,12 +307,37 @@ namespace ICSharpCode.Decompiler.Metadata
 
 		public string? FindAssemblyFile(IAssemblyReference name)
 		{
+#if VSADDIN
+			// The VS add-in compiles this file without the Instrumentation sources.
+			return FindAssemblyFileCore(name);
+#else
+			Instrumentation.DecompilerEventSource.Log.AssemblyResolveStart(name);
+			string? resolvedFile = null;
+			try
+			{
+				resolvedFile = FindAssemblyFileCore(name);
+				return resolvedFile;
+			}
+			finally
+			{
+				Instrumentation.DecompilerEventSource.Log.AssemblyResolveStop(name, resolvedFile);
+			}
+#endif
+		}
+
+		string? FindAssemblyFileCore(IAssemblyReference name)
+		{
 			if (name.IsWindowsRuntime)
 			{
 				return FindWindowsMetadataFile(name);
 			}
 
 			string? file;
+#if !VSADDIN
+			file = FindNextToReferencingModule(name);
+			if (file != null)
+				return file;
+#endif
 			switch (targetFrameworkIdentifier)
 			{
 				case TargetFrameworkIdentifier.NET:
@@ -285,19 +347,44 @@ namespace ICSharpCode.Decompiler.Metadata
 						goto default;
 					file = dotNetCorePathFinder.Value.TryResolveDotNetCore(name);
 					if (file != null)
-						return file;
+						break;
 					goto default;
 				case TargetFrameworkIdentifier.Silverlight:
 					if (IsZeroOrAllOnes(targetFrameworkVersion))
 						goto default;
 					file = ResolveSilverlight(name, targetFrameworkVersion);
 					if (file != null)
-						return file;
+						break;
 					goto default;
 				default:
-					return ResolveInternal(name);
+					file = ResolveInternal(name);
+					break;
 			}
+
+			return file;
 		}
+
+#if !VSADDIN
+		/// <summary>
+		/// Every other probe searches relative to the assembly being decompiled, whichever assembly
+		/// is asking. A caller that is following a chain of type forwarders needs the opposite: the
+		/// next assembly in the chain has to come from where the chain currently is, or the chain
+		/// leaves the framework it reached and can end up going in circles (issue #2054). Only a
+		/// caller that knows it is repairing such a chain asks for this, by setting
+		/// <see cref="AssemblyReference.PreferNextToReferencingModule"/>.
+		/// </summary>
+		string? FindNextToReferencingModule(IAssemblyReference name)
+		{
+			if (name is not AssemblyReference { PreferNextToReferencingModule: true, ReferencingModule: { } referrer })
+				return null;
+			// An entry of a package or a single-file bundle carries its path inside the container,
+			// which would be probed relative to the current working directory.
+			if (!Path.IsPathRooted(referrer.FileName))
+				return null;
+			string? directory = Path.GetDirectoryName(referrer.FileName);
+			return directory == null ? null : SearchDirectory(name, directory);
+		}
+#endif
 
 		DotNetCorePathFinder InitDotNetCorePathFinder()
 		{
@@ -306,6 +393,7 @@ namespace ICSharpCode.Decompiler.Metadata
 				dotNetCorePathFinder = new DotNetCorePathFinder(targetFrameworkIdentifier, targetFrameworkVersion, runtimePack);
 			else
 				dotNetCorePathFinder = new DotNetCorePathFinder(mainAssemblyFileName, targetFramework, runtimePack, targetFrameworkIdentifier, targetFrameworkVersion);
+			dotNetCorePathFinder.Owner = this;
 			foreach (var directory in directories)
 			{
 				dotNetCorePathFinder.AddSearchDirectory(directory);
@@ -464,6 +552,20 @@ namespace ICSharpCode.Decompiler.Metadata
 					return assembly;
 			}
 
+			if (decompilerRuntime == DecompilerRuntime.NETCoreApp)
+			{
+				// Hosts without a .NET Framework installation (e.g. Linux, macOS) have no GAC;
+				// the only system-wide assembly store there is the shared-framework directory
+				// of the runtime executing the decompiler. Search it as the last resort,
+				// regardless of the requested version (the runtime itself rolls forward in the
+				// same way). Without this, e.g. the type-forwards of a netstandard facade
+				// (pointing to a versioned System.Runtime) are unresolvable on such hosts.
+				string runtimeDir = Path.GetDirectoryName(typeof(object).Module.FullyQualifiedName)!;
+				assembly = SearchDirectory(name, runtimeDir);
+				if (assembly != null)
+					return assembly;
+			}
+
 			if (throwOnError)
 				throw new ResolutionException(name, null, null);
 			return null;
@@ -489,9 +591,12 @@ namespace ICSharpCode.Decompiler.Metadata
 			return IsZeroOrAllOnes(reference.Version) || reference.IsRetargetable;
 		}
 
+		static readonly string[] assemblyExtensions = { ".dll", ".exe" };
+		static readonly string[] windowsMetadataExtensions = { ".winmd", ".dll" };
+
 		string? SearchDirectory(IAssemblyReference name, string directory)
 		{
-			var extensions = name.IsWindowsRuntime ? new[] { ".winmd", ".dll" } : new[] { ".dll", ".exe" };
+			var extensions = name.IsWindowsRuntime ? windowsMetadataExtensions : assemblyExtensions;
 			foreach (var extension in extensions)
 			{
 				string file = Path.Combine(directory, name.Name + extension);
@@ -706,23 +811,81 @@ namespace ICSharpCode.Decompiler.Metadata
 			return null;
 		}
 
+		static readonly string[] gacFolders = { "GAC_MSIL", "GAC_32", "GAC_64", "GAC" };
+		static readonly string[] gacFolderPrefixes = { string.Empty, "v4.0_" };
+
 		static string? GetAssemblyInNetGac(IAssemblyReference reference)
 		{
-			var gacs = new[] { "GAC_MSIL", "GAC_32", "GAC_64", "GAC" };
-			var prefixes = new[] { string.Empty, "v4.0_" };
-
 			for (int i = 0; i < gac_paths.Count; i++)
 			{
-				for (int j = 0; j < gacs.Length; j++)
+				for (int j = 0; j < gacFolders.Length; j++)
 				{
-					var gac = Path.Combine(gac_paths[i], gacs[j]);
-					var file = GetAssemblyFile(reference, prefixes[i], gac);
+					var gac = Path.Combine(gac_paths[i], gacFolders[j]);
+					var file = GetAssemblyFile(reference, gacFolderPrefixes[i], gac);
 					if (File.Exists(file))
 						return file;
 				}
 			}
 
+			// An exact version match is always preferred, so unification is a separate pass over
+			// the whole GAC rather than a fallback within one folder.
+			for (int i = 0; i < gac_paths.Count; i++)
+			{
+				for (int j = 0; j < gacFolders.Length; j++)
+				{
+					var gac = Path.Combine(gac_paths[i], gacFolders[j]);
+					var file = FindUnifiedAssemblyInGacFolder(reference, gacFolderPrefixes[i], gac);
+					if (file != null)
+						return file;
+				}
+			}
+
 			return null;
+		}
+
+		/// <summary>
+		/// Finds an assembly whose version differs from the requested one, because the runtime
+		/// unifies references to in-box assemblies onto whatever version the installed framework
+		/// carries. The versions genuinely differ: the .NET Framework 4.7.2/4.8 reference
+		/// assemblies of about a hundred assemblies (System.IO.Compression is 4.2.0.0, System.Runtime
+		/// is 4.1.2.0, ...) are higher than the 4.0.0.0 implementations in the GAC, which is the
+		/// only version ever installed there (issue #2080).
+		///
+		/// Unification is approximated by the highest installed version that shares the major
+		/// version and the public key token of the reference. The major version is what separates
+		/// assemblies that share a name but are different products, e.g. Microsoft.Build.Framework
+		/// 4.0.0.0 and 15.x.
+		/// </summary>
+		internal static string? FindUnifiedAssemblyInGacFolder(IAssemblyReference reference, string prefix, string gac)
+		{
+			var requestedVersion = reference.Version;
+			if (requestedVersion == null || reference.PublicKeyToken == null)
+				return null;
+			string assemblyDirectory = Path.Combine(gac, reference.Name);
+			if (!Directory.Exists(assemblyDirectory))
+				return null;
+			// The folder name is "{prefix}{version}_{culture}_{publicKeyToken}"; the culture of a
+			// non-satellite assembly is empty, which leaves the two underscores adjacent.
+			string suffix = "__" + reference.PublicKeyToken.ToHexString(8);
+			string? bestFile = null;
+			Version? bestVersion = null;
+			foreach (var candidate in Directory.EnumerateDirectories(assemblyDirectory, prefix + "*" + suffix))
+			{
+				string folderName = Path.GetFileName(candidate);
+				string versionText = folderName.Substring(prefix.Length, folderName.Length - prefix.Length - suffix.Length);
+				if (!Version.TryParse(versionText, out var version))
+					continue;
+				if (version.Major != requestedVersion.Major)
+					continue;
+				if (bestVersion != null && version <= bestVersion)
+					continue;
+				string file = Path.Combine(candidate, reference.Name + ".dll");
+				if (!File.Exists(file))
+					continue;
+				bestFile = file;
+				bestVersion = version;
+			}
+			return bestFile;
 		}
 
 		static string GetAssemblyFile(IAssemblyReference reference, string prefix, string gac)
@@ -741,10 +904,9 @@ namespace ICSharpCode.Decompiler.Metadata
 		/// </summary>
 		public static IEnumerable<AssemblyNameReference> EnumerateGac()
 		{
-			var gacs = new[] { "GAC_MSIL", "GAC_32", "GAC_64", "GAC" };
 			foreach (var path in GetGacPaths())
 			{
-				foreach (var gac in gacs)
+				foreach (var gac in gacFolders)
 				{
 					string rootPath = Path.Combine(path, gac);
 					if (!Directory.Exists(rootPath))

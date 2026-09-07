@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using System.Text;
 
 namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
@@ -71,6 +72,30 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 
 			public CustomStructEnumerator GetEnumerator()
+			{
+				return this;
+			}
+		}
+
+		public sealed class CustomSealedClassEnumerator
+		{
+			public object Current {
+				get {
+					throw new NotImplementedException();
+				}
+			}
+
+			public bool MoveNext()
+			{
+				throw new NotImplementedException();
+			}
+
+			public void Reset()
+			{
+				throw new NotImplementedException();
+			}
+
+			public CustomSealedClassEnumerator GetEnumerator()
 			{
 				return this;
 			}
@@ -360,15 +385,34 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
-		// TODO : Needs additional pattern detection
-		// CustomStructEnumerator does not implement IDisposable
-		// No try-finally-Dispose is generated.
-		//public void ForEachOnCustomStructEnumerator(CustomStructEnumerator e)
-		//{
-		//	foreach (object item in e) {
-		//		Console.WriteLine(item);
-		//	}
-		//}
+		// CustomStructEnumerator does not implement IDisposable,
+		// so no try-finally-Dispose is generated around the loop.
+		public void ForEachOnCustomStructEnumerator(CustomStructEnumerator e)
+		{
+			foreach (object item in e)
+			{
+				Console.WriteLine(item);
+			}
+		}
+
+		// CustomSealedClassEnumerator is sealed and does not implement IDisposable,
+		// so no try-finally-Dispose is generated around the loop.
+		public void ForEachOnCustomSealedClassEnumerator(CustomSealedClassEnumerator e)
+		{
+			foreach (object item in e)
+			{
+				Console.WriteLine(item);
+			}
+		}
+
+		// SerializationInfoEnumerator is a sealed class and does not implement IDisposable.
+		public void Issue1603(SerializationInfo info)
+		{
+			foreach (SerializationEntry item in info)
+			{
+				Console.WriteLine(item.Name);
+			}
+		}
 
 		public void ForEachOnGenericCustomClassEnumerator<T>(CustomClassEnumerator<T> e)
 		{
@@ -378,15 +422,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 			}
 		}
 
-		// TODO : Needs additional pattern detection
-		// CustomStructEnumerator does not implement IDisposable
-		// No try-finally-Dispose is generated.
-		//public void ForEachOnGenericCustomStructEnumerator<T>(CustomStructEnumerator<T> e)
-		//{
-		//	foreach (T item in e) {
-		//		Console.WriteLine(item);
-		//	}
-		//}
+		// CustomStructEnumerator<T> does not implement IDisposable,
+		// so no try-finally-Dispose is generated around the loop.
+		public void ForEachOnGenericCustomStructEnumerator<T>(CustomStructEnumerator<T> e)
+		{
+			foreach (T item in e)
+			{
+				Console.WriteLine(item);
+			}
+		}
 
 		public void ForEachOnCustomClassEnumeratorWithIDisposable(CustomClassEnumeratorWithIDisposable e)
 		{
@@ -471,7 +515,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public static T LastOrDefault<T>(IEnumerable<T> items)
 		{
+#if CS71
+			T result = default;
+#else
 			T result = default(T);
+#endif
 			foreach (T item in items)
 			{
 				result = item;
@@ -599,19 +647,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 
 		public unsafe void ForEachOverMultiDimArray3(int*[,] items)
 		{
-#if ROSLYN && OPT
-			foreach (int* intPtr in items)
-			{
-				Console.WriteLine(*intPtr);
-				Console.WriteLine(*intPtr);
-			}
-#else
 			foreach (int* ptr in items)
 			{
 				Console.WriteLine(*ptr);
 				Console.WriteLine(*ptr);
 			}
-#endif
 		}
 #endif
 

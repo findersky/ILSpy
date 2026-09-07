@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2018 Siegfried Pammer
+// Copyright (c) 2018 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -30,8 +30,9 @@ namespace ICSharpCode.ILSpyX.Analyzers
 	{
 		/// <summary>
 		/// Returns true, if the analyzer should be shown for a symbol, otherwise false.
+		/// Implementations must tolerate a null argument and return false.
 		/// </summary>
-		bool Show(ISymbol symbol);
+		bool Show(ISymbol? symbol);
 
 		/// <summary>
 		/// Returns all symbols found by this analyzer.

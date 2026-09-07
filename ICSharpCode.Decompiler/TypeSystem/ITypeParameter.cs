@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -98,6 +98,11 @@ namespace ICSharpCode.Decompiler.TypeSystem
 		bool HasUnmanagedConstraint { get; }
 
 		/// <summary>
+		/// <see langword="true"/> if the <c>allows ref struct</c> constraint is specified for the type parameter.
+		/// </summary>
+		bool AllowsRefLikeType { get; }
+
+		/// <summary>
 		/// Nullability of the reference type constraint. (e.g. "where T : class?").
 		/// 
 		/// Note that the nullability of a use of the type parameter may differ from this.
@@ -124,19 +129,32 @@ namespace ICSharpCode.Decompiler.TypeSystem
 	/// <summary>
 	/// Represents the variance of a type parameter.
 	/// </summary>
-	public enum VarianceModifier : byte
+	public enum VarianceModifier : sbyte
 	{
 		/// <summary>
 		/// The type parameter is not variant.
 		/// </summary>
-		Invariant,
+		Invariant = 0,
 		/// <summary>
 		/// The type parameter is covariant (used in output position).
 		/// </summary>
-		Covariant,
+		Covariant = 1,
 		/// <summary>
 		/// The type parameter is contravariant (used in input position).
 		/// </summary>
-		Contravariant
+		Contravariant = -1
 	};
+
+	static class VarianceExtensions
+	{
+		/// <summary>
+		/// Combines variance modifiers.
+		/// It's like a multiplication where Invariant is 0, Covariant is +1 and Contravariant is -1.
+		/// </summary>
+		public static VarianceModifier Combine(this VarianceModifier a, VarianceModifier b)
+		{
+			// By picking matching enum values, we can actually implement this as multiplication.
+			return (VarianceModifier)((sbyte)a * (sbyte)b);
+		}
+	}
 }

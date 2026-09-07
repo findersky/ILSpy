@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Siegfried Pammer
+// Copyright (c) 2021 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -69,8 +69,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return false;
 			}
 			context.Step("LdLocaDupInitObjTransform", inst1);
-			block.Instructions[i] = new StLoc(v, inst2.Value).WithILRange(inst2);
+			var newInst = new StLoc(v, inst2.Value).WithILRange(inst2);
+			block.Instructions[i] = newInst;
 			block.Instructions[i + 1] = inst1;
+			context.EndStep(newInst);
 			return true;
 		}
 	}

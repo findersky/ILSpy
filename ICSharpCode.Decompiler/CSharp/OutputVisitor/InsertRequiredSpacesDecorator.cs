@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -19,6 +19,8 @@
 using System;
 
 using ICSharpCode.Decompiler.CSharp.Syntax;
+
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 {
@@ -65,17 +67,17 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			lastWritten = LastWritten.KeywordOrIdentifier;
 		}
 
-		public override void WriteKeyword(Role role, string keyword)
+		public override void WriteKeyword(string keyword)
 		{
 			if (lastWritten == LastWritten.KeywordOrIdentifier)
 			{
 				Space();
 			}
-			base.WriteKeyword(role, keyword);
+			base.WriteKeyword(keyword);
 			lastWritten = LastWritten.KeywordOrIdentifier;
 		}
 
-		public override void WriteToken(Role role, string token)
+		public override void WriteToken(string token)
 		{
 			// Avoid that two +, - or ? tokens are combined into a ++, -- or ?? token.
 			// Note that we don't need to handle tokens like = because there's no valid
@@ -91,7 +93,7 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			{
 				base.Space();
 			}
-			base.WriteToken(role, token);
+			base.WriteToken(token);
 			if (token == "+")
 			{
 				lastWritten = LastWritten.Plus;
@@ -142,13 +144,13 @@ namespace ICSharpCode.Decompiler.CSharp.OutputVisitor
 			lastWritten = LastWritten.Whitespace;
 		}
 
-		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string argument)
+		public override void WritePreProcessorDirective(PreProcessorDirectiveType type, string? argument)
 		{
 			base.WritePreProcessorDirective(type, argument);
 			lastWritten = LastWritten.Whitespace;
 		}
 
-		public override void WritePrimitiveValue(object value, LiteralFormat format = LiteralFormat.None)
+		public override void WritePrimitiveValue(object? value, LiteralFormat format = LiteralFormat.None)
 		{
 			if (lastWritten == LastWritten.KeywordOrIdentifier)
 			{

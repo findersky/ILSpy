@@ -1,4 +1,4 @@
-﻿// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -58,14 +58,14 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 
 			public Action CaptureOfThis()
 			{
-				return delegate {
+				return () => {
 					CaptureOfThis();
 				};
 			}
 
 			public Action CaptureOfThisAndParameter(int a)
 			{
-				return delegate {
+				return () => {
 					CaptureOfThisAndParameter(a);
 				};
 			}
@@ -76,7 +76,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 				{
 					if (item > 0)
 					{
-						return delegate {
+						return () => {
 							CaptureOfThisAndParameter(item + a);
 						};
 					}
@@ -91,7 +91,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 					int copyOfItem = item;
 					if (item > 0)
 					{
-						return delegate {
+						return () => {
 							CaptureOfThisAndParameter(item + a + copyOfItem);
 						};
 					}
@@ -118,18 +118,18 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 
 			private void Bug955()
 			{
-				new Thread((ThreadStart)delegate {
+				new Thread(() => {
 				});
 			}
 
 			public void Bug951(int amount)
 			{
-				DoAction(delegate {
+				DoAction(() => {
 					if (amount < 0)
 					{
 						amount = 0;
 					}
-					DoAction(delegate {
+					DoAction(() => {
 						NoOp(amount);
 					});
 				});
@@ -138,12 +138,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			public void Bug951b()
 			{
 				int amount = Foo();
-				DoAction(delegate {
+				DoAction(() => {
 					if (amount < 0)
 					{
 						amount = 0;
 					}
-					DoAction(delegate {
+					DoAction(() => {
 						NoOp(amount);
 					});
 				});
@@ -151,8 +151,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 
 			public void Bug951c(SomeData data)
 			{
-				DoAction(delegate {
-					DoAction(delegate {
+				DoAction(() => {
+					DoAction(() => {
 						DoSomething(data.Value);
 					});
 				});
@@ -163,11 +163,17 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 				return (int x) => this.x;
 			}
 
+#if ROSLYN
+			// Roslyn names the parameters of an anonymous method declared without a parameter
+			// list "<p0>", which no lambda parameter list can spell, so the delegate form is
+			// kept. Legacy csc names them "param0" - a perfectly good identifier that does
+			// become a lambda - hence the Roslyn-only guard.
 			public Action<object> Bug971_DelegateWithoutParameterList()
 			{
 				return delegate {
 				};
 			}
+#endif
 
 			private void DoAction(Action action)
 			{
@@ -255,8 +261,12 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 		{
 			public Func<TCaptured> GetFunc(Func<TNonCaptured, TCaptured> f)
 			{
+#if CS71
+				TCaptured captured = f(default);
+#else
 				TCaptured captured = f(default(TNonCaptured));
-				return delegate {
+#endif
+				return () => {
 					Console.WriteLine(captured.GetType().FullName);
 					return captured;
 				};
@@ -265,7 +275,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			public Func<TNonCaptured, TNonCapturedMP, TCaptured> GetFunc<TNonCapturedMP>(Func<TCaptured> f)
 			{
 				TCaptured captured = f();
-				return delegate (TNonCaptured a, TNonCapturedMP d) {
+				return (TNonCaptured a, TNonCapturedMP d) => {
 					Console.WriteLine(a.GetHashCode());
 					Console.WriteLine(captured.GetType().FullName);
 					return captured;
@@ -343,7 +353,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			for (int i = 0; i < 10; i++)
 			{
 				int counter;
-				list.Add(delegate (int x) {
+				list.Add((int x) => {
 					counter = x;
 				});
 			}
@@ -356,7 +366,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			int counter;
 			for (int i = 0; i < 10; i++)
 			{
-				list.Add(delegate (int x) {
+				list.Add((int x) => {
 					counter = x;
 				});
 			}
@@ -365,7 +375,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 
 		public static Action StaticAnonymousMethodNoClosure()
 		{
-			return delegate {
+			return () => {
 				Console.WriteLine();
 			};
 		}
@@ -383,7 +393,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 				int j;
 				for (j = 0; j < 10; j++)
 				{
-					list.Add(delegate (int k) {
+					list.Add((int k) => {
 						for (int l = 0; l < j; l += k)
 						{
 							Console.WriteLine();
@@ -398,7 +408,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 			List<Action<int>> list = new List<Action<int>>();
 			for (int i = 0; i < 10; i++)
 			{
-				list.Add(delegate (int k) {
+				list.Add((int k) => {
 					Console.WriteLine(k);
 				});
 			}
@@ -406,7 +416,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 
 		public static Action<int> NameConflict3(int i)
 		{
-			return delegate (int j) {
+			return (int j) => {
 				for (int k = 0; k < j; k++)
 				{
 					Console.WriteLine(k);
@@ -427,7 +437,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 		public static Func<TCaptured> CapturedTypeParameter1<TNonCaptured, TCaptured>(TNonCaptured a, Func<TNonCaptured, TCaptured> f)
 		{
 			TCaptured captured = f(a);
-			return delegate {
+			return () => {
 				Console.WriteLine(captured.GetType().FullName);
 				return captured;
 			};
@@ -436,7 +446,7 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 		public static Func<TCaptured> CapturedTypeParameter2<TNonCaptured, TCaptured>(TNonCaptured a, Func<TNonCaptured, List<TCaptured>> f)
 		{
 			List<TCaptured> captured = f(a);
-			return delegate {
+			return () => {
 				Console.WriteLine(captured.GetType().FullName);
 				return captured.FirstOrDefault();
 			};
@@ -589,6 +599,15 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 				Console.WriteLine(x);
 			};
 		}
+
+		public static int LambdaWithAttributeOnAnonymousTypeParameter()
+		{
+			return new[] {
+				new {
+					X = 1
+				}
+			}.Select([My] (a) => a.X).Sum();
+		}
 #endif
 
 		public static void CallRecursiveDelegate(ref RefRecursiveDelegate d)
@@ -624,28 +643,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 	{
 		public void M()
 		{
-			Run(delegate (object o) {
+			Run((object o) => {
 				try
 				{
 					List<int> list = o as List<int>;
-					Action action = delegate {
+					Action action = () => {
 						list.Select((int x) => x * 2);
 					};
-#if OPT && ROSLYN
-					Action obj = delegate {
-#else
-					Action action2 = delegate {
-#endif
+					Action action2 = () => {
 						list.Select((int x) => x * 2);
 					};
 					Console.WriteLine();
 					action();
 					Console.WriteLine();
-#if OPT && ROSLYN
-					obj();
-#else
 					action2();
-#endif
 				}
 				catch (Exception)
 				{
@@ -661,6 +672,20 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 		private void Run(ParameterizedThreadStart del, object x)
 		{
 			del(x);
+		}
+
+		public void AnonymousMethodWithByRefParameters()
+		{
+			RefAction refAction = delegate (ref int reference) {
+				reference++;
+			};
+			OutAction outAction = delegate (out int reference) {
+				reference = 1;
+			};
+			int value = 0;
+			refAction(ref value);
+			outAction(out value);
+			Console.WriteLine(value);
 		}
 
 		public void Issue1572(DelegateConstruction.Dummy dum)
@@ -683,4 +708,8 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty.DelegateConstruction
 	internal class MyAttribute : Attribute
 	{
 	}
+
+	public delegate void OutAction(out int value);
+
+	public delegate void RefAction(ref int value);
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2020 Daniel Grunwald
+// Copyright (c) 2020 Daniel Grunwald
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,103 +16,36 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Expression switch { SwitchSections }
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <c>switch_expression ::= expression 'switch' '{' switch_expression_arm* '}'</c> (C# grammar §12.12)
 	/// </summary>
-	public class SwitchExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class SwitchExpression : Expression
 	{
-		public static readonly TokenRole SwitchKeywordRole = new TokenRole("switch");
-		public static readonly Role<SwitchExpressionSection> SwitchSectionRole = new Role<SwitchExpressionSection>("SwitchSection", null);
+		public const string SwitchKeyword = "switch";
 
-		public Expression Expression {
-			get { return GetChildByRole(Roles.Expression); }
-			set { SetChildByRole(Roles.Expression, value); }
-		}
+		[Slot("Expression")]
+		public partial Expression Expression { get; set; }
 
-		public CSharpTokenNode SwitchToken {
-			get { return GetChildByRole(SwitchKeywordRole); }
-		}
-
-		public CSharpTokenNode LBraceToken {
-			get { return GetChildByRole(Roles.LBrace); }
-		}
-
-		public AstNodeCollection<SwitchExpressionSection> SwitchSections {
-			get { return GetChildrenByRole(SwitchSectionRole); }
-		}
-
-		public CSharpTokenNode RBraceToken {
-			get { return GetChildByRole(Roles.RBrace); }
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitSwitchExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitSwitchExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitSwitchExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			SwitchExpression o = other as SwitchExpression;
-			return o != null && this.Expression.DoMatch(o.Expression, match) && this.SwitchSections.DoMatch(o.SwitchSections, match);
-		}
+		[Slot("SwitchExpressionSection")]
+		public partial AstNodeCollection<SwitchExpressionSection> SwitchSections { get; }
 	}
 
 	/// <summary>
-	/// Pattern => Expression
+	/// <c>switch_expression_arm ::= pattern '=&gt;' expression</c> (C# grammar §12.12)
 	/// </summary>
-	public class SwitchExpressionSection : AstNode
+	[DecompilerAstNode]
+	public sealed partial class SwitchExpressionSection : AstNode
 	{
-		public static readonly Role<Expression> PatternRole = new Role<Expression>("Pattern", Expression.Null);
-		public static readonly Role<Expression> BodyRole = new Role<Expression>("Body", Expression.Null);
+		[Slot("Pattern")]
+		public partial Expression Pattern { get; set; }
 
-		public Expression Pattern {
-			get { return GetChildByRole(PatternRole); }
-			set { SetChildByRole(PatternRole, value); }
-		}
-
-		public CSharpTokenNode ArrowToken {
-			get { return GetChildByRole(Roles.Arrow); }
-		}
-
-		public Expression Body {
-			get { return GetChildByRole(BodyRole); }
-			set { SetChildByRole(BodyRole, value); }
-		}
-
-		public override NodeType NodeType => NodeType.Unknown;
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitSwitchExpressionSection(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitSwitchExpressionSection(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitSwitchExpressionSection(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			SwitchExpressionSection o = other as SwitchExpressionSection;
-			return o != null && this.Pattern.DoMatch(o.Pattern, match) && this.Body.DoMatch(o.Body, match);
-		}
+		[Slot("SwitchExpressionBody")]
+		public partial Expression Body { get; set; }
 	}
 }

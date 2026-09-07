@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,7 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
 using System;
+using System.Collections.Generic;
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 {
@@ -39,15 +42,17 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax.PatternMatching
 		{
 		}
 
-		public override bool DoMatchCollection(Role role, INode pos, Match match, BacktrackingInfo backtrackingInfo)
+		public override bool DoMatchCollection(IReadOnlyList<INode> other, int pos, Match match, BacktrackingInfo backtrackingInfo)
 		{
+			// Push the "absent" alternative (resume the following pattern node at the same position),
+			// then try to consume the element here.
 			backtrackingInfo.backtrackingStack.Push(new PossibleMatch(pos, match.CheckPoint()));
-			return childNode.DoMatch(pos, match);
+			return childNode.DoMatch(pos < other.Count ? other[pos] : null, match);
 		}
 
-		public override bool DoMatch(INode other, Match match)
+		public override bool DoMatch(INode? other, Match match)
 		{
-			if (other == null || other.IsNull)
+			if (other == null)
 				return true;
 			else
 				return childNode.DoMatch(other, match);

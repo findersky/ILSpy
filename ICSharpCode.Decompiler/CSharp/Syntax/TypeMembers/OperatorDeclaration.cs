@@ -1,4 +1,4 @@
-﻿// 
+// 
 // OperatorDeclaration.cs
 //
 // Author:
@@ -23,6 +23,8 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
+#nullable enable
 
 using System;
 using System.ComponentModel;
@@ -76,42 +78,23 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 		CheckedExplicit
 	}
 
-	public class OperatorDeclaration : EntityDeclaration
+	/// <summary>
+	/// <c>operator_declaration ::= attribute_section* modifier+ type ( type '.' )? 'operator' 'checked'? operator_token '(' parameter* ')' ( block | ';' )</c> (C# grammar §15.10.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class OperatorDeclaration : EntityDeclaration
 	{
-		public static readonly TokenRole OperatorKeywordRole = new TokenRole("operator");
-		public static readonly TokenRole CheckedKeywordRole = new TokenRole("checked");
+		public const string OperatorKeyword = "operator";
+		public const string CheckedKeyword = "checked";
 
 		// Unary operators
-		public static readonly TokenRole LogicalNotRole = new TokenRole("!");
-		public static readonly TokenRole OnesComplementRole = new TokenRole("~");
-		public static readonly TokenRole IncrementRole = new TokenRole("++");
-		public static readonly TokenRole DecrementRole = new TokenRole("--");
-		public static readonly TokenRole TrueRole = new TokenRole("true");
-		public static readonly TokenRole FalseRole = new TokenRole("false");
 
 		// Unary and Binary operators
-		public static readonly TokenRole AdditionRole = new TokenRole("+");
-		public static readonly TokenRole SubtractionRole = new TokenRole("-");
 
 		// Binary operators
-		public static readonly TokenRole MultiplyRole = new TokenRole("*");
-		public static readonly TokenRole DivisionRole = new TokenRole("/");
-		public static readonly TokenRole ModulusRole = new TokenRole("%");
-		public static readonly TokenRole BitwiseAndRole = new TokenRole("&");
-		public static readonly TokenRole BitwiseOrRole = new TokenRole("|");
-		public static readonly TokenRole ExclusiveOrRole = new TokenRole("^");
-		public static readonly TokenRole LeftShiftRole = new TokenRole("<<");
-		public static readonly TokenRole RightShiftRole = new TokenRole(">>");
-		public static readonly TokenRole UnsignedRightShiftRole = new TokenRole(">>>");
-		public static readonly TokenRole EqualityRole = new TokenRole("==");
-		public static readonly TokenRole InequalityRole = new TokenRole("!=");
-		public static readonly TokenRole GreaterThanRole = new TokenRole(">");
-		public static readonly TokenRole LessThanRole = new TokenRole("<");
-		public static readonly TokenRole GreaterThanOrEqualRole = new TokenRole(">=");
-		public static readonly TokenRole LessThanOrEqualRole = new TokenRole("<=");
 
-		public static readonly TokenRole ExplicitRole = new TokenRole("explicit");
-		public static readonly TokenRole ImplicitRole = new TokenRole("implicit");
+		public const string ExplicitKeyword = "explicit";
+		public const string ImplicitKeyword = "implicit";
 
 		static readonly string[][] names;
 
@@ -159,49 +142,26 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			get { return SymbolKind.Operator; }
 		}
 
+		[Slot("AttributeSection")]
+		public override partial AstNodeCollection<AttributeSection> Attributes { get; }
+
+		[Slot("Type")]
+		public override partial AstType ReturnType { get; set; }
+
 		/// <summary>
 		/// Gets/Sets the type reference of the interface that is explicitly implemented.
-		/// Null node if this member is not an explicit interface implementation.
+		/// Null if this member is not an explicit interface implementation.
 		/// </summary>
-		public AstType PrivateImplementationType {
-			get { return GetChildByRole(PrivateImplementationTypeRole); }
-			set { SetChildByRole(PrivateImplementationTypeRole, value); }
-		}
+		[Slot("PrivateImplementationType")]
+		public partial AstType? PrivateImplementationType { get; set; }
 
-		OperatorType operatorType;
+		public OperatorType OperatorType { get; set; }
 
-		public OperatorType OperatorType {
-			get { return operatorType; }
-			set {
-				ThrowIfFrozen();
-				operatorType = value;
-			}
-		}
+		[Slot("Parameter")]
+		public partial AstNodeCollection<ParameterDeclaration> Parameters { get; }
 
-		public CSharpTokenNode OperatorToken {
-			get { return GetChildByRole(OperatorKeywordRole); }
-		}
-
-		public CSharpTokenNode OperatorTypeToken {
-			get { return GetChildByRole(GetRole(OperatorType)); }
-		}
-
-		public CSharpTokenNode LParToken {
-			get { return GetChildByRole(Roles.LPar); }
-		}
-
-		public AstNodeCollection<ParameterDeclaration> Parameters {
-			get { return GetChildrenByRole(Roles.Parameter); }
-		}
-
-		public CSharpTokenNode RParToken {
-			get { return GetChildByRole(Roles.RPar); }
-		}
-
-		public BlockStatement Body {
-			get { return GetChildByRole(Roles.Body); }
-			set { SetChildByRole(Roles.Body, value); }
-		}
+		[Slot("Body")]
+		public partial BlockStatement? Body { get; set; }
 
 		/// <summary>
 		/// Gets the operator type from the method name, or null, if the method does not represent one of the known operator types.
@@ -217,83 +177,10 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return null;
 		}
 
-		public static TokenRole GetRole(OperatorType type)
-		{
-			switch (type)
-			{
-				case OperatorType.LogicalNot:
-					return LogicalNotRole;
-				case OperatorType.OnesComplement:
-					return OnesComplementRole;
-				case OperatorType.Increment:
-				case OperatorType.CheckedIncrement:
-					return IncrementRole;
-				case OperatorType.Decrement:
-				case OperatorType.CheckedDecrement:
-					return DecrementRole;
-				case OperatorType.True:
-					return TrueRole;
-				case OperatorType.False:
-					return FalseRole;
-
-				case OperatorType.Addition:
-				case OperatorType.CheckedAddition:
-				case OperatorType.UnaryPlus:
-					return AdditionRole;
-				case OperatorType.Subtraction:
-				case OperatorType.CheckedSubtraction:
-				case OperatorType.UnaryNegation:
-				case OperatorType.CheckedUnaryNegation:
-					return SubtractionRole;
-
-				case OperatorType.Multiply:
-				case OperatorType.CheckedMultiply:
-					return MultiplyRole;
-				case OperatorType.Division:
-				case OperatorType.CheckedDivision:
-					return DivisionRole;
-				case OperatorType.Modulus:
-					return ModulusRole;
-				case OperatorType.BitwiseAnd:
-					return BitwiseAndRole;
-				case OperatorType.BitwiseOr:
-					return BitwiseOrRole;
-				case OperatorType.ExclusiveOr:
-					return ExclusiveOrRole;
-				case OperatorType.LeftShift:
-					return LeftShiftRole;
-				case OperatorType.RightShift:
-					return RightShiftRole;
-				case OperatorType.UnsignedRightShift:
-					return UnsignedRightShiftRole;
-				case OperatorType.Equality:
-					return EqualityRole;
-				case OperatorType.Inequality:
-					return InequalityRole;
-				case OperatorType.GreaterThan:
-					return GreaterThanRole;
-				case OperatorType.LessThan:
-					return LessThanRole;
-				case OperatorType.GreaterThanOrEqual:
-					return GreaterThanOrEqualRole;
-				case OperatorType.LessThanOrEqual:
-					return LessThanOrEqualRole;
-
-				case OperatorType.Implicit:
-					return ImplicitRole;
-				case OperatorType.Explicit:
-				case OperatorType.CheckedExplicit:
-					return ExplicitRole;
-
-				default:
-					throw new System.ArgumentOutOfRangeException();
-			}
-		}
-
 		/// <summary>
 		/// Gets the method name for the operator type. ("op_Addition", "op_Implicit", etc.)
 		/// </summary>
-		public static string GetName(OperatorType? type)
+		public static string? GetName(OperatorType? type)
 		{
 			if (type == null)
 				return null;
@@ -327,40 +214,15 @@ namespace ICSharpCode.Decompiler.CSharp.Syntax
 			return names[(int)type][0];
 		}
 
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitOperatorDeclaration(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitOperatorDeclaration(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitOperatorDeclaration(this, data);
-		}
-
 		public override string Name {
-			get { return GetName(this.OperatorType); }
+			get { return GetName(this.OperatorType)!; }
 			set { throw new NotSupportedException(); }
 		}
 
 		[EditorBrowsable(EditorBrowsableState.Never)]
 		public override Identifier NameToken {
-			get { return Identifier.Null; }
+			get { return null!; }
 			set { throw new NotSupportedException(); }
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			OperatorDeclaration o = other as OperatorDeclaration;
-			return o != null && this.MatchAttributesAndModifiers(o, match)
-				&& this.PrivateImplementationType.DoMatch(o.PrivateImplementationType, match)
-				&& this.OperatorType == o.OperatorType
-				&& this.ReturnType.DoMatch(o.ReturnType, match)
-				&& this.Parameters.DoMatch(o.Parameters, match) && this.Body.DoMatch(o.Body, match);
 		}
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2019 Siegfried Pammer
+// Copyright (c) 2019 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -141,22 +141,27 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 					foreach (var useSite in info.UseSites)
 					{
 						DetermineCaptureAndDeclarationScope(info, useSite);
+					}
 
-						if (context.Function.Method.IsConstructor)
+					if (context.Function.Method.IsConstructor)
+					{
+						// Local functions reached from a field initializer usually capture nothing, so
+						// the closure analysis leaves no scope behind; the innermost block containing
+						// all use-sites is a better place for them than the whole constructor body.
+						// Use-sites spread over separate function bodies have no common block
+						// container at all; there the scope from the closure analysis stands.
+						BlockContainer useSiteScope = null;
+						foreach (var useSite in info.UseSites)
 						{
-							if (localFunction.DeclarationScope == null)
-							{
-								localFunction.DeclarationScope = BlockContainer.FindClosestContainer(useSite);
-							}
-							else
-							{
-								localFunction.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(useSite, localFunction.DeclarationScope);
-								if (localFunction.DeclarationScope == null)
-								{
-									localFunction.DeclarationScope = (BlockContainer)context.Function.Body;
-								}
-							}
+							useSiteScope = useSiteScope == null
+								? BlockContainer.FindClosestContainer(useSite)
+								: FindCommonAncestorInstruction<BlockContainer>(useSite, useSiteScope);
+							if (useSiteScope == null)
+								break;
 						}
+						localFunction.DeclarationScope = useSiteScope
+							?? localFunction.DeclarationScope
+							?? (BlockContainer)context.Function.Body;
 					}
 
 					if (localFunction.DeclarationScope == null)
@@ -208,13 +213,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 								TransformToLocalFunctionReference(info.Definition, newObj);
 								break;
 							case CallInstruction call:
-								TransformToLocalFunctionInvocation(info.Definition.ReducedMethod, call);
+								var callReplacement = TransformToLocalFunctionInvocation(info.Definition.ReducedMethod, call);
+								context.EndStep(callReplacement);
 								break;
 							case LdFtn fnptr:
 								var specializeMethod = info.Definition.ReducedMethod
 									.Specialize(fnptr.Method.Substitution);
 								var replacement = new LdFtn(specializeMethod).WithILRange(fnptr);
 								fnptr.ReplaceWith(replacement);
+								context.EndStep(replacement);
 								break;
 							default:
 								throw new NotSupportedException();
@@ -339,9 +346,18 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				return null;
 			if (!(TransformDisplayClassUsage.IsPotentialClosure(context, field.Type.GetDefinition()) || context.Function.Method.DeclaringType.Equals(field.Type)))
 				return null;
-			foreach (var v in context.Function.Descendants.OfType<ILFunction>().SelectMany(f => f.Variables))
+			return FindClosureVariableOfType(field.Type);
+		}
+
+		/// <summary>
+		/// Finds the variable holding the display class instance of the given type, anywhere in the
+		/// function tree currently being decompiled.
+		/// </summary>
+		private ILVariable FindClosureVariableOfType(IType type)
+		{
+			foreach (var v in context.Function.Descendants.OfType<ILFunction>().Prepend(context.Function).SelectMany(f => f.Variables))
 			{
-				if (!(TransformDisplayClassUsage.IsClosure(context, v, out var varType, out _) && varType.Equals(field.Type)))
+				if (!(TransformDisplayClassUsage.IsClosure(context, v, out var varType, out _) && varType.Equals(type)))
 					continue;
 				return v;
 			}
@@ -485,7 +501,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			if (hasBody)
 			{
 				function.DeclarationScope = (BlockContainer)rootFunction.Body;
-				function.CheckInvariant(ILPhase.Normal);
+				function.CheckInvariant(ILPhase.Normal, context.TypeSystem);
 				var nestedContext = new ILTransformContext(context, function);
 				function.RunTransforms(CSharpDecompiler.GetILTransforms().TakeWhile(t => !(t is LocalFunctionDecompiler)), nestedContext);
 				function.DeclarationScope = null;
@@ -567,23 +583,17 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 		internal static bool IsClosureParameter(IParameter parameter, ITypeResolveContext context)
 		{
+			return IsClosureParameter(parameter, context.CurrentTypeDefinition);
+		}
+
+		internal static bool IsClosureParameter(IParameter parameter, ITypeDefinition currentTypeDefinition)
+		{
 			if (parameter.Type is not ByReferenceType brt)
 				return false;
 			var type = brt.ElementType.GetDefinition();
 			return type != null
 				&& type.Kind == TypeKind.Struct
-				&& TransformDisplayClassUsage.IsPotentialClosure(context.CurrentTypeDefinition, type);
-		}
-
-		internal static ILInstruction GetStatement(ILInstruction inst)
-		{
-			while (inst.Parent != null)
-			{
-				if (inst.Parent is Block b && b.Kind == BlockKind.ControlFlow)
-					return inst;
-				inst = inst.Parent;
-			}
-			return inst;
+				&& TransformDisplayClassUsage.IsPotentialClosure(currentTypeDefinition, type);
 		}
 
 		LocalFunctionMethod ReduceToLocalFunction(IMethod method, int typeParametersToRemove)
@@ -632,7 +642,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			useSite.Arguments[1].ReplaceWith(replacement);
 		}
 
-		void TransformToLocalFunctionInvocation(LocalFunctionMethod reducedMethod, CallInstruction useSite)
+		Call TransformToLocalFunctionInvocation(LocalFunctionMethod reducedMethod, CallInstruction useSite)
 		{
 			var specializeMethod = reducedMethod.Specialize(useSite.Method.Substitution);
 			bool wasInstanceCall = !useSite.Method.IsStatic;
@@ -662,6 +672,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				replacement.AddILRange(useSite.Arguments[argumentCount - i - 1]);
 			}
 			useSite.ReplaceWith(replacement);
+			return replacement;
 		}
 
 		void DetermineCaptureAndDeclarationScope(LocalFunctionInfo info, ILInstruction useSite)
@@ -716,6 +727,13 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			if (closureVar.Kind == VariableKind.NamedArgument)
 				return false;
+			if (parameterIndex >= 0 && closureVar.Kind == VariableKind.Parameter)
+			{
+				// The use-site sits inside another local function that received the display class as
+				// a parameter and forwards it. A parameter has no initializer, so the scope the
+				// display class was created in has to be recovered from the variable holding it.
+				closureVar = FindClosureVariableOfType(closureVar.Type.UnwrapByRef()) ?? closureVar;
+			}
 			var initializer = GetClosureInitializer(closureVar);
 			if (initializer == null)
 				return false;
@@ -735,8 +753,21 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			}
 			if (function.DeclarationScope == null)
 				function.DeclarationScope = closureVar.CaptureScope;
-			else if (!IsInNestedLocalFunction(function.DeclarationScope, closureVar.CaptureScope.Ancestors.OfType<ILFunction>().First()))
+			else if (closureVar.CaptureScope.IsDescendantOf(function.DeclarationScope))
+			{
+				// The closures captured by one local function are nested in one another: a
+				// local function declared inside a lambda still reaches the enclosing method's
+				// closure, but not the other way round. Where one capture scope contains the
+				// other, the declaration belongs in the inner one; taking the common ancestor
+				// would move the function out of the lambda owning the deeper closure and
+				// leave the variables captured there out of scope.
+				function.DeclarationScope = closureVar.CaptureScope;
+			}
+			else if (!function.DeclarationScope.IsDescendantOf(closureVar.CaptureScope)
+				&& !IsInNestedLocalFunction(function.DeclarationScope, closureVar.CaptureScope.Ancestors.OfType<ILFunction>().First()))
+			{
 				function.DeclarationScope = FindCommonAncestorInstruction<BlockContainer>(function.DeclarationScope, closureVar.CaptureScope);
+			}
 			return true;
 
 			ILInstruction GetClosureInitializer(ILVariable variable)
@@ -747,7 +778,7 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 				if (variable.Kind == VariableKind.Parameter)
 					return null;
 				if (type.Kind == TypeKind.Struct)
-					return GetStatement(variable.AddressInstructions.OrderBy(i => i.StartILOffset).First());
+					return Block.GetContainingStatement(variable.AddressInstructions.OrderBy(i => i.StartILOffset).First());
 				else
 					return (StLoc)variable.StoreInstructions[0];
 			}
@@ -784,34 +815,44 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 			var method = metadata.GetMethodDefinition(methodHandle);
 			var declaringType = method.GetDeclaringType();
 
-			if ((method.Attributes & MethodAttributes.Assembly) == 0 || !(method.IsCompilerGenerated(metadata) || declaringType.IsCompilerGenerated(metadata)))
+			if ((method.Attributes & MethodAttributes.Assembly) == 0)
 				return false;
 
-			if (!ParseLocalFunctionName(metadata.GetString(method.Name), out _, out _))
-				return false;
+			if ((method.IsCompilerGenerated(metadata) || declaringType.IsCompilerGenerated(metadata))
+				&& ParseLocalFunctionName(metadata.GetString(method.Name), out _, out _))
+			{
+				return true;
+			}
 
-			return true;
+			// Obfuscators strip the CompilerGeneratedAttribute and rewrite the
+			// "<caller>g__name|x_y" name, but they cannot remove the by-ref display-struct
+			// parameter: a compiler-generated struct closure is only ever passed by reference
+			// to the local functions that capture it.
+			return HasDisplayStructParameter(module, methodHandle);
+		}
+
+		/// <summary>
+		/// True if any parameter is a by-ref compiler-generated closure struct of this module.
+		/// </summary>
+		static bool HasDisplayStructParameter(MetadataFile module, MethodDefinitionHandle methodHandle)
+		{
+			var metadata = module.Metadata;
+			var method = metadata.GetMethodDefinition(methodHandle);
+			FindRefStructParameters visitor = new FindRefStructParameters();
+			method.DecodeSignature(visitor, default);
+			foreach (var h in visitor.RefStructTypes)
+			{
+				var td = metadata.GetTypeDefinition(h);
+				if (td.IsCompilerGenerated(metadata) && td.IsValueType(metadata) && td.HasGeneratedName(metadata))
+					return true;
+			}
+			return false;
 		}
 
 		public static bool LocalFunctionNeedsAccessibilityChange(MetadataFile module, MethodDefinitionHandle methodHandle)
 		{
-			if (!IsLocalFunctionMethod(module, methodHandle))
-				return false;
-
-			var metadata = module.Metadata;
-			var method = metadata.GetMethodDefinition(methodHandle);
-
-			FindRefStructParameters visitor = new FindRefStructParameters();
-			method.DecodeSignature(visitor, default);
-
-			foreach (var h in visitor.RefStructTypes)
-			{
-				var td = metadata.GetTypeDefinition(h);
-				if (td.IsCompilerGenerated(metadata) && td.IsValueType(metadata))
-					return true;
-			}
-
-			return false;
+			return IsLocalFunctionMethod(module, methodHandle)
+				&& HasDisplayStructParameter(module, methodHandle);
 		}
 
 		public static bool IsLocalFunctionDisplayClass(MetadataFile module, TypeDefinitionHandle typeHandle, ILTransformContext context = null)
@@ -866,7 +907,10 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 
 			public TypeDefinitionHandle GetArrayType(TypeDefinitionHandle elementType, ArrayShape shape) => default;
 			public TypeDefinitionHandle GetFunctionPointerType(MethodSignature<TypeDefinitionHandle> signature) => default;
-			public TypeDefinitionHandle GetGenericInstantiation(TypeDefinitionHandle genericType, ImmutableArray<TypeDefinitionHandle> typeArguments) => default;
+			// A closure struct of a generic method or generic declaring type arrives as an instantiation;
+			// its definition handle is what identifies the struct. Cross-module generic types still drop out,
+			// because GetTypeFromReference already returned nil for them.
+			public TypeDefinitionHandle GetGenericInstantiation(TypeDefinitionHandle genericType, ImmutableArray<TypeDefinitionHandle> typeArguments) => genericType;
 			public TypeDefinitionHandle GetGenericMethodParameter(Unit genericContext, int index) => default;
 			public TypeDefinitionHandle GetGenericTypeParameter(Unit genericContext, int index) => default;
 			public TypeDefinitionHandle GetModifiedType(TypeDefinitionHandle modifier, TypeDefinitionHandle unmodifiedType, bool isRequired) => default;

@@ -1,4 +1,4 @@
-﻿// 
+// 
 // VariableDeclarationStatement.cs
 //  
 // Author:
@@ -24,65 +24,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
-	public class VariableDeclarationStatement : Statement
+	/// <summary>
+	/// <c>local_variable_declaration ::= type variable_initializer+</c> (C# grammar §13.6.2.1)
+	/// </summary>
+	[DecompilerAstNode]
+	public sealed partial class VariableDeclarationStatement : Statement
 	{
-		public static readonly Role<CSharpModifierToken> ModifierRole = EntityDeclaration.ModifierRole;
-
-		public VariableDeclarationStatement()
-		{
-		}
-
-		public VariableDeclarationStatement(AstType type, string name, Expression initializer = null)
+		public VariableDeclarationStatement(AstType type, string name, Expression? initializer = null)
 		{
 			this.Type = type;
 			this.Variables.Add(new VariableInitializer(name, initializer));
 		}
 
-		public Modifiers Modifiers {
-			get { return EntityDeclaration.GetModifiers(this); }
-			set { EntityDeclaration.SetModifiers(this, value); }
-		}
+		public Modifiers Modifiers { get; set; }
 
-		public AstType Type {
-			get { return GetChildByRole(Roles.Type); }
-			set { SetChildByRole(Roles.Type, value); }
-		}
+		[Slot("Type")]
+		public partial AstType Type { get; set; }
 
-		public AstNodeCollection<VariableInitializer> Variables {
-			get { return GetChildrenByRole(Roles.Variable); }
-		}
+		[Slot("Variable")]
+		public partial AstNodeCollection<VariableInitializer> Variables { get; }
 
-		public CSharpTokenNode SemicolonToken {
-			get { return GetChildByRole(Roles.Semicolon); }
-		}
-
-		public VariableInitializer GetVariable(string name)
+		public VariableInitializer? GetVariable(string name)
 		{
-			return Variables.FirstOrNullObject(vi => vi.Name == name);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitVariableDeclarationStatement(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitVariableDeclarationStatement(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitVariableDeclarationStatement(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			VariableDeclarationStatement o = other as VariableDeclarationStatement;
-			return o != null && this.Modifiers == o.Modifiers && this.Type.DoMatch(o.Type, match) && this.Variables.DoMatch(o.Variables, match);
+			return Variables.FirstOrNull(vi => vi.Name == name);
 		}
 	}
 }

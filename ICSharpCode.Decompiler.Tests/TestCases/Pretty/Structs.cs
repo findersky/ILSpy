@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2021 Siegfried Pammer
+// Copyright (c) 2021 Siegfried Pammer
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -30,7 +30,11 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if CS100
 		public StructWithDefaultCtor M()
 		{
+#if CS71
+			return default;
+#else
 			return default(StructWithDefaultCtor);
+#endif
 		}
 
 		public StructWithDefaultCtor M2()
@@ -43,11 +47,10 @@ namespace ICSharpCode.Decompiler.Tests.TestCases.Pretty
 #if CS100
 	public struct StructWithDefaultCtor
 	{
-		public int X;
+		public int X = 42;
 
 		public StructWithDefaultCtor()
 		{
-			X = 42;
 		}
 	}
 #endif

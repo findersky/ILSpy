@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2011 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -16,9 +16,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+#nullable enable
+
+using System.Diagnostics;
 using System.Linq;
 
-using ICSharpCode.Decompiler.CSharp.Resolver;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.Semantics;
 using ICSharpCode.Decompiler.TypeSystem;
@@ -27,9 +29,19 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 {
 	public class IntroduceUnsafeModifier : DepthFirstAstVisitor<bool>, IAstTransform
 	{
+		TransformContext? context;
+
 		public void Run(AstNode compilationUnit, TransformContext context)
 		{
-			compilationUnit.AcceptVisitor(this);
+			this.context = context;
+			try
+			{
+				compilationUnit.AcceptVisitor(this);
+			}
+			finally
+			{
+				this.context = null;
+			}
 		}
 
 		public static bool IsUnsafe(AstNode node)
@@ -37,11 +49,28 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			return node.AcceptVisitor(new IntroduceUnsafeModifier());
 		}
 
+		// Run() sets the context, but the static IsUnsafe() entry point drives this visitor with no
+		// context, so step recording must tolerate a null context. Both helpers compile out entirely
+		// in non-STEP (Release) builds, so the null check only exists in debug step-recording builds.
+		[Conditional("STEP")]
+		void Step(string description, AstNode node)
+		{
+			if (context != null)
+				context.Step(description, node);
+		}
+
+		[Conditional("STEP")]
+		void EndStep(AstNode node)
+		{
+			if (context != null)
+				context.EndStep(node);
+		}
+
 		protected override bool VisitChildren(AstNode node)
 		{
 			bool result = false;
-			AstNode next;
-			for (AstNode child = node.FirstChild; child != null; child = next)
+			AstNode? next;
+			for (AstNode? child = node.FirstChild; child != null; child = next)
 			{
 				// Store next to allow the loop to continue
 				// if the visitor removes/replaces child.
@@ -50,6 +79,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 			}
 			if (result && node is EntityDeclaration && !(node is Accessor))
 			{
+				Step("Add unsafe modifier", node);
 				((EntityDeclaration)node).Modifiers |= Modifiers.Unsafe;
 				return false;
 			}
@@ -93,13 +123,15 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 					&& bop.GetResolveResult() is OperatorResolveResult orr
 					&& orr.Operands.FirstOrDefault()?.Type.Kind == TypeKind.Pointer)
 				{
+					Step("Replace pointer addition with indexer", unaryOperatorExpression);
 					// transform "*(ptr + int)" to "ptr[int]"
 					IndexerExpression indexer = new IndexerExpression();
-					indexer.Target = bop.Left.Detach();
-					indexer.Arguments.Add(bop.Right.Detach());
+					indexer.Target = bop.Left!.Detach();
+					indexer.Arguments.Add(bop.Right!.Detach());
 					indexer.CopyAnnotationsFrom(unaryOperatorExpression);
 					indexer.CopyAnnotationsFrom(bop);
 					unaryOperatorExpression.ReplaceWith(indexer);
+					EndStep(indexer);
 				}
 				return true;
 			}
@@ -116,9 +148,10 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		public override bool VisitMemberReferenceExpression(MemberReferenceExpression memberReferenceExpression)
 		{
 			bool result = base.VisitMemberReferenceExpression(memberReferenceExpression);
-			UnaryOperatorExpression uoe = memberReferenceExpression.Target as UnaryOperatorExpression;
+			UnaryOperatorExpression? uoe = memberReferenceExpression.Target as UnaryOperatorExpression;
 			if (uoe != null && uoe.Operator == UnaryOperatorType.Dereference)
 			{
+				Step("Replace pointer member access", memberReferenceExpression);
 				PointerReferenceExpression pre = new PointerReferenceExpression();
 				pre.Target = uoe.Expression.Detach();
 				pre.MemberName = memberReferenceExpression.MemberName;
@@ -127,6 +160,7 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 				pre.RemoveAnnotations<ResolveResult>(); // only copy the ResolveResult from the MRE
 				pre.CopyAnnotationsFrom(memberReferenceExpression);
 				memberReferenceExpression.ReplaceWith(pre);
+				EndStep(pre);
 			}
 			if (HasUnsafeResolveResult(memberReferenceExpression))
 				return true;
@@ -153,6 +187,14 @@ namespace ICSharpCode.Decompiler.CSharp.Transforms
 		{
 			bool result = base.VisitInvocationExpression(invocationExpression);
 			if (HasUnsafeResolveResult(invocationExpression))
+				return true;
+			return result;
+		}
+
+		public override bool VisitObjectCreateExpression(ObjectCreateExpression objectCreateExpression)
+		{
+			bool result = base.VisitObjectCreateExpression(objectCreateExpression);
+			if (HasUnsafeResolveResult(objectCreateExpression))
 				return true;
 			return result;
 		}

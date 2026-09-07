@@ -165,6 +165,60 @@ Are you sure you want to continue?</value>
   <data name="BaseTypes" xml:space="preserve">
     <value>Base Types</value>
   </data>
+  <data name="BookmarkAssemblyMissing" xml:space="preserve">
+    <value>Assembly for this bookmark no longer exists on disk, remove bookmark?</value>
+  </data>
+  <data name="BookmarkDelete" xml:space="preserve">
+    <value>Delete Bookmark</value>
+  </data>
+  <data name="BookmarkDisable" xml:space="preserve">
+    <value>Enable / Disable Bookmark</value>
+  </data>
+  <data name="BookmarkExport" xml:space="preserve">
+    <value>Export Bookmarks...</value>
+  </data>
+  <data name="BookmarkExportTitle" xml:space="preserve">
+    <value>Export Bookmarks</value>
+  </data>
+  <data name="BookmarkImport" xml:space="preserve">
+    <value>Import Bookmarks...</value>
+  </data>
+  <data name="BookmarkImportFailed" xml:space="preserve">
+    <value>The selected file could not be read as a bookmark file. Your bookmarks were left unchanged.</value>
+  </data>
+  <data name="BookmarkImportMerge" xml:space="preserve">
+    <value>Merge</value>
+  </data>
+  <data name="BookmarkImportReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="BookmarkImportReplaceOrMerge" xml:space="preserve">
+    <value>Replace the current bookmarks with the imported ones, or merge them?</value>
+  </data>
+  <data name="BookmarkImportTitle" xml:space="preserve">
+    <value>Import Bookmarks</value>
+  </data>
+  <data name="BookmarkModule" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="BookmarkNextBookmark" xml:space="preserve">
+    <value>Next Bookmark</value>
+  </data>
+  <data name="BookmarkNextInFile" xml:space="preserve">
+    <value>Next Bookmark in File</value>
+  </data>
+  <data name="BookmarkPreviousBookmark" xml:space="preserve">
+    <value>Previous Bookmark</value>
+  </data>
+  <data name="BookmarkPreviousInFile" xml:space="preserve">
+    <value>Previous Bookmark in File</value>
+  </data>
+  <data name="BookmarkToggle" xml:space="preserve">
+    <value>Toggle Bookmark</value>
+  </data>
+  <data name="Bookmarks" xml:space="preserve">
+    <value>Bookmarks</value>
+  </data>
   <data name="C_lone" xml:space="preserve">
     <value>C_lone</value>
   </data>
@@ -175,7 +229,7 @@ Are you sure you want to continue?</value>
     <value>Entity could not be resolved. Cannot analyze entities from missing assembly references. Add the missing reference and try again.</value>
   </data>
   <data name="CannotCreatePDBFile" xml:space="preserve">
-    <value>Cannot create PDB file for {0}, because it does not contain a PE Debug Directory Entry of type 'CodeView'.</value>
+    <value>Cannot create PDB file for {0} because the PE debug directory type 'CodeView' is missing.</value>
   </data>
   <data name="CheckAgain" xml:space="preserve">
     <value>Check again</value>
@@ -191,6 +245,12 @@ Are you sure you want to continue?</value>
   </data>
   <data name="Close" xml:space="preserve">
     <value>Close</value>
+  </data>
+  <data name="CloseAllButThisTab" xml:space="preserve">
+    <value>Close all but this</value>
+  </data>
+  <data name="CloseAllTabs" xml:space="preserve">
+    <value>Close all</value>
   </data>
   <data name="CollapseTreeNodes" xml:space="preserve">
     <value>Collapse all tree nodes</value>
@@ -234,6 +294,9 @@ Are you sure you want to continue?</value>
   <data name="DebugThisStep" xml:space="preserve">
     <value>Debug this step</value>
   </data>
+  <data name="DecodeCustomAttributeBlobs" xml:space="preserve">
+    <value>Decode custom attribute blobs</value>
+  </data>
   <data name="DecompilationCompleteInF1Seconds" xml:space="preserve">
     <value>Decompilation complete in {0:F1} seconds.</value>
   </data>
@@ -264,6 +327,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.AlwaysCastTargetsOfExplicitInterfaceImplementationCalls" xml:space="preserve">
     <value>Always cast targets of explicit interface implementation calls</value>
   </data>
+  <data name="DecompilerSettings.AlwaysMoveInitializer" xml:space="preserve">
+    <value>Always move field initializers from constructors to declarations</value>
+  </data>
   <data name="DecompilerSettings.AlwaysQualifyMemberReferences" xml:space="preserve">
     <value>Always qualify member references</value>
   </data>
@@ -288,8 +354,14 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.AutoLoadAssemblyReferences" xml:space="preserve">
     <value>Automatically load assembly references</value>
   </data>
+  <data name="DecompilerSettings.CheckForOverflowUnderflow" xml:space="preserve">
+    <value>Check for overflow and underflow in operators</value>
+  </data>
   <data name="DecompilerSettings.CheckedOperators" xml:space="preserve">
     <value>User-defined checked operators</value>
+  </data>
+  <data name="DecompilerSettings.CovariantReturns" xml:space="preserve">
+    <value>Covariant return types</value>
   </data>
   <data name="DecompilerSettings.DecompileAnonymousMethodsLambdas" xml:space="preserve">
     <value>Decompile anonymous methods/lambdas</value>
@@ -324,6 +396,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.DecompileForEachWithGetEnumeratorExtension" xml:space="preserve">
     <value>Decompile foreach statements with GetEnumerator extension methods</value>
   </data>
+  <data name="DecompilerSettings.DecompileParamsCollections" xml:space="preserve">
+    <value>Decompile params collections</value>
+  </data>
   <data name="DecompilerSettings.DecompileUseOfTheDynamicType" xml:space="preserve">
     <value>Decompile use of the 'dynamic' type</value>
   </data>
@@ -354,11 +429,23 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.DoWhileStatement" xml:space="preserve">
     <value>Transform to do-while, if possible</value>
   </data>
+  <data name="DecompilerSettings.ExpandParamsArguments" xml:space="preserve">
+    <value>Expand params arguments by removing explicit array creation</value>
+  </data>
+  <data name="DecompilerSettings.ExtensionMembers" xml:space="preserve">
+    <value>Decompile extension members</value>
+  </data>
   <data name="DecompilerSettings.FSpecificOptions" xml:space="preserve">
     <value>F#-specific options</value>
   </data>
+  <data name="DecompilerSettings.FieldKeyword" xml:space="preserve">
+    <value>Use the 'field' keyword in property accessors</value>
+  </data>
   <data name="DecompilerSettings.FileScopedNamespaces" xml:space="preserve">
     <value>Use file-scoped namespace declarations</value>
+  </data>
+  <data name="DecompilerSettings.FirstClassSpanTypes" xml:space="preserve">
+    <value>Treat Span&lt;T&gt; and ReadOnlySpan&lt;T&gt; as built-in types</value>
   </data>
   <data name="DecompilerSettings.ForStatement" xml:space="preserve">
     <value>Transform to for, if possible</value>
@@ -374,6 +461,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.InitAccessors" xml:space="preserve">
     <value>Allow init; accessors</value>
+  </data>
+  <data name="DecompilerSettings.InlineArrays" xml:space="preserve">
+    <value>Inline arrays</value>
   </data>
   <data name="DecompilerSettings.InsertUsingDeclarations" xml:space="preserve">
     <value>Insert using declarations</value>
@@ -395,6 +485,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.IsUnmanagedAttributeOnTypeParametersShouldBeReplacedWithUnmanagedConstraints" xml:space="preserve">
     <value>IsUnmanagedAttribute on type parameters should be replaced with 'unmanaged' constraints</value>
+  </data>
+  <data name="DecompilerSettings.LambdaOptionalAndParamsParameters" xml:space="preserve">
+    <value>'params' and optional parameters in lambdas</value>
   </data>
   <data name="DecompilerSettings.NativeIntegers" xml:space="preserve">
     <value>Use nint/nuint types</value>
@@ -468,11 +561,17 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.SortCustomAttributes" xml:space="preserve">
     <value>Sort custom attributes</value>
   </data>
+  <data name="DecompilerSettings.SortSwitchSections" xml:space="preserve">
+    <value>Sort switch sections by case label value</value>
+  </data>
   <data name="DecompilerSettings.SparseIntegerSwitch" xml:space="preserve">
     <value>Detect switch on integer even if IL code does not use a jump table</value>
   </data>
   <data name="DecompilerSettings.StringConcat" xml:space="preserve">
     <value>Decompile 'string.Concat(a, b)' calls into 'a + b'</value>
+  </data>
+  <data name="DecompilerSettings.StructDefaultConstructorsAndFieldInitializers" xml:space="preserve">
+    <value>Use struct field initializers and default constructors</value>
   </data>
   <data name="DecompilerSettings.SwitchExpressions" xml:space="preserve">
     <value>Switch expressions</value>
@@ -482,6 +581,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="DecompilerSettings.UnsignedRightShift" xml:space="preserve">
     <value>Unsigned right shift (&gt;&gt;&gt;)</value>
+  </data>
+  <data name="DecompilerSettings.UseDefaultLiterals" xml:space="preserve">
+    <value>Use "default" literals without an explicit type</value>
   </data>
   <data name="DecompilerSettings.UseDiscards" xml:space="preserve">
     <value>Use discards</value>
@@ -519,6 +621,9 @@ Are you sure you want to continue?</value>
   <data name="DecompilerSettings.UseNonTrailingNamedArguments" xml:space="preserve">
     <value>Use non-trailing named arguments</value>
   </data>
+  <data name="DecompilerSettings.UseObjectCreationOfGenericTypeParameter" xml:space="preserve">
+    <value>Use new T() instead of Activator.CreateInstance&lt;T&gt;</value>
+  </data>
   <data name="DecompilerSettings.UseOutVariableDeclarations" xml:space="preserve">
     <value>Use out variable declarations</value>
   </data>
@@ -529,7 +634,7 @@ Are you sure you want to continue?</value>
     <value>Use primary constructor syntax for non-record types</value>
   </data>
   <data name="DecompilerSettings.UsePrimaryConstructorSyntax" xml:space="preserve">
-    <value>Use primary constructor  syntax with records</value>
+    <value>Use primary constructor syntax with records</value>
   </data>
   <data name="DecompilerSettings.UsePrimaryConstructorSyntaxForNonRecordTypes" xml:space="preserve">
     <value>Use primary constructor syntax for non-record types</value>
@@ -600,9 +705,6 @@ Are you sure you want to continue?</value>
   <data name="EnableFoldingBlocksBraces" xml:space="preserve">
     <value>Enable folding on all blocks in braces</value>
   </data>
-  <data name="EnableSmoothScrolling" xml:space="preserve">
-    <value>Enable smooth scrolling</value>
-  </data>
   <data name="EnableWordWrap" xml:space="preserve">
     <value>Enable word wrap</value>
   </data>
@@ -617,6 +719,15 @@ Are you sure you want to continue?</value>
   </data>
   <data name="ExpandUsingDeclarationsAfterDecompilation" xml:space="preserve">
     <value>Expand using declarations after decompilation</value>
+  </data>
+  <data name="ExpandXmlDocumentationCommentsAfterDecompilation" xml:space="preserve">
+    <value>Expand XML documentation comments after decompilation</value>
+  </data>
+  <data name="ExportProjectSolution" xml:space="preserve">
+    <value>Export Project/Solution...</value>
+  </data>
+  <data name="ExtractAllPackageEntries" xml:space="preserve">
+    <value>Extract all package entries</value>
   </data>
   <data name="ExtractPackageEntry" xml:space="preserve">
     <value>Extract package entry</value>
@@ -633,8 +744,17 @@ Are you sure you want to continue?</value>
   <data name="GeneratePortable" xml:space="preserve">
     <value>Generate portable PDB</value>
   </data>
+  <data name="GeneratedPDBFile" xml:space="preserve">
+    <value>Generated PDB: {0}</value>
+  </data>
+  <data name="GeneratingPortablePDB" xml:space="preserve">
+    <value>Generating portable PDB for {0}...</value>
+  </data>
   <data name="GenerationCompleteInSeconds" xml:space="preserve">
     <value>Generation complete in {0} seconds.</value>
+  </data>
+  <data name="GenerationFailedForAssembly" xml:space="preserve">
+    <value>Failed to generate PDB for {0}: {1}</value>
   </data>
   <data name="GenerationWasCancelled" xml:space="preserve">
     <value>Generation was cancelled.</value>
@@ -651,8 +771,14 @@ Are you sure you want to continue?</value>
   <data name="HighlightMatchingBraces" xml:space="preserve">
     <value>Highlight matching braces</value>
   </data>
+  <data name="HighlightMemberReferences" xml:space="preserve">
+    <value>Single-click highlights member references (Ctrl+Click navigates)</value>
+  </data>
   <data name="ILSpyAboutPageTxt" xml:space="preserve">
     <value>ILSpyAboutPage.txt</value>
+  </data>
+  <data name="ILSpyStartedFrom" xml:space="preserve">
+    <value>ILSpy started from </value>
   </data>
   <data name="ILSpyVersion" xml:space="preserve">
     <value>ILSpy version </value>
@@ -668,6 +794,9 @@ Are you sure you want to continue?</value>
   </data>
   <data name="InsertUsingDeclarations" xml:space="preserve">
     <value>Insert using declarations</value>
+  </data>
+  <data name="InvalidTargetFramework" xml:space="preserve">
+    <value>Unknown target framework. Enter a moniker such as net48 or net6.0.</value>
   </data>
   <data name="ListDeleteConfirmation" xml:space="preserve">
     <value>Are you sure that you want to delete the selected assembly list?</value>
@@ -709,7 +838,7 @@ Are you sure you want to continue?</value>
     <value>Navigation</value>
   </data>
   <data name="NavigationFailed" xml:space="preserve">
-    <value>Navigation failed because the target is hidden or a compiler-generated class.\n
+    <value>Navigation failed because the target is hidden or a compiler-generated class.
 Please disable all filters that might hide the item (i.e. activate "View &gt; Show internal types and members") and try again.</value>
   </data>
   <data name="NewList" xml:space="preserve">
@@ -717,6 +846,51 @@ Please disable all filters that might hide the item (i.e. activate "View &gt; Sh
   </data>
   <data name="NewTab" xml:space="preserve">
     <value>New Tab</value>
+  </data>
+  <data name="NuGetFeedAuthors" xml:space="preserve">
+    <value>Author(s):</value>
+  </data>
+  <data name="NuGetFeedDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="NuGetFeedDownloading" xml:space="preserve">
+    <value>Downloading package...</value>
+  </data>
+  <data name="NuGetFeedDownloads" xml:space="preserve">
+    <value>Downloads:</value>
+  </data>
+  <data name="NuGetFeedLicense" xml:space="preserve">
+    <value>License:</value>
+  </data>
+  <data name="NuGetFeedLoadMore" xml:space="preserve">
+    <value>Load more</value>
+  </data>
+  <data name="NuGetFeedPackageSource" xml:space="preserve">
+    <value>_Package source:</value>
+  </data>
+  <data name="NuGetFeedProjectUrl" xml:space="preserve">
+    <value>Project URL:</value>
+  </data>
+  <data name="NuGetFeedPublished" xml:space="preserve">
+    <value>Date published:</value>
+  </data>
+  <data name="NuGetFeedRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="NuGetFeedSearchWatermark" xml:space="preserve">
+    <value>Search packages</value>
+  </data>
+  <data name="NuGetFeedSelectPackage" xml:space="preserve">
+    <value>Select Package</value>
+  </data>
+  <data name="NuGetFeedShowPrerelease" xml:space="preserve">
+    <value>Show pre-release packages</value>
+  </data>
+  <data name="NuGetFeedTags" xml:space="preserve">
+    <value>Tags:</value>
+  </data>
+  <data name="NuGetFeedVersion" xml:space="preserve">
+    <value>_Version:</value>
   </data>
   <data name="NugetPackageBrowser" xml:space="preserve">
     <value>Nuget Package Browser</value>
@@ -733,8 +907,56 @@ Please disable all filters that might hide the item (i.e. activate "View &gt; Sh
   <data name="OpenFrom" xml:space="preserve">
     <value>Open From GAC</value>
   </data>
+  <data name="OpenFromProcess_AddEntryAssembly" xml:space="preserve">
+    <value>Add _Entry Assembly</value>
+  </data>
+  <data name="OpenFromProcess_AddSelected" xml:space="preserve">
+    <value>_Add Selected</value>
+  </data>
+  <data name="OpenFromProcess_Architecture" xml:space="preserve">
+    <value>Architecture</value>
+  </data>
+  <data name="OpenFromProcess_Assemblies" xml:space="preserve">
+    <value>Assemblies loaded in the selected process:</value>
+  </data>
+  <data name="OpenFromProcess_EntryAssembly" xml:space="preserve">
+    <value>Entry Assembly</value>
+  </data>
+  <data name="OpenFromProcess_Filter" xml:space="preserve">
+    <value>_Filter:</value>
+  </data>
+  <data name="OpenFromProcess_InMemoryAssembly" xml:space="preserve">
+    <value>(loaded from memory - cannot be opened)</value>
+  </data>
+  <data name="OpenFromProcess_Location" xml:space="preserve">
+    <value>Location</value>
+  </data>
+  <data name="OpenFromProcess_Pid" xml:space="preserve">
+    <value>PID</value>
+  </data>
+  <data name="OpenFromProcess_Process" xml:space="preserve">
+    <value>Process</value>
+  </data>
+  <data name="OpenFromProcess_Refresh" xml:space="preserve">
+    <value>_Refresh</value>
+  </data>
+  <data name="OpenFromProcess_Runtime" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="OpenFromProcess_Title" xml:space="preserve">
+    <value>Open from Running Process</value>
+  </data>
+  <data name="OpenFromProcess_VisibilityHint" xml:space="preserve">
+    <value>Only .NET processes of the current user are listed. Processes started with diagnostics disabled do not appear.</value>
+  </data>
   <data name="OpenFrom_GAC" xml:space="preserve">
     <value>Open from _GAC...</value>
+  </data>
+  <data name="OpenFrom_NuGetFeed" xml:space="preserve">
+    <value>Open from _NuGet feed...</value>
+  </data>
+  <data name="OpenFrom_RunningProcess" xml:space="preserve">
+    <value>Open from running _process...</value>
   </data>
   <data name="OpenListDialog__Delete" xml:space="preserve">
     <value>_Delete</value>
@@ -788,6 +1010,9 @@ If this does not solve the problem and your system supports long paths, you can 
   <data name="ReferenceName" xml:space="preserve">
     <value>Reference Name</value>
   </data>
+  <data name="ReferencedTypes" xml:space="preserve">
+    <value>Referenced Types</value>
+  </data>
   <data name="References" xml:space="preserve">
     <value>References</value>
   </data>
@@ -813,6 +1038,9 @@ Do you want to continue?</value>
   </data>
   <data name="RenameList" xml:space="preserve">
     <value>Rename list</value>
+  </data>
+  <data name="ResetTargetFramework" xml:space="preserve">
+    <value>Reset Target Framework</value>
   </data>
   <data name="ResetToDefaults" xml:space="preserve">
     <value>Reset to defaults</value>
@@ -871,8 +1099,14 @@ Do you want to continue?</value>
   <data name="SelectPDB" xml:space="preserve">
     <value>Select PDB...</value>
   </data>
+  <data name="SelectPDBOutputFolder" xml:space="preserve">
+    <value>Select target folder</value>
+  </data>
   <data name="SelectVersionDropdownTooltip" xml:space="preserve">
     <value>Select version of language to output (Alt+E)</value>
+  </data>
+  <data name="SetTargetFramework" xml:space="preserve">
+    <value>Set Target Framework...</value>
   </data>
   <data name="SettingsChangeRestartRequired" xml:space="preserve">
     <value>You must restart ILSpy for the change to take effect.</value>
@@ -909,6 +1143,9 @@ Do you want to continue?</value>
   </data>
   <data name="ShowMetadataTokensInBase10" xml:space="preserve">
     <value>Show metadata tokens in base 10</value>
+  </data>
+  <data name="ShowOmnibar" xml:space="preserve">
+    <value>Show omnibar (breadcrumb / search bar) above the decompiled code</value>
   </data>
   <data name="ShowPublicOnlyTypesMembers" xml:space="preserve">
     <value>Show only public types and members</value>
@@ -957,6 +1194,9 @@ Do you want to continue?</value>
   </data>
   <data name="TabSize" xml:space="preserve">
     <value>Tab size:</value>
+  </data>
+  <data name="TargetFramework" xml:space="preserve">
+    <value>Target framework:</value>
   </data>
   <data name="Theme" xml:space="preserve">
     <value>Theme</value>

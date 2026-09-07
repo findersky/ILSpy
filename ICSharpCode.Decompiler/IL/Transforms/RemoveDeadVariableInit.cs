@@ -69,38 +69,15 @@ namespace ICSharpCode.Decompiler.IL.Transforms
 						}
 						else
 						{
-							stloc.ReplaceWith(stloc.Value);
+							var value = stloc.Value;
+							stloc.ReplaceWith(value);
+							context.EndStep(value);
 						}
 						if (stloc.Value is LdLoc ldloc)
 						{
 							variableQueue.Enqueue(ldloc.Variable);
 						}
 					}
-				}
-			}
-
-
-			// Try to infer IType of stack slots that are of StackType.Ref:
-			foreach (var v in function.Variables)
-			{
-				if (v.Kind == VariableKind.StackSlot && v.StackType == StackType.Ref && v.AddressCount == 0)
-				{
-					IType newType = null;
-					// Multiple store are possible in case of (c ? ref a : ref b) += 1, for example.
-					foreach (var stloc in v.StoreInstructions.OfType<StLoc>())
-					{
-						var inferredType = stloc.Value.InferType(context.TypeSystem);
-						// cancel, if types of values do not match exactly
-						if (newType != null && !newType.Equals(inferredType))
-						{
-							newType = SpecialType.UnknownType;
-							break;
-						}
-						newType = inferredType;
-					}
-					// Only overwrite existing type, if a "better" type was found.
-					if (newType != null && newType != SpecialType.UnknownType)
-						v.Type = newType;
 				}
 			}
 		}

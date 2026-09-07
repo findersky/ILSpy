@@ -1,4 +1,4 @@
-﻿// 
+// 
 // ConditionalExpression.cs
 //
 // Author:
@@ -23,74 +23,27 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
-using System.Collections.Generic;
+#nullable enable
 
 namespace ICSharpCode.Decompiler.CSharp.Syntax
 {
 	/// <summary>
-	/// Condition ? TrueExpression : FalseExpression
+	/// Operator precedence is not represented in the syntax tree; required parentheses are reconstructed by <see cref="ICSharpCode.Decompiler.CSharp.OutputVisitor.InsertParenthesesVisitor"/>.
+	/// <c>conditional_expression ::= expression '?' expression ':' expression</c> (C# grammar §12.21)
 	/// </summary>
-	public class ConditionalExpression : Expression
+	[DecompilerAstNode]
+	public sealed partial class ConditionalExpression : Expression
 	{
-		public readonly static Role<Expression> ConditionRole = Roles.Condition;
-		public readonly static TokenRole QuestionMarkRole = new TokenRole("?");
-		public readonly static Role<Expression> TrueRole = new Role<Expression>("True", Expression.Null);
-		public readonly static TokenRole ColonRole = Roles.Colon;
-		public readonly static Role<Expression> FalseRole = new Role<Expression>("False", Expression.Null);
+		public const string QuestionMarkToken = "?";
+		public const string ColonToken = Tokens.Colon;
 
-		public Expression Condition {
-			get { return GetChildByRole(ConditionRole); }
-			set { SetChildByRole(ConditionRole, value); }
-		}
+		[Slot("Condition")]
+		public partial Expression Condition { get; set; }
 
-		public CSharpTokenNode QuestionMarkToken {
-			get { return GetChildByRole(QuestionMarkRole); }
-		}
+		[Slot("True")]
+		public partial Expression TrueExpression { get; set; }
 
-		public Expression TrueExpression {
-			get { return GetChildByRole(TrueRole); }
-			set { SetChildByRole(TrueRole, value); }
-		}
-
-		public CSharpTokenNode ColonToken {
-			get { return GetChildByRole(ColonRole); }
-		}
-
-		public Expression FalseExpression {
-			get { return GetChildByRole(FalseRole); }
-			set { SetChildByRole(FalseRole, value); }
-		}
-
-		public ConditionalExpression()
-		{
-		}
-
-		public ConditionalExpression(Expression condition, Expression trueExpression, Expression falseExpression)
-		{
-			AddChild(condition, ConditionRole);
-			AddChild(trueExpression, TrueRole);
-			AddChild(falseExpression, FalseRole);
-		}
-
-		public override void AcceptVisitor(IAstVisitor visitor)
-		{
-			visitor.VisitConditionalExpression(this);
-		}
-
-		public override T AcceptVisitor<T>(IAstVisitor<T> visitor)
-		{
-			return visitor.VisitConditionalExpression(this);
-		}
-
-		public override S AcceptVisitor<T, S>(IAstVisitor<T, S> visitor, T data)
-		{
-			return visitor.VisitConditionalExpression(this, data);
-		}
-
-		protected internal override bool DoMatch(AstNode other, PatternMatching.Match match)
-		{
-			ConditionalExpression o = other as ConditionalExpression;
-			return o != null && this.Condition.DoMatch(o.Condition, match) && this.TrueExpression.DoMatch(o.TrueExpression, match) && this.FalseExpression.DoMatch(o.FalseExpression, match);
-		}
+		[Slot("False")]
+		public partial Expression FalseExpression { get; set; }
 	}
 }

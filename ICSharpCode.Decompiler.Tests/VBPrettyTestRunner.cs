@@ -51,7 +51,7 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 		}
 
-		static readonly CompilerOptions[] defaultOptions =
+		static readonly CompilerOptions[] defaultOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.None,
 			CompilerOptions.Optimize,
@@ -61,17 +61,23 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn1_3_2,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
 			CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
-		static readonly CompilerOptions[] roslynOnlyOptions =
+		static readonly CompilerOptions[] roslynOnlyOptions = Tester.SupportedOnCurrentPlatform(new[]
 		{
 			CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2 | CompilerOptions.TargetNet40,
@@ -79,15 +85,21 @@ namespace ICSharpCode.Decompiler.Tests
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0 | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest | CompilerOptions.TargetNet40,
 			CompilerOptions.UseRoslyn1_3_2,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn1_3_2,
 			CompilerOptions.UseRoslyn2_10_0,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslyn2_10_0,
+			CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn3_11_0,
+			CompilerOptions.UseRoslyn4_14_0,
+			CompilerOptions.Optimize | CompilerOptions.UseRoslyn4_14_0,
 			CompilerOptions.UseRoslynLatest,
 			CompilerOptions.Optimize | CompilerOptions.UseRoslynLatest,
-		};
+		});
 
 		[Test]
 		public async Task Async([ValueSource(nameof(defaultOptions))] CompilerOptions options)
@@ -102,8 +114,21 @@ namespace ICSharpCode.Decompiler.Tests
 		}
 
 		[Test]
+		public async Task ParameterizedProperties([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			await Run(options: options | CompilerOptions.Library);
+		}
+
+		[Test]
 		public async Task Select([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
+			await Run(options: options | CompilerOptions.Library);
+		}
+
+		[Test]
+		public async Task VBAnonymousTypes([ValueSource(nameof(defaultOptions))] CompilerOptions options)
+		{
+			IgnoreIfVbRuntimeSubstituted(options);
 			await Run(options: options | CompilerOptions.Library);
 		}
 
@@ -116,6 +141,7 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task Issue2192([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
+			IgnoreIfVbRuntimeSubstituted(options);
 			await Run(options: options | CompilerOptions.Library);
 		}
 
@@ -134,6 +160,7 @@ namespace ICSharpCode.Decompiler.Tests
 		[Test]
 		public async Task VBNonGenericForEach([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
+			IgnoreIfVbRuntimeSubstituted(options);
 			await Run(options: options | CompilerOptions.Library);
 		}
 
@@ -141,6 +168,18 @@ namespace ICSharpCode.Decompiler.Tests
 		public async Task YieldReturn([ValueSource(nameof(defaultOptions))] CompilerOptions options)
 		{
 			await Run(options: options | CompilerOptions.Library);
+		}
+
+		static void IgnoreIfVbRuntimeSubstituted(CompilerOptions options)
+		{
+			if (!OperatingSystem.IsWindows()
+				&& (options & CompilerOptions.UseRoslynMask) == CompilerOptions.UseRoslyn2_10_0
+				&& (options & CompilerOptions.TargetNet40) == 0)
+			{
+				Assert.Ignore("The non-Windows netcore-2.2 configuration substitutes the legacy " +
+					"Microsoft.VisualBasic as -vbruntime (see Tester.CompileVB); the resulting " +
+					"reference graph changes this test's decompiled output.");
+			}
 		}
 
 		async Task Run([CallerMemberName] string testName = null, CompilerOptions options = CompilerOptions.UseDebug, DecompilerSettings settings = null)
@@ -154,7 +193,8 @@ namespace ICSharpCode.Decompiler.Tests
 			}
 
 			var executable = await Tester.CompileVB(vbFile, options | CompilerOptions.ReferenceVisualBasic, exeFile).ConfigureAwait(false);
-			var decompiled = await Tester.DecompileCSharp(executable.PathToAssembly, settings ?? new DecompilerSettings { FileScopedNamespaces = false }).ConfigureAwait(false);
+			settings ??= new DecompilerSettings { FileScopedNamespaces = false, SortCustomAttributes = true };
+			var decompiled = await Tester.DecompileCSharp(executable.PathToAssembly, settings).ConfigureAwait(false);
 
 			CodeAssert.FilesAreEqual(csFile, decompiled, Tester.GetPreprocessorSymbols(options).ToArray());
 			Tester.RepeatOnIOError(() => File.Delete(decompiled));

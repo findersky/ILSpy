@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2010-2013 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -65,44 +65,6 @@ namespace ICSharpCode.Decompiler.TypeSystem
 				return this;
 			else
 				return new PointerType(e);
-		}
-	}
-
-	[Serializable]
-	public sealed class PointerTypeReference : ITypeReference, ISupportsInterning
-	{
-		readonly ITypeReference elementType;
-
-		public PointerTypeReference(ITypeReference elementType)
-		{
-			if (elementType == null)
-				throw new ArgumentNullException(nameof(elementType));
-			this.elementType = elementType;
-		}
-
-		public ITypeReference ElementType {
-			get { return elementType; }
-		}
-
-		public IType Resolve(ITypeResolveContext context)
-		{
-			return new PointerType(elementType.Resolve(context));
-		}
-
-		public override string ToString()
-		{
-			return elementType.ToString() + "*";
-		}
-
-		int ISupportsInterning.GetHashCodeForInterning()
-		{
-			return elementType.GetHashCode() ^ 91725812;
-		}
-
-		bool ISupportsInterning.EqualsForInterning(ISupportsInterning other)
-		{
-			PointerTypeReference o = other as PointerTypeReference;
-			return o != null && this.elementType == o.elementType;
 		}
 	}
 }
